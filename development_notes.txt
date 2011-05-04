@@ -1,0 +1,43 @@
+тестирование - запись аудио.
+запись реплеев
+
++проверка crc карт памяти
++определять ошибки в работе session
++увеличить приоритет отправляющих тредов
++lastTimestamp проверять.
++восстановление настроек
++выключение multitap
+-вычисление длины сессии
+-ждать первого пакета подольше - остальных нежолго
+-переименование подписей
+-скрытие чекбоков указании режима Host
+
+
+OpenPlugin_Net, ClosePlugin_Net
+
+избавдение от утечек
+все-таки нужна гарантированная доставка пакетов.
+оборачивать отправляемую информацию в заголовки.
+падает после настройки управления в сетевом режиме
+проверка делея на обеих сторонах
+
+сделать не просто host-connect, а т.н. handshake
+методы для гарантированной отправки пакетов
+доработка интерфейса
+
+
+Добработка окна настройки нетплея
+сохранение прошлых настроек нетплея
+Appmain.cpp: insert handlers
+
+AppHost/Dialogs/NetplayDialog.h
+AppHost/Dialogs/NetplayDialog.cpp
+AppHost/Dialogs/NetplayDialogBase.h
+AppHost/Dialogs/NetplayDialogBase.cpp
+
+AppHost/Include/NetProtocol.h
+
+System/Include/Config.h - NetworkOptions
+App.h - MenuId_Boot_Net
+MainMenuClicks.cpp - MainEmuFrame::Menu_BootNet_Click
+

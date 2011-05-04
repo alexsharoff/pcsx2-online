@@ -1,0 +1,7 @@
+Fork of pcsx2 with netplay (p2p). It's still in the early stages of development, but may already work.
+I only forked the emulator core, so repository doesn't contain any plugins.
+
+Game and bios image checks between sides
+Automatic input delay detection
+Memory cards are being disabled if they are not consistent on each sides.
+During netplay, settings are changed to defaults with all speedhacks disabled, so performance may drop a bit. 'Skip Mpeg' hack is enabled.
