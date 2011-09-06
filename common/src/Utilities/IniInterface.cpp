@@ -26,6 +26,12 @@ const wxRect wxDefaultRect( wxDefaultCoord, wxDefaultCoord, wxDefaultCoord, wxDe
 template struct FixedInt<100>;
 template struct FixedInt<256>;
 
+wxDirName g_fullBaseDirName = wxDirName(L"");
+void SetFullBaseDir( wxDirName appRoot )
+{
+	g_fullBaseDirName = appRoot;
+}
+
 static int _calcEnumLength( const wxChar* const* enumArray )
 {
 	int cnt = 0;
@@ -94,7 +100,7 @@ IniLoader::IniLoader() : IniInterface() {}
 IniLoader::~IniLoader() throw() {}
 
 
-void IniLoader::Entry( const wxString& var, wxString& value, const wxString& defvalue )
+void IniLoader::Entry( const wxString& var, wxString& value, const wxString defvalue )
 {
 	if( m_Config )
 		m_Config->Read( var, &value, defvalue );
@@ -102,7 +108,8 @@ void IniLoader::Entry( const wxString& var, wxString& value, const wxString& def
 		value = defvalue;
 }
 
-void IniLoader::Entry( const wxString& var, wxDirName& value, const wxDirName& defvalue )
+
+void IniLoader::Entry( const wxString& var, wxDirName& value, const wxDirName defvalue, bool isAllowRelative )
 {
 	wxString dest;
 	if( m_Config ) m_Config->Read( var, &dest, wxEmptyString );
@@ -110,14 +117,29 @@ void IniLoader::Entry( const wxString& var, wxDirName& value, const wxDirName& d
 	if( dest.IsEmpty() )
 		value = defvalue;
 	else
+	{
 		value = dest;
+		if( isAllowRelative )
+			value = g_fullBaseDirName + value;
+
+		if( value.IsAbsolute() )
+			value.Normalize();
+	}
 }
 
-void IniLoader::Entry( const wxString& var, wxFileName& value, const wxFileName& defvalue )
+void IniLoader::Entry( const wxString& var, wxFileName& value, const wxFileName defvalue, bool isAllowRelative )
 {
 	wxString dest( defvalue.GetFullPath() );
 	if( m_Config ) m_Config->Read( var, &dest, defvalue.GetFullPath() );
 	value = dest;
+	if( isAllowRelative )
+		value = g_fullBaseDirName + value;
+
+	if( value.IsAbsolute() )
+		value.Normalize();
+
+	if (value.HasVolume())
+		value.SetVolume(value.GetVolume().Upper());
 }
 
 void IniLoader::Entry( const wxString& var, int& value, const int defvalue )
@@ -159,7 +181,7 @@ int IniLoader::EntryBitfield( const wxString& var, int value, const int defvalue
 	return result;
 }
 
-void IniLoader::Entry( const wxString& var, Fixed100& value, const Fixed100& defvalue )
+void IniLoader::Entry( const wxString& var, Fixed100& value, const Fixed100 defvalue )
 {
 	// Note: the "easy" way would be to convert to double and load/save that, but floating point
 	// has way too much rounding error so we really need to do things out manually.. >_<
@@ -169,7 +191,7 @@ void IniLoader::Entry( const wxString& var, Fixed100& value, const Fixed100& def
 	value = Fixed100::FromString( readval, value );
 }
 
-void IniLoader::Entry( const wxString& var, wxPoint& value, const wxPoint& defvalue )
+void IniLoader::Entry( const wxString& var, wxPoint& value, const wxPoint defvalue )
 {
 	if( !m_Config )
 	{
@@ -178,7 +200,7 @@ void IniLoader::Entry( const wxString& var, wxPoint& value, const wxPoint& defva
 	TryParse( value, m_Config->Read( var, ToString( defvalue ) ), defvalue );
 }
 
-void IniLoader::Entry( const wxString& var, wxSize& value, const wxSize& defvalue )
+void IniLoader::Entry( const wxString& var, wxSize& value, const wxSize defvalue )
 {
 	if( !m_Config )
 	{
@@ -187,7 +209,7 @@ void IniLoader::Entry( const wxString& var, wxSize& value, const wxSize& defvalu
 	TryParse( value, m_Config->Read( var, ToString( defvalue ) ), defvalue );
 }
 
-void IniLoader::Entry( const wxString& var, wxRect& value, const wxRect& defvalue )
+void IniLoader::Entry( const wxString& var, wxRect& value, const wxRect defvalue )
 {
 	if( !m_Config )
 	{
@@ -243,26 +265,42 @@ IniSaver::IniSaver( wxConfigBase* config ) : IniInterface( config ) { }
 IniSaver::IniSaver() : IniInterface() {}
 IniSaver::~IniSaver() {}
 
-void IniSaver::Entry( const wxString& var, wxString& value, const wxString& defvalue )
+void IniSaver::Entry( const wxString& var, wxString& value, const wxString defvalue )
 {
 	if( !m_Config ) return;
 	m_Config->Write( var, value );
 }
 
-void IniSaver::Entry( const wxString& var, wxDirName& value, const wxDirName& defvalue )
+void IniSaver::Entry( const wxString& var, wxDirName& value, const wxDirName defvalue, bool isAllowRelative )
 {
 	if( !m_Config ) return;
+	wxDirName res(value);
+
+	if ( res.IsAbsolute() )
+		res.Normalize();
+	
+	if (isAllowRelative)
+		res = wxDirName::MakeAutoRelativeTo( res, g_fullBaseDirName.ToString() );
+
 
 	/*if( value == defvalue )
 		m_Config->Write( var, wxString() );
 	else*/
-		m_Config->Write( var, value.ToString() );
+		m_Config->Write( var, res.ToString() );
 }
 
-void IniSaver::Entry( const wxString& var, wxFileName& value, const wxFileName& defvalue )
+void IniSaver::Entry( const wxString& var, wxFileName& value, const wxFileName defvalue, bool isAllowRelative )
 {
 	if( !m_Config ) return;
-	m_Config->Write( var, value.GetFullPath() );
+	wxFileName res(value);
+
+	if ( res.IsAbsolute() )
+		res.Normalize();
+	
+	if (isAllowRelative)
+		res = wxDirName::MakeAutoRelativeTo( res, g_fullBaseDirName.ToString() );
+	
+	m_Config->Write( var, res.GetFullPath() );
 }
 
 void IniSaver::Entry( const wxString& var, int& value, const int defvalue )
@@ -295,7 +333,7 @@ int IniSaver::EntryBitfield( const wxString& var, int value, const int defvalue 
 	return value;
 }
 
-void IniSaver::Entry( const wxString& var, Fixed100& value, const Fixed100& defvalue )
+void IniSaver::Entry( const wxString& var, Fixed100& value, const Fixed100 defvalue )
 {
 	if( !m_Config ) return;
 
@@ -305,19 +343,19 @@ void IniSaver::Entry( const wxString& var, Fixed100& value, const Fixed100& defv
 	m_Config->Write( var, value.ToString() );
 }
 
-void IniSaver::Entry( const wxString& var, wxPoint& value, const wxPoint& defvalue )
+void IniSaver::Entry( const wxString& var, wxPoint& value, const wxPoint defvalue )
 {
 	if( !m_Config ) return;
 	m_Config->Write( var, ToString( value ) );
 }
 
-void IniSaver::Entry( const wxString& var, wxSize& value, const wxSize& defvalue )
+void IniSaver::Entry( const wxString& var, wxSize& value, const wxSize defvalue )
 {
 	if( !m_Config ) return;
 	m_Config->Write( var, ToString( value ) );
 }
 
-void IniSaver::Entry( const wxString& var, wxRect& value, const wxRect& defvalue )
+void IniSaver::Entry( const wxString& var, wxRect& value, const wxRect defvalue )
 {
 	if( !m_Config ) return;
 	m_Config->Write( var, ToString( value ) );

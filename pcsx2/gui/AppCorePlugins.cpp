@@ -227,9 +227,9 @@ void AppCorePlugins::Load( PluginsEnum_t pid, const wxString& srcfile )
 { 
 	if( !wxThread::IsMain() )
 	{
+		Sleep( 5 );
 		LoadSinglePluginEvent evt( pid, srcfile );
 		wxGetApp().ProcessAction( evt);
-		Sleep( 5 );
 		return;
 	}
 	
@@ -240,9 +240,9 @@ void AppCorePlugins::Unload( PluginsEnum_t pid )
 {
 	if( !wxThread::IsMain() )
 	{
+		Sleep( 5 );
 		SinglePluginMethodEvent evt( &AppCorePlugins::Unload, pid );
 		wxGetApp().ProcessAction( evt );
-		Sleep( 5 );
 		return;
 	}
 
@@ -571,7 +571,8 @@ void SysExecEvent_SaveSinglePlugin::InvokeEvent()
 			Console.WriteLn( Color_Green, L"Recovering single plugin: " + tbl_PluginInfo[m_pid].GetShortname() );
 			memLoadingState load( plugstore );
 			GetCorePlugins().Freeze( m_pid, load );
-			GetCorePlugins().Close( m_pid );		// hack for stupid GS plugins.
+			// GS plugin suspend / resume hack. Removed in r4363, hopefully never to return :p
+			//GetCorePlugins().Close( m_pid );		// hack for stupid GS plugins.
 		}
 	}
 

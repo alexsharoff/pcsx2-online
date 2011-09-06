@@ -30,8 +30,11 @@ enum CoreThreadStatus
 
 enum AppEventType
 {
-	AppStatus_SettingsLoaded,
-	AppStatus_SettingsSaved,
+	AppStatus_UiSettingsLoaded,
+	AppStatus_UiSettingsSaved,
+	AppStatus_VmSettingsLoaded,
+	AppStatus_VmSettingsSaved,
+
 	AppStatus_SettingsApplied,
 	AppStatus_Exiting
 };
@@ -41,9 +44,9 @@ enum PluginEventType
 	CorePlugins_Loaded,
 	CorePlugins_Init,
 	CorePlugins_Opening,		// dispatched prior to plugins being opened
-	CorePlugins_Opened,		// dispatched after plugins are opened
+	CorePlugins_Opened,			// dispatched after plugins are opened
 	CorePlugins_Closing,		// dispatched prior to plugins being closed
-	CorePlugins_Closed,		// dispatched after plugins are closed
+	CorePlugins_Closed,			// dispatched after plugins are closed
 	CorePlugins_Shutdown,
 	CorePlugins_Unloaded,
 };
@@ -62,7 +65,7 @@ struct AppSettingsEventInfo : AppEventInfo
 {
 	IniInterface&	m_ini;
 
-	AppSettingsEventInfo( IniInterface&	ini );
+	AppSettingsEventInfo( IniInterface&	ini, AppEventType evt_type );
 
 	IniInterface& GetIni() const
 	{
@@ -143,7 +146,9 @@ public:
 	virtual void DispatchEvent( const AppEventInfo& evtinfo );
 
 protected:
-	virtual void AppStatusEvent_OnSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) {}
+	virtual void AppStatusEvent_OnUiSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) {}
+	virtual void AppStatusEvent_OnVmSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) {}
+
 	virtual void AppStatusEvent_OnSettingsApplied() {}
 	virtual void AppStatusEvent_OnExit() {}
 };
@@ -163,6 +168,12 @@ public:
 // this second layer class to act as a bridge between the event system and the class's
 // handler implementations.
 //
+// Explained in detail: The class that wants to listen to shit will implement its expected
+// virtual overrides from the listener classes (OnCoreThread_Started, for example), and then
+// it adds an instance of the EventListenerHelper_CoreThread class to itself, instead of
+// *inheriting* from it.  Thusly, the Helper gets initialized when the class is created,
+// and when events are dispatched to the listener, it forwards the event to the main class.
+//  --air
 
 template< typename TypeToDispatchTo >
 class EventListenerHelper_CoreThread : public EventListener_CoreThread
@@ -177,13 +188,13 @@ public:
 	EventListenerHelper_CoreThread( TypeToDispatchTo* dispatchTo )
 		: Owner( *dispatchTo )
 	{
-		pxAssume(dispatchTo != NULL);
+		pxAssert(dispatchTo != NULL);
 	}
 
 	virtual ~EventListenerHelper_CoreThread() throw() {}
 
 protected:
-	void OnCoreThread_Indeterminate()	{ Owner.OnCoreThread_Indeterminate(); }
+	void CoreThread_OnIndeterminate()	{ Owner.OnCoreThread_Indeterminate(); }
 	void CoreThread_OnStarted()			{ Owner.OnCoreThread_Started(); }
 	void CoreThread_OnResumed()			{ Owner.OnCoreThread_Resumed(); }
 	void CoreThread_OnSuspended()		{ Owner.OnCoreThread_Suspended(); }
@@ -204,7 +215,7 @@ public:
 	EventListenerHelper_Plugins( TypeToDispatchTo* dispatchTo )
 		: Owner( *dispatchTo )
 	{
-		pxAssume(dispatchTo != NULL);
+		pxAssert(dispatchTo != NULL);
 	}
 
 	virtual ~EventListenerHelper_Plugins() throw() {}
@@ -212,9 +223,9 @@ public:
 protected:
 	void CorePlugins_OnLoaded()		{ Owner.OnCorePlugins_Loaded(); }
 	void CorePlugins_OnInit()		{ Owner.OnCorePlugins_Init(); }
-	void CorePlugins_OnOpening()		{ Owner.OnCorePlugins_Opening(); }
+	void CorePlugins_OnOpening()	{ Owner.OnCorePlugins_Opening(); }
 	void CorePlugins_OnOpened()		{ Owner.OnCorePlugins_Opened(); }
-	void CorePlugins_OnClosing()		{ Owner.OnCorePlugins_Closing(); }
+	void CorePlugins_OnClosing()	{ Owner.OnCorePlugins_Closing(); }
 	void CorePlugins_OnClosed()		{ Owner.OnCorePlugins_Closed(); }
 	void CorePlugins_OnShutdown()	{ Owner.OnCorePlugins_Shutdown(); }
 	void CorePlugins_OnUnloaded()	{ Owner.OnCorePlugins_Unloaded(); }
@@ -233,13 +244,14 @@ public:
 	EventListenerHelper_AppStatus( TypeToDispatchTo* dispatchTo )
 		: Owner( *dispatchTo )
 	{
-		pxAssume(dispatchTo != NULL);
+		pxAssert(dispatchTo != NULL);
 	}
 
 	virtual ~EventListenerHelper_AppStatus() throw() {}
 
 protected:
-	virtual void AppStatusEvent_OnSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) { Owner.AppStatusEvent_OnSettingsLoadSave( evtinfo ); }
+	virtual void AppStatusEvent_OnUiSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) { Owner.AppStatusEvent_OnUiSettingsLoadSave( evtinfo ); }
+	virtual void AppStatusEvent_OnVmSettingsLoadSave( const AppSettingsEventInfo& evtinfo ) { Owner.AppStatusEvent_OnVmSettingsLoadSave( evtinfo ); }
 	virtual void AppStatusEvent_OnSettingsApplied() { Owner.AppStatusEvent_OnSettingsApplied(); }
 	virtual void AppStatusEvent_OnExit() { Owner.AppStatusEvent_OnExit(); }
 };

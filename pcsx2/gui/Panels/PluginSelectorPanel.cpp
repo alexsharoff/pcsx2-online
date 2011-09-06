@@ -59,7 +59,15 @@ namespace Exception
 	class NotEnumerablePlugin : public BadStream
 	{
 	public:
-		DEFINE_STREAM_EXCEPTION( NotEnumerablePlugin, BadStream, wxLt("File is not a PCSX2 plugin") );
+		DEFINE_STREAM_EXCEPTION( NotEnumerablePlugin, BadStream );
+
+		wxString FormatDiagnosticMessage() const
+		{
+			FastFormatUnicode retval;
+			retval.Write("File is not a PCSX2 plugin");
+			_formatDiagMsg(retval);
+			return retval;
+		}
 	};
 }
 
@@ -72,9 +80,9 @@ protected:
 	wxString			m_plugpath;
 	wxDynamicLibrary	m_plugin;
 
-	_PS2EgetLibType     m_GetLibType;
-	_PS2EgetLibName     m_GetLibName;
-	_PS2EgetLibVersion2 m_GetLibVersion2;
+	_PS2EgetLibType		m_GetLibType;
+	_PS2EgetLibName		m_GetLibName;
+	_PS2EgetLibVersion2	m_GetLibVersion2;
 
 	u32 m_type;
 
@@ -231,7 +239,7 @@ void ApplyOverValidStateEvent::InvokeEvent()
 {
 	wxDialogWithHelpers dialog( m_owner, _("Shutdown PS2 virtual machine?") );
 
-	dialog += dialog.Heading( pxE( ".Popup:PluginSelector:ConfirmShutdown",
+	dialog += dialog.Heading( pxE( "!Notice:PluginSelector:ConfirmShutdown",
 		L"Warning!  Changing plugins requires a complete shutdown and reset of the PS2 virtual machine. "
 		L"PCSX2 will attempt to save and restore the state, but if the newly selected plugins are "
 		L"incompatible the recovery may fail, and current progress will be lost."
@@ -265,7 +273,9 @@ void SysExecEvent_ApplyPlugins::InvokeEvent()
 		// FIXME : We only actually have to save plugins here, except the recovery code
 		// in SysCoreThread isn't quite set up yet to handle that (I think...) --air
 
-		memSavingState( *(buffer.Reassign(new VmStateBuffer(L"StateBuffer_ApplyNewPlugins"))) ).FreezeAll();
+		memSavingState saveme( *(buffer.Reassign(new VmStateBuffer(L"StateBuffer_ApplyNewPlugins"))) );
+		
+		saveme.FreezeAll();
 	}
 
 	ScopedCoreThreadClose closed_core;
@@ -357,7 +367,7 @@ Panels::PluginSelectorPanel::ComboBoxPanel::ComboBoxPanel( PluginSelectorPanel* 
 
 		m_combobox[pid] = new wxComboBox( this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0, NULL, wxCB_READONLY );
 
-		m_configbutton[pid] = new wxButton( this, ButtonId_Configure, L"Configure..." );
+		m_configbutton[pid] = new wxButton( this, ButtonId_Configure, _("Configure...") );
 		m_configbutton[pid]->SetClientData( (void*)(int)pid );
 
 		s_plugin	+= Label( pi->GetShortname() )	| pxBorder( wxTOP | wxLEFT, 2 );
@@ -365,7 +375,8 @@ Panels::PluginSelectorPanel::ComboBoxPanel::ComboBoxPanel( PluginSelectorPanel* 
 		s_plugin	+= m_configbutton[pid];
 	} while( ++pi, pi->shortname != NULL );
 
-	m_FolderPicker.SetStaticDesc( _("Click the Browse button to select a different folder for PCSX2 plugins.") );
+//	if (InstallationMode != InstallMode_Portable)
+		m_FolderPicker.SetStaticDesc( _("Click the Browse button to select a different folder for PCSX2 plugins.") );
 
 	*this	+= s_plugin			| pxExpand;
 	*this	+= 6;
@@ -429,8 +440,6 @@ Panels::PluginSelectorPanel::PluginSelectorPanel( wxWindow* parent )
 	Connect( wxEVT_COMMAND_COMBOBOX_SELECTED,	wxCommandEventHandler( PluginSelectorPanel::OnPluginSelected ) );
 
 	Connect( ButtonId_Configure, wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( PluginSelectorPanel::OnConfigure_Clicked ) );
-
-	AppStatusEvent_OnSettingsApplied();
 }
 
 Panels::PluginSelectorPanel::~PluginSelectorPanel() throw()
@@ -445,10 +454,10 @@ void Panels::PluginSelectorPanel::AppStatusEvent_OnSettingsApplied()
 
 static wxString GetApplyFailedMsg()
 {
-	return wxsFormat( pxE( ".Error:PluginSelector:ApplyFailed",
+	return pxsFmt( pxE( "!Notice:PluginSelector:ApplyFailed",
 		L"All plugins must have valid selections for %s to run.  If you are unable to make "
 		L"a valid selection due to missing plugins or an incomplete install of %s, then "
-		L"press cancel to close the Configuration panel."
+		L"press Cancel to close the Configuration panel."
 	), pxGetAppName().c_str(), pxGetAppName().c_str() );
 }
 
@@ -468,8 +477,8 @@ void Panels::PluginSelectorPanel::Apply()
 			wxString plugname( pi->GetShortname() );
 
 			throw Exception::CannotApplySettings( this )
-				.SetDiagMsg(wxsFormat( L"PluginSelectorPanel: Invalid or missing selection for the %s plugin.", plugname.c_str()) )
-				.SetUserMsg(wxsFormat( L"Please select a valid plugin for the %s.", plugname.c_str() ) + L"\n\n" + GetApplyFailedMsg() );
+				.SetDiagMsg(pxsFmt( L"PluginSelectorPanel: Invalid or missing selection for the %s plugin.", plugname.c_str()) )
+				.SetUserMsg(pxsFmt( _("Please select a valid plugin for the %s."), plugname.c_str() ) + L"\n\n" + GetApplyFailedMsg() );
 		}
 
 		g_Conf->BaseFilenames.Plugins[pid] = GetFilename((int)m_ComponentBoxes->Get(pid).GetClientData(sel));
@@ -506,7 +515,7 @@ void Panels::PluginSelectorPanel::Apply()
 
 		throw Exception::CannotApplySettings( this )
 			.SetDiagMsg(ex.FormatDiagnosticMessage())
-			.SetUserMsg(wxsFormat(
+			.SetUserMsg(pxsFmt(
 				_("The selected %s plugin failed to load.\n\nReason: %s\n\n"),
 				plugname.c_str(), ex.FormatDisplayMessage().c_str()
 			) + GetApplyFailedMsg());
@@ -636,6 +645,7 @@ void Panels::PluginSelectorPanel::OnConfigure_Clicked( wxCommandEvent& evt )
 	{
 		
 		wxWindowDisabler disabler;
+		wxDoNotLogInThisScope quiettime;
 		ScopedCoreThreadPause paused_core( new SysExecEvent_SaveSinglePlugin(pid) );
 		if (!CorePlugins.AreLoaded())
 		{
@@ -643,12 +653,12 @@ void Panels::PluginSelectorPanel::OnConfigure_Clicked( wxCommandEvent& evt )
 
 			if( SetDirFnptr func = (SetDirFnptr)dynlib.GetSymbol( tbl_PluginInfo[pid].GetShortname() + L"setSettingsDir" ) )
 			{
-				func( GetSettingsFolder().ToUTF8() );
+				func( GetSettingsFolder().ToString().mb_str(wxConvFile) );
 			}
 
 			if( SetDirFnptr func = (SetDirFnptr)dynlib.GetSymbol( tbl_PluginInfo[pid].GetShortname() + L"setLogDir" ) )
 			{
-				func( GetLogFolder().ToUTF8() );
+				func( GetLogFolder().ToString().mb_str(wxConvFile) );
 			}
 		}
 

@@ -33,6 +33,8 @@
 #include "Mpeg.h"
 #include "Vlc.h"
 
+#include "Utilities/MemsetFast.inl"
+
 const int non_linear_quantizer_scale [] =
 {
 	0,  1,  2,  3,  4,  5,	6,	7,
@@ -133,14 +135,13 @@ int get_macroblock_modes()
 				{
 					macroblock_modes |= GETBITS(2) * MOTION_TYPE_BASE;
 				}
-
-				return macroblock_modes;
+				return (macroblock_modes | (tab->len << 16));
 			}
 			else if (decoder.frame_pred_frame_dct)
 			{
 				/* if (! (macroblock_modes & MACROBLOCK_INTRA)) */
 				macroblock_modes |= MC_FRAME;
-				return macroblock_modes;
+				return (macroblock_modes | (tab->len << 16));
 			}
 			else
 			{
@@ -153,15 +154,16 @@ int get_macroblock_modes()
 intra:
 					macroblock_modes |= GETBITS(1) * DCT_TYPE_INTERLACED;
 				}
-
-				return macroblock_modes;
+				return (macroblock_modes | (tab->len << 16));
 			}
 
 		case D_TYPE:
 			macroblock_modes = GETBITS(1);
-
+			//I suspect (as this is actually a 2 bit command) that this should be getbits(2)
+			//additionally, we arent dumping any bits here when i think we should be, need a game to test. (Refraction)
+			DevCon.Warning(" Rare MPEG command! ");
 			if (macroblock_modes == 0) return 0;   // error
-			return MACROBLOCK_INTRA;
+			return (MACROBLOCK_INTRA | (1 << 16));
 
 		default:
 			return 0;
@@ -220,14 +222,15 @@ int __fi get_motion_delta(const int f_code)
 
 	sign = SBITS(1);
 	DUMPBITS(1);
-	return (delta ^ sign) - sign;
+
+	return (((delta ^ sign) - sign) | (tab->len << 16));
 }
 
 int __fi get_dmv()
 {
 	const DMVtab* tab = DMV_2 + UBITS(2);
 	DUMPBITS(tab->len);
-	return tab->dmv;
+	return (tab->dmv | (tab->len << 16));
 }
 
 int get_macroblock_address_increment()
@@ -244,13 +247,13 @@ int get_macroblock_address_increment()
 	{
 		case 8:		/* macroblock_escape */
 			DUMPBITS(11);
-			return 0x23;
+			return 0xb0023;
 
 		case 15:	/* macroblock_stuffing (MPEG1 only) */
 			if (decoder.mpeg1)
 			{
 				DUMPBITS(11);
-				return 0x22;
+				return 0xb0022;
 			}
 
 		default:
@@ -259,7 +262,7 @@ int get_macroblock_address_increment()
 
 	DUMPBITS(mba->len);
 
-	return mba->mba + 1;
+	return ((mba->mba + 1) | (mba->len << 16));
 }
 
 static __fi int get_luma_dc_dct_diff()
@@ -805,7 +808,7 @@ __fi bool mpeg2sliceIDEC()
 
 			case 2:
 			{
-				pxAssume(decoder.ipu0_data > 0);
+				pxAssert(decoder.ipu0_data > 0);
 
 				uint read = ipu_fifo.out.write((u32*)decoder.GetIpuDataPtr(), decoder.ipu0_data);
 				decoder.AdvanceIpuDataBy(read);
@@ -1110,7 +1113,7 @@ __fi bool mpeg2_slice()
 
 	case 3:
 	{
-		pxAssume(decoder.ipu0_data > 0);
+		pxAssert(decoder.ipu0_data > 0);
 
 		uint read = ipu_fifo.out.write((u32*)decoder.GetIpuDataPtr(), decoder.ipu0_data);
 		decoder.AdvanceIpuDataBy(read);

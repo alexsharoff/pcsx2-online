@@ -16,6 +16,7 @@
 #include "PrecompiledHeader.h"
 #include "App.h"
 #include "AppGameDatabase.h"
+#include <wx/stdpaths.h>
 
 class DBLoaderHelper
 {
@@ -149,8 +150,26 @@ void DBLoaderHelper::ReadGames()
 //  AppGameDatabase  (implementations)
 // --------------------------------------------------------------------------------------
 
-AppGameDatabase& AppGameDatabase::LoadFromFile(const wxString& file, const wxString& key )
+AppGameDatabase& AppGameDatabase::LoadFromFile(const wxString& _file, const wxString& key )
 {
+	wxString file(_file);
+	if( wxFileName(file).IsRelative() )
+	{
+		// InstallFolder is the preferred base directory for the DB file, but the registry can point to previous
+		// installs if uninstall wasn't done properly.
+		// Since the games DB file is considered part of pcsx2.exe itself, look for it at the exe folder
+		//   regardless of any other settings.
+
+		// Note 1: Portable setup didn't suffer from this as install folder pointed already to the exe folder in portable.
+		// Note 2: Other folders are either configurable (plugins, memcards, etc) or create their content automatically (inis)
+		//           So the games DB was really the only one that suffers from residues of prior installs.
+
+		//wxDirName dir = InstallFolder;
+		wxDirName dir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+		file = ( dir + file ).GetFullPath();
+	}
+	
+	
 	if (!wxFileExists(file))
 	{
 		Console.Error(L"(GameDB) Database Not Found! [%s]", file.c_str());
@@ -179,6 +198,7 @@ AppGameDatabase& AppGameDatabase::LoadFromFile(const wxString& file, const wxStr
 }
 
 // Saves changes to the database
+
 void AppGameDatabase::SaveToFile(const wxString& file) {
 	wxFFileOutputStream writer( file );
 	pxWriteMultiline(writer, header);

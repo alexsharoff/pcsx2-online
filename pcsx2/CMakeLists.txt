@@ -8,6 +8,11 @@ endif(NOT TOP_CMAKE_WAS_SOURCED)
 
 # set common flags
 set(CommonFlags 
+    # GCC-4.6 crash pcsx2 during the binding of plugins at startup...
+    # Disable this optimization for the moment
+    -fno-omit-frame-pointer 
+    # END GCC-4.6
+    -DLINUX_PRINT_SVN_NUMBER
 	-pthread
     -fvisibility=hidden
 	-fno-guess-branch-probability
@@ -19,7 +24,7 @@ set(CommonFlags
 	-Wno-format
 	-Wno-unused-parameter
 	-Wno-unused-value
-	-Wunused-variable)
+	-Wno-unused-variable)
 
 # set warning flags
 set(DebugFlags
@@ -69,33 +74,29 @@ set(OptimizationFlags
 
 # Debug - Build
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
-	
-	# executable name
-	set(Output pcsx2-dbg)
-	
-	# add defines
+    set(Output pcsx2-dbg)
+
 	add_definitions(${CommonFlags} ${DebugFlags} -DPCSX2_DEVBUILD -DPCSX2_DEBUG -DWX_PRECOMP)
 endif(CMAKE_BUILD_TYPE STREQUAL Debug)
 
 # Devel - Build
 if(CMAKE_BUILD_TYPE STREQUAL Devel)
-
-	# executable name
 	set(Output pcsx2-dev)
-	
-	# add defines
+
 	add_definitions(${CommonFlags} ${OptimizationFlags} -DPCSX2_DEVBUILD -DWX_PRECOMP -DNDEBUG)
 endif(CMAKE_BUILD_TYPE STREQUAL Devel)
 
 # Release - Build
 if(CMAKE_BUILD_TYPE STREQUAL Release)
-
-	# executable name
 	set(Output pcsx2)
-	
-	# add defines
+
 	add_definitions(${CommonFlags} ${OptimizationFlags} -DWX_PRECOMP -DNDEBUG)
 endif(CMAKE_BUILD_TYPE STREQUAL Release)
+
+# In package mode always use pcsx2
+if(PACKAGE_MODE)
+    set(Output pcsx2)
+endif(PACKAGE_MODE)
 
 # you must have both svn client executable and a source that contains svn metadata
 if(Subversion_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.svn")
@@ -109,7 +110,7 @@ else(Subversion_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.svn")
     file(WRITE ${CMAKE_BINARY_DIR}/pcsx2/svnrev.h "#define SVN_REV 0 \n#define SVN_MODS 0")
 endif(Subversion_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.svn")
 
-# variable with sources of this executable
+# Main pcsx2 source
 set(pcsx2Sources
 	Cache.cpp
 	COP0.cpp
@@ -121,6 +122,8 @@ set(pcsx2Sources
 	FiFo.cpp
 	FPU.cpp
 	Gif.cpp
+    Gif_Logger.cpp
+	Gif_Unit.cpp
 	GS.cpp
 	GSState.cpp
 	Hw.cpp
@@ -138,6 +141,7 @@ set(pcsx2Sources
 	Memory.cpp
 	MMI.cpp
 	MTGS.cpp
+    MTVU.cpp
 	Patch.cpp
 	Patch_Memory.cpp
 	Pcsx2Config.cpp
@@ -177,7 +181,7 @@ set(pcsx2Sources
 	VUmicroMem.cpp
 	VUops.cpp)
 
-# variable with sources of this executable
+# Main pcsx2 header
 set(pcsx2Headers
 	Cache.h
 	cheatscpp.h
@@ -190,6 +194,7 @@ set(pcsx2Headers
 	GameDatabase.h
 	Elfheader.h
 	Gif.h
+	Gif_Unit.h
 	GS.h
 	Hardware.h
 	Hw.h
@@ -201,6 +206,7 @@ set(pcsx2Headers
 	IopMem.h
 	IopSio2.h
 #	Mdec.h
+    MTVU.h
 	Memory.h
 	MemoryTypes.h
 	NakedAsm.h
@@ -274,13 +280,13 @@ set(pcsx2DebugToolsHeaders
 
 # gui sources
 set(pcsx2GuiSources
-	gui/AdvancedDialog.cpp
 	gui/AppAssert.cpp
 	gui/AppConfig.cpp
 	gui/AppCorePlugins.cpp
 	gui/AppCoreThread.cpp
 	gui/AppEventSources.cpp
 	gui/AppGameDatabase.cpp
+	gui/AppUserMode.cpp
 	gui/AppInit.cpp
 	gui/AppMain.cpp
 	gui/AppRes.cpp
@@ -292,6 +298,7 @@ set(pcsx2GuiSources
 	gui/Dialogs/AssertionDialog.cpp
 	gui/Panels/BaseApplicableConfigPanel.cpp
 	gui/Panels/MemoryCardListView.cpp
+	gui/Panels/ThemeSelectorPanel.cpp
 	gui/Dialogs/BaseConfigurationDialog.cpp
 	gui/Dialogs/BiosSelectorDialog.cpp
 	gui/Dialogs/ConfirmationDialogs.cpp
@@ -338,7 +345,6 @@ set(pcsx2GuiSources
 
 # gui headers
 set(pcsx2GuiHeaders
-	gui/AdvancedDialog.h
 	gui/App.h
 	gui/ApplyState.h
 	gui/AppAccelerators.h
@@ -365,6 +371,28 @@ set(pcsx2GuiHeaders
 	gui/RecentIsoList.h
 	)
 
+# Warning: the declaration of the .h are mandatory in case of resources files. It will ensure the creation
+# from the bin2cpp tools at the good moment (ie .h must be created before the pcsx2 compilation)
+# Gui resources headers
+set(res_bin "${CMAKE_BINARY_DIR}/pcsx2/gui/Resources")
+set(res_src "${PROJECT_SOURCE_DIR}/pcsx2/gui/Resources")
+set(pcsx2GuiResources
+    ${res_bin}/AppIcon16.h
+    ${res_bin}/AppIcon32.h
+    ${res_bin}/AppIcon64.h
+    ${res_bin}/BackgroundLogo.h
+    ${res_bin}/ConfigIcon_Appearance.h
+    ${res_bin}/ButtonIcon_Camera.h
+    ${res_bin}/ConfigIcon_Cpu.h
+    ${res_bin}/ConfigIcon_Gamefixes.h
+    ${res_bin}/ConfigIcon_MemoryCard.h
+    ${res_bin}/ConfigIcon_Paths.h
+    ${res_bin}/ConfigIcon_Plugins.h
+    ${res_bin}/ConfigIcon_Speedhacks.h
+    ${res_bin}/ConfigIcon_Video.h
+    ${res_bin}/Dualshock.h
+    )
+
 # IPU sources
 set(pcsx2IPUSources
 	IPU/IPU.cpp
@@ -383,7 +411,6 @@ set(pcsx2IPUHeaders
 
 # Linux sources
 set(pcsx2LinuxSources
-	Linux/LnxHostSys.cpp
 	Linux/LnxKeyCodes.cpp)
 
 # Linux headers
@@ -393,7 +420,6 @@ set(pcsx2LinuxHeaders
 # ps2 sources
 set(pcsx2ps2Sources
 	ps2/BiosTools.cpp
-	ps2/GIFpath.cpp
 	ps2/LegacyDmac.cpp
 	ps2/Iop/IopHwRead.cpp
 	ps2/Iop/IopHwWrite.cpp)
@@ -432,7 +458,7 @@ set(pcsx2SystemSources
 
 # System headers
 set(pcsx2SystemHeaders
-	System/PageFaultSource.h
+	System/RecTypes.h
 	System/SysThreads.h)
 
 # Utilities sources
@@ -542,7 +568,6 @@ set(pcsx2x86Headers
 	x86/microVU_Tables.inl
 	x86/microVU_Upper.inl
 	x86/newVif.h
-	x86/newVif_BlockBuffer.h
 	x86/newVif_HashBucket.h
 	x86/newVif_UnpackSSE.h
 	x86/sVU_Compare.h
@@ -572,6 +597,7 @@ set(Common
 	${pcsx2DebugToolsSources}
 	${pcsx2DebugToolsSources}
 	${pcsx2GuiSources}
+    ${pcsx2GuiResources}
 	${pcsx2GuiHeaders}
 	${pcsx2IPUSources}
 	${pcsx2IPUHeaders}
@@ -612,18 +638,29 @@ endif(MacOSX)
 include_directories(.
 					gui
 					x86
-					${CMAKE_BINARY_DIR}/pcsx2)
-
-# set runtime output directory
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+                    ${CMAKE_BINARY_DIR}/pcsx2
+                    ${CMAKE_BINARY_DIR}/pcsx2/gui
+                    )
 
 # add executable
 add_executable(${Output}
 			   ${Common}
 			   ${Platform})
 
-# add dependencies
-add_dependencies(${Output} Resources)
+### Generate the resources files
+file(MAKE_DIRECTORY ${res_bin})
+
+add_custom_command(OUTPUT  "${res_bin}/Dualshock.h"  COMMAND   bin2cpp   "${res_src}/Dualshock.jpg" "${res_bin}/Dualshock" )
+
+foreach(res_file IN ITEMS
+        AppIcon16 AppIcon32 AppIcon64 BackgroundLogo ButtonIcon_Camera
+        ConfigIcon_Appearance ConfigIcon_Cpu ConfigIcon_Gamefixes ConfigIcon_MemoryCard
+        ConfigIcon_Paths ConfigIcon_Plugins ConfigIcon_Speedhacks ConfigIcon_Video)
+    add_custom_command(OUTPUT  "${res_bin}/${res_file}.h" COMMAND   bin2cpp   "${res_src}/${res_file}.png" "${res_bin}/${res_file}" )
+endforeach(res_file IN ITEMS
+        AppIcon16 AppIcon32 AppIcon64 BackgroundLogo ButtonIcon_Camera
+        ConfigIcon_Appearance ConfigIcon_Cpu ConfigIcon_Gamefixes ConfigIcon_MemoryCard
+        ConfigIcon_Paths ConfigIcon_Plugins ConfigIcon_Speedhacks ConfigIcon_Video)
 
 # link target with project internal libraries
 target_link_libraries(${Output} Utilities x86emitter)
@@ -643,3 +680,9 @@ target_link_libraries(${Output} ${ZLIB_LIBRARIES})
 if(NOT USER_CMAKE_LD_FLAGS STREQUAL "")
     target_link_libraries(${Output} "${USER_CMAKE_LD_FLAGS}")
 endif(NOT USER_CMAKE_LD_FLAGS STREQUAL "")
+
+if(PACKAGE_MODE)
+    install(TARGETS ${Output} DESTINATION bin)
+else(PACKAGE_MODE)
+    install(TARGETS ${Output} DESTINATION ${CMAKE_SOURCE_DIR}/bin)
+endif(PACKAGE_MODE)

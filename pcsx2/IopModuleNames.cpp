@@ -12,6 +12,7 @@
  *  You should have received a copy of the GNU General Public License along with PCSX2.
  *  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #define MODULE(n) if (!strncmp(libname, #n, 8)) switch (index) {
 #define END_MODULE }
 #define EXPORT(i, n) case (i): return #n;

@@ -199,6 +199,7 @@
 		</Build>
 		<Compiler>
 			<Add option="-march=i486" />
+			<Add option="`pkg-config gtk+-2.0 --cflags`" />
 			<Add option="`wx-config  --version=2.8 --static=no --unicode=yes --cflags`" />
 			<Add option="-Wno-format" />
 			<Add option="-Wno-unused-parameter" />
@@ -212,6 +213,8 @@
 			<Add option="-m32" />
 			<Add option="-fvisibility=hidden" />
 			<Add option="-DWX_PRECOMP" />
+			<Add option="-DGDK_DISABLE_DEPRECATED" />
+			<Add option="-DGSEAL_ENABLE" />
 			<Add directory="$(SvnRootDir)/common/include/" />
 			<Add directory="$(SvnRootDir)/3rdparty/" />
 			<Add directory="$(ProjectRootDir)" />
@@ -268,9 +271,7 @@
 		<Unit filename="../DebugTools/DisVUmicro.h" />
 		<Unit filename="../DebugTools/DisVUops.h" />
 		<Unit filename="../Dmac.h" />
-		<Unit filename="../Docs/ChangeLog.txt" />
 		<Unit filename="../Docs/License.txt" />
-		<Unit filename="../Docs/devblog.txt" />
 		<Unit filename="../Dump.cpp" />
 		<Unit filename="../Dump.h" />
 		<Unit filename="../Elfheader.cpp" />
@@ -316,8 +317,6 @@
 		<Unit filename="../IopMem.h" />
 		<Unit filename="../IopSio2.cpp" />
 		<Unit filename="../IopSio2.h" />
-		<Unit filename="../Ipu_fifo.h" />
-		<Unit filename="LnxHostSys.cpp" />
 		<Unit filename="LnxKeyCodes.cpp">
 			<Option compiler="gcc" use="1" buildCommand="$compiler $options $includes `pkg-config gtk+-2.0 --cflags` -c $file -o $object" />
 		</Unit>
@@ -363,11 +362,10 @@
 		<Unit filename="../SourceLog.cpp" />
 		<Unit filename="../Stats.cpp" />
 		<Unit filename="../Stats.h" />
-		<Unit filename="../StringUtils.h" />
 		<Unit filename="../SysForwardDefs.h" />
 		<Unit filename="../System.cpp" />
 		<Unit filename="../System.h" />
-		<Unit filename="../System/PageFaultSource.h" />
+		<Unit filename="../System/RecTypes.h" />
 		<Unit filename="../System/SysCoreThread.cpp" />
 		<Unit filename="../System/SysThreadBase.cpp" />
 		<Unit filename="../System/SysThreads.h" />
@@ -400,8 +398,6 @@
 		<Unit filename="../ZipTools/ThreadedZipTools.h" />
 		<Unit filename="../ZipTools/thread_gzip.cpp" />
 		<Unit filename="../ZipTools/thread_lzma.cpp" />
-		<Unit filename="../gui/AdvancedDialog.cpp" />
-		<Unit filename="../gui/AdvancedDialog.h" />
 		<Unit filename="../gui/App.h" />
 		<Unit filename="../gui/AppAccelerators.h" />
 		<Unit filename="../gui/AppAssert.cpp" />
@@ -420,8 +416,8 @@
 		<Unit filename="../gui/AppMain.cpp" />
 		<Unit filename="../gui/AppRes.cpp" />
 		<Unit filename="../gui/AppSaveStates.h" />
+		<Unit filename="../gui/AppUserMode.cpp" />
 		<Unit filename="../gui/ApplyState.h" />
-		<Unit filename="../gui/CheckedStaticBox.h" />
 		<Unit filename="../gui/ConsoleLogger.cpp" />
 		<Unit filename="../gui/ConsoleLogger.h" />
 		<Unit filename="../gui/CpuUsageProvider.cpp" />
@@ -449,7 +445,6 @@
 		<Unit filename="../gui/Dialogs/StuckThreadDialog.cpp" />
 		<Unit filename="../gui/Dialogs/SysConfigDialog.cpp" />
 		<Unit filename="../gui/ExecutorThread.cpp" />
-		<Unit filename="../gui/ExecutorThread.h" />
 		<Unit filename="../gui/FrameForGS.cpp" />
 		<Unit filename="../gui/GlobalCommands.cpp" />
 		<Unit filename="../gui/IsoDropTarget.cpp" />
@@ -466,7 +461,6 @@
 		<Unit filename="../gui/MessageBoxes.cpp" />
 		<Unit filename="../gui/Panels/AudioPanel.cpp" />
 		<Unit filename="../gui/Panels/BaseApplicableConfigPanel.cpp" />
-		<Unit filename="../gui/Panels/BaseConfigPanel.h" />
 		<Unit filename="../gui/Panels/BiosSelectorPanel.cpp" />
 		<Unit filename="../gui/Panels/ConfigurationPanels.h" />
 		<Unit filename="../gui/Panels/CpuPanel.cpp" />
@@ -487,6 +481,7 @@
 		<Unit filename="../gui/Panels/PathsPanel.cpp" />
 		<Unit filename="../gui/Panels/PluginSelectorPanel.cpp" />
 		<Unit filename="../gui/Panels/SpeedhacksPanel.cpp" />
+		<Unit filename="../gui/Panels/ThemeSelectorPanel.cpp" />
 		<Unit filename="../gui/Panels/VideoPanel.cpp" />
 		<Unit filename="../gui/RecentIsoList.cpp" />
 		<Unit filename="../gui/RecentIsoList.h" />
@@ -516,6 +511,11 @@
 		</Unit>
 		<Unit filename="../gui/Resources/ButtonIcon_Camera.h" />
 		<Unit filename="../gui/Resources/ButtonIcon_Camera.png">
+			<Option compile="1" />
+			<Option weight="0" />
+			<Option compiler="gcc" use="1" buildCommand="$(SvnRootDir)/tools/bin2app.sh $(SvnRootDir) $file" />
+		</Unit>
+		<Unit filename="../gui/Resources/ConfigIcon_Appearance.png">
 			<Option compile="1" />
 			<Option weight="0" />
 			<Option compiler="gcc" use="1" buildCommand="$(SvnRootDir)/tools/bin2app.sh $(SvnRootDir) $file" />
@@ -572,10 +572,8 @@
 		<Unit filename="../gui/Saveslots.cpp" />
 		<Unit filename="../gui/SysState.cpp" />
 		<Unit filename="../gui/UpdateUI.cpp" />
-		<Unit filename="../gui/gsFrame.h" />
 		<Unit filename="../gui/i18n.cpp" />
 		<Unit filename="../gui/i18n.h" />
-		<Unit filename="../gui/pxEvtThread.h" />
 		<Unit filename="../gui/pxLogTextCtrl.cpp" />
 		<Unit filename="../ps2/BiosTools.cpp" />
 		<Unit filename="../ps2/BiosTools.h" />
@@ -647,7 +645,6 @@
 		<Unit filename="../x86/microVU_Tables.inl" />
 		<Unit filename="../x86/microVU_Upper.inl" />
 		<Unit filename="../x86/newVif.h" />
-		<Unit filename="../x86/newVif_BlockBuffer.h" />
 		<Unit filename="../x86/newVif_Dynarec.cpp" />
 		<Unit filename="../x86/newVif_HashBucket.h" />
 		<Unit filename="../x86/newVif_Unpack.cpp" />

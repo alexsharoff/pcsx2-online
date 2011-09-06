@@ -23,7 +23,6 @@
 
 void TraceLogFilters::LoadSave( IniInterface& ini )
 {
-	TraceLogFilters defaults;
 	ScopedIniGroup path( ini, L"TraceLog" );
 
 	IniEntry( Enabled );
@@ -56,7 +55,6 @@ Pcsx2Config::SpeedhackOptions& Pcsx2Config::SpeedhackOptions::DisableAll()
 
 void Pcsx2Config::SpeedhackOptions::LoadSave( IniInterface& ini )
 {
-	SpeedhackOptions defaults;
 	ScopedIniGroup path( ini, L"Speedhacks" );
 
 	IniBitfield( EECycleRate );
@@ -66,13 +64,11 @@ void Pcsx2Config::SpeedhackOptions::LoadSave( IniInterface& ini )
 	IniBitBool( WaitLoop );
 	IniBitBool( vuFlagHack );
 	IniBitBool( vuBlockHack );
-	IniBitBool( vuMinMax );
+	IniBitBool( vuThread );
 }
-
 
 void Pcsx2Config::ProfilerOptions::LoadSave( IniInterface& ini )
 {
-	ProfilerOptions defaults;
 	ScopedIniGroup path( ini, L"Profiler" );
 
 	IniBitBool( Enabled );
@@ -92,6 +88,7 @@ Pcsx2Config::RecompilerOptions::RecompilerOptions()
 	// All recs are enabled by default.
 
 	EnableEE	= true;
+	EnableEECache = false;
 	EnableIOP	= true;
 	EnableVU0	= true;
 	EnableVU1	= true;
@@ -145,11 +142,11 @@ void Pcsx2Config::RecompilerOptions::ApplySanityCheck()
 
 void Pcsx2Config::RecompilerOptions::LoadSave( IniInterface& ini )
 {
-	RecompilerOptions defaults;
 	ScopedIniGroup path( ini, L"Recompiler" );
 
 	IniBitBool( EnableEE );
 	IniBitBool( EnableIOP );
+	IniBitBool( EnableEECache );
 	IniBitBool( EnableVU0 );
 	IniBitBool( EnableVU1 );
 
@@ -186,7 +183,6 @@ void Pcsx2Config::CpuOptions::ApplySanityCheck()
 
 void Pcsx2Config::CpuOptions::LoadSave( IniInterface& ini )
 {
-	CpuOptions defaults;
 	ScopedIniGroup path( ini, L"CPU" );
 
 	IniBitBoolEx( sseMXCSR.DenormalsAreZero,	"FPU.DenormalsAreZero" );
@@ -206,6 +202,7 @@ Pcsx2Config::GSOptions::GSOptions()
 	FrameLimitEnable		= true;
 	FrameSkipEnable			= false;
 	VsyncEnable				= false;
+	ManagedVsync			= false;
 
 	SynchronousMTGS			= false;
 	DisableOutput			= false;
@@ -222,7 +219,6 @@ Pcsx2Config::GSOptions::GSOptions()
 
 void Pcsx2Config::GSOptions::LoadSave( IniInterface& ini )
 {
-	GSOptions defaults;
 	ScopedIniGroup path( ini, L"GS" );
 
 	IniEntry( SynchronousMTGS );
@@ -232,13 +228,14 @@ void Pcsx2Config::GSOptions::LoadSave( IniInterface& ini )
 	IniEntry( FrameLimitEnable );
 	IniEntry( FrameSkipEnable );
 	IniEntry( VsyncEnable );
+	IniEntry( ManagedVsync );
 
 	IniEntry( LimitScalar );
 	IniEntry( FramerateNTSC );
 	IniEntry( FrameratePAL );
 
 	static const wxChar * const ntsc_pal_str[2] =  { L"ntsc", L"pal" };
-	ini.EnumEntry( L"DefaultRegionMode", DefaultRegionMode, ntsc_pal_str, defaults.DefaultRegionMode );
+	ini.EnumEntry( L"DefaultRegionMode", DefaultRegionMode, ntsc_pal_str, DefaultRegionMode );
 
 	IniEntry( FramesToDraw );
 	IniEntry( FramesToSkip );
@@ -255,7 +252,11 @@ const wxChar *const tbl_GamefixNames[] =
 	L"IpuWait",
 	L"EETiming",
 	L"SkipMpeg",
-	L"OPHFlag"
+	L"OPHFlag",
+	L"DMABusy",
+	L"VIFFIFO",
+	L"VIF1Stall",
+	L"GIFReverse"
 };
 
 const __fi wxChar* EnumToString( GamefixId id )
@@ -312,6 +313,10 @@ void Pcsx2Config::GamefixOptions::Set( GamefixId id, bool enabled )
 		case Fix_EETiming:		EETimingHack		= enabled;	break;
 		case Fix_SkipMpeg:		SkipMPEGHack		= enabled;	break;
 		case Fix_OPHFlag:		OPHFlagHack			= enabled;  break;
+		case Fix_DMABusy:		DMABusyHack			= enabled;  break;
+		case Fix_VIFFIFO:		VIFFIFOHack			= enabled;  break;
+		case Fix_VIF1Stall:		VIF1StallHack		= enabled;  break;
+		case Fix_GIFReverse:	GIFReverseHack		= enabled;  break;
 
 		jNO_DEFAULT;
 	}
@@ -332,15 +337,18 @@ bool Pcsx2Config::GamefixOptions::Get( GamefixId id ) const
 		case Fix_EETiming:		return EETimingHack;
 		case Fix_SkipMpeg:		return SkipMPEGHack;
 		case Fix_OPHFlag:		return OPHFlagHack;
+		case Fix_DMABusy:		return DMABusyHack;
+		case Fix_VIFFIFO:		return VIFFIFOHack;
+		case Fix_VIF1Stall:		return VIF1StallHack;
+		case Fix_GIFReverse:	return GIFReverseHack;
 		
-		jNO_DEFAULT
+		jNO_DEFAULT;
 	}
 	return false;		// unreachable, but we still need to suppress warnings >_<
 }
 
 void Pcsx2Config::GamefixOptions::LoadSave( IniInterface& ini )
 {
-	GamefixOptions defaults;
 	ScopedIniGroup path( ini, L"Gamefixes" );
 
 	IniBitBool( VuAddSubHack );
@@ -353,6 +361,10 @@ void Pcsx2Config::GamefixOptions::LoadSave( IniInterface& ini )
 	IniBitBool( EETimingHack );
 	IniBitBool( SkipMPEGHack );
 	IniBitBool( OPHFlagHack );
+	IniBitBool( DMABusyHack );
+	IniBitBool( VIFFIFOHack );
+	IniBitBool( VIF1StallHack );
+	IniBitBool( GIFReverseHack );
 }
 
 Pcsx2Config::Pcsx2Config()
@@ -361,11 +373,11 @@ Pcsx2Config::Pcsx2Config()
 	// Set defaults for fresh installs / reset settings
 	McdEnableEjection = true;
 	EnablePatches = true;
+	BackupSavestate = true;
 }
 
 void Pcsx2Config::LoadSave( IniInterface& ini )
 {
-	Pcsx2Config defaults;
 	ScopedIniGroup path( ini, L"EmuCore" );
 
 	IniBitBool( CdvdVerboseReads );
@@ -375,6 +387,7 @@ void Pcsx2Config::LoadSave( IniInterface& ini )
 	IniBitBool( ConsoleToStdio );
 	IniBitBool( HostFs );
 
+	IniBitBool( BackupSavestate );
 	IniBitBool( McdEnableEjection );
 	IniBitBool( MultitapPort0_Enabled );
 	IniBitBool( MultitapPort1_Enabled );
@@ -402,9 +415,8 @@ void Pcsx2Config::Load( const wxString& srcfile )
 {
 	//m_IsLoaded = true;
 
-	// Note: Extra parenthesis resolves "I think this is a function" issues with C++.
 	wxFileConfig cfg( srcfile );
-	IniLoader loader( (IniLoader( cfg )) );
+	IniLoader loader( cfg );
 	LoadSave( loader );
 }
 
@@ -413,6 +425,6 @@ void Pcsx2Config::Save( const wxString& dstfile )
 	//if( !m_IsLoaded ) return;
 
 	wxFileConfig cfg( dstfile );
-	IniSaver saver( (IniSaver( cfg )) );
+	IniSaver saver( cfg );
 	LoadSave( saver );
 }

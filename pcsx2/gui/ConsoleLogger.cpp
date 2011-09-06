@@ -80,7 +80,7 @@ void pxLogConsole::DoLog( wxLogLevel level, const wxChar *szString, time_t t )
 		case wxLOG_Warning:
 			Console.Warning( L"[wx] %s", szString );
 		break;
-    }
+	}
 }
 
 
@@ -107,17 +107,17 @@ void ConsoleTestThread::ExecuteTaskInThread()
 //
 static bool OpenLogFile(wxFile& file, wxString& filename, wxWindow *parent)
 {
-    filename = wxSaveFileSelector(L"log", L"txt", L"log.txt", parent);
-    if ( !filename ) return false; // canceled
+	filename = wxSaveFileSelector(L"log", L"txt", L"log.txt", parent);
+	if ( !filename ) return false; // canceled
 
-    if( wxFile::Exists(filename) )
-    {
-        bool bAppend = false;
-        wxString strMsg;
-        strMsg.Printf(L"Append log to file '%s' (choosing [No] will overwrite it)?",
-                      filename.c_str());
+	if( wxFile::Exists(filename) )
+	{
+		bool bAppend = false;
+		wxString strMsg;
+		strMsg.Printf(L"Append log to file '%s' (choosing [No] will overwrite it)?",
+						filename.c_str());
 
-        switch ( Msgbox::ShowModal( _("Save log question"), strMsg, MsgButtons().YesNo().Cancel() ) )
+		switch ( Msgbox::ShowModal( _("Save log question"), strMsg, MsgButtons().YesNo().Cancel() ) )
 		{
 			case wxID_YES:
 				bAppend = true;
@@ -132,12 +132,12 @@ static bool OpenLogFile(wxFile& file, wxString& filename, wxWindow *parent)
 
 			default:
 				pxFailDev( "invalid message box return value" );
-        }
+		}
 
 		return ( bAppend ) ?
 			file.Open(filename, wxFile::write_append) :
-            file.Create(filename, true /* overwrite */);
-    }
+			file.Create(filename, true /* overwrite */);
+	}
 
 	return file.Create(filename);
 }
@@ -188,12 +188,12 @@ void ConsoleLogFrame::ColorArray::Create( int fontsize )
 	new (&m_table[Color_StrongBlue])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
 	new (&m_table[Color_StrongMagenta])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
 	new (&m_table[Color_StrongOrange])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
-    new (&m_table[Color_StrongGray])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
+	new (&m_table[Color_StrongGray])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
 
 	new (&m_table[Color_StrongCyan])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
 	new (&m_table[Color_StrongYellow])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
 	new (&m_table[Color_StrongWhite])	wxTextAttr( wxNullColour, wxNullColour, fixedB );
-	
+
 	SetColorScheme_Light();
 }
 
@@ -281,13 +281,14 @@ enum MenuIDs_t
 	MenuId_FontSize_Normal,
 	MenuId_FontSize_Large,
 	MenuId_FontSize_Huge,
-	
+
 	MenuId_ColorScheme_Light = 0x20,
 	MenuId_ColorScheme_Dark,
-	
+
 	MenuId_LogSource_EnableAll = 0x30,
 	MenuId_LogSource_DisableAll,
 	MenuId_LogSource_Devel,
+	MenuId_LogSource_CDVD_Info,
 
 	MenuId_LogSource_Start = 0x100
 };
@@ -322,7 +323,7 @@ public:
 	}
 };
 
-static ConsoleLogSource* const ConLogSources[] = 
+static ConsoleLogSource* const ConLogSources[] =
 {
 	(ConsoleLogSource*)&SysConsole.eeConsole,
 	(ConsoleLogSource*)&SysConsole.iopConsole,
@@ -334,7 +335,7 @@ static ConsoleLogSource* const ConLogSources[] =
 	(ConsoleLogSource*)&pxConLog_Thread,
 };
 
-static const bool ConLogDefaults[] = 
+static const bool ConLogDefaults[] =
 {
 	true,
 	true,
@@ -409,22 +410,22 @@ ConsoleLogFrame::ConsoleLogFrame( MainEmuFrame *parent, const wxString& title, A
 
 	// create Appearance menu and submenus
 
-	menuFontSizes.Append( MenuId_FontSize_Small,	_("Small"),	_("Fits a lot of log in a microcosmically small area."),
+	menuFontSizes.Append( MenuId_FontSize_Small,	_("Small"),	_t("Fits a lot of log in a microcosmically small area."),
 		wxITEM_RADIO )->Check( options.FontSize == 7 );
-	menuFontSizes.Append( MenuId_FontSize_Normal,	_("Normal"),_("It's what I use (the programmer guy)."),
+	menuFontSizes.Append( MenuId_FontSize_Normal,	_("Normal"),_t("It's what I use (the programmer guy)."),
 		wxITEM_RADIO )->Check( options.FontSize == 8 );
-	menuFontSizes.Append( MenuId_FontSize_Large,	_("Large"),	_("Its nice and readable."),
+	menuFontSizes.Append( MenuId_FontSize_Large,	_("Large"),	_t("Its nice and readable."),
 		wxITEM_RADIO )->Check( options.FontSize == 10 );
-	menuFontSizes.Append( MenuId_FontSize_Huge,		_("Huge"),	_("In case you have a really high res display."),
+	menuFontSizes.Append( MenuId_FontSize_Huge,		_("Huge"),	_t("In case you have a really high res display."),
 		wxITEM_RADIO )->Check( options.FontSize == 12 );
 
 	menuFontSizes.AppendSeparator();
-	menuFontSizes.Append( MenuId_ColorScheme_Light,	_("Light theme"), _("Default soft-tone color scheme."), wxITEM_RADIO );
-	menuFontSizes.Append( MenuId_ColorScheme_Dark,	_("Dark theme"), _("Classic black color scheme for people who enjoy having text seared into their optic nerves."), wxITEM_RADIO );
+	menuFontSizes.Append( MenuId_ColorScheme_Light,	_("Light theme"),	_t("Default soft-tone color scheme."), wxITEM_RADIO );
+	menuFontSizes.Append( MenuId_ColorScheme_Dark,	_("Dark theme"),	_t("Classic black color scheme for people who enjoy having text seared into their optic nerves."), wxITEM_RADIO );
 
 	menuAppear.AppendSeparator();
 	menuAppear.Append( wxID_ANY, _("Always on Top"),
-		_("When checked the log window will be visible over other foreground windows."), wxITEM_CHECK );
+		_t("When checked the log window will be visible over other foreground windows."), wxITEM_CHECK );
 
 	menuLog.Append(wxID_SAVE,	_("&Save..."),		_("Save log contents to file"));
 	menuLog.Append(wxID_CLEAR,	_("C&lear"),		_("Clear the log window contents"));
@@ -436,8 +437,10 @@ ConsoleLogFrame::ConsoleLogFrame( MainEmuFrame *parent, const wxString& title, A
 	// Source Selection/Toggle menu
 
 	menuSources.Append( MenuId_LogSource_Devel, _("Dev/Verbose"), _("Shows PCSX2 developer logs"), wxITEM_CHECK );
-	menuSources.AppendSeparator();
+	menuSources.Append( MenuId_LogSource_CDVD_Info, _("CDVD reads"), _("Shows disk read activity"), wxITEM_CHECK );
 	
+	menuSources.AppendSeparator();
+
 	uint srcnt = ArraySize(ConLogSources);
 	for (uint i=0; i<srcnt; ++i)
 	{
@@ -474,6 +477,7 @@ ConsoleLogFrame::ConsoleLogFrame( MainEmuFrame *parent, const wxString& title, A
 	Connect( MenuId_ColorScheme_Light,	MenuId_ColorScheme_Dark,	wxEVT_COMMAND_MENU_SELECTED,	wxCommandEventHandler( ConsoleLogFrame::OnToggleTheme ) );
 
 	Connect( MenuId_LogSource_Devel,		wxEVT_COMMAND_MENU_SELECTED,	wxCommandEventHandler( ConsoleLogFrame::OnToggleSource ) );
+	Connect( MenuId_LogSource_CDVD_Info,	wxEVT_COMMAND_MENU_SELECTED,	wxCommandEventHandler( ConsoleLogFrame::OnToggleCDVDInfo ) );
 	Connect( MenuId_LogSource_EnableAll,	wxEVT_COMMAND_MENU_SELECTED,	wxCommandEventHandler( ConsoleLogFrame::OnEnableAllLogging ) );
 	Connect( MenuId_LogSource_DisableAll,	wxEVT_COMMAND_MENU_SELECTED,	wxCommandEventHandler( ConsoleLogFrame::OnDisableAllLogging ) );
 
@@ -542,6 +546,9 @@ void ConsoleLogFrame::OnLoggingChanged()
 	if( wxMenuItem* item = GetMenuBar()->FindItem(MenuId_LogSource_Devel) )
 		item->Check( DevConWriterEnabled );
 
+	if( wxMenuItem* item = GetMenuBar()->FindItem(MenuId_LogSource_CDVD_Info) )
+		item->Check( g_Conf->EmuOptions.CdvdVerboseReads );
+
 	uint srcnt = ArraySize(ConLogSources);
 	for (uint i=0; i<srcnt; ++i)
 	{
@@ -609,7 +616,7 @@ bool ConsoleLogFrame::Write( ConsoleColors color, const wxString& text )
 	{
 		// Too many color changes causes huge slowdowns when decorating the rich textview, so
 		// include a secondary check to avoid having a colorful log spam killing gui responsiveness.
-		
+
 		if( m_CurQueuePos > 0x100000 || m_QueueColorSection.GetLength() > 256 )
 		{
 			++m_WaitingThreadsForFlush;
@@ -629,7 +636,7 @@ bool ConsoleLogFrame::Write( ConsoleColors color, const wxString& text )
 			if( m_WaitingThreadsForFlush != 0 ) --m_WaitingThreadsForFlush;
 		}
 	}
-	
+
 	return false;
 }
 
@@ -745,20 +752,20 @@ void ConsoleLogFrame::OnClose( wxCommandEvent& event )
 
 void ConsoleLogFrame::OnSave(wxCommandEvent& WXUNUSED(event))
 {
-    wxString filename;
-    wxFile file;
-    bool rc = OpenLogFile( file, filename, this );
-    if ( !rc )
-    {
-        // canceled
-        return;
-    }
+	wxString filename;
+	wxFile file;
+	bool rc = OpenLogFile( file, filename, this );
+	if ( !rc )
+	{
+		// canceled
+		return;
+	}
 
-    // retrieve text and save it
-    // -------------------------
-    int nLines = m_TextCtrl.GetNumberOfLines();
-    for ( int nLine = 0; nLine < nLines; nLine++ )
-    {
+	// retrieve text and save it
+	// -------------------------
+	int nLines = m_TextCtrl.GetNumberOfLines();
+	for ( int nLine = 0; nLine < nLines; nLine++ )
+	{
 		if( !file.Write(m_TextCtrl.GetLineText(nLine) + wxTextFile::GetEOL()) )
 		{
 			wxLogError( L"Can't save log contents to file." );
@@ -769,7 +776,23 @@ void ConsoleLogFrame::OnSave(wxCommandEvent& WXUNUSED(event))
 
 void ConsoleLogFrame::OnClear(wxCommandEvent& WXUNUSED(event))
 {
-    m_TextCtrl.Clear();
+	m_TextCtrl.Clear();
+}
+
+void ConsoleLogFrame::OnToggleCDVDInfo( wxCommandEvent& evt )
+{
+	evt.Skip();
+
+	if (!GetMenuBar()) return;
+
+	if (evt.GetId() == MenuId_LogSource_CDVD_Info)
+	{
+		if( wxMenuItem* item = GetMenuBar()->FindItem(evt.GetId()) )
+		{
+			g_Conf->EmuOptions.CdvdVerboseReads = item->IsChecked();
+			const_cast<Pcsx2Config&>(EmuConfig).CdvdVerboseReads = g_Conf->EmuOptions.CdvdVerboseReads;		// read-only in core thread, so it's safe to modify.
+		}
+	}
 }
 
 void ConsoleLogFrame::OnToggleSource( wxCommandEvent& evt )
@@ -790,7 +813,7 @@ void ConsoleLogFrame::OnToggleSource( wxCommandEvent& evt )
 
 	if (!pxAssertDev( ArraySize(ConLogSources) > srcid, "Invalid source log index (out of bounds)" )) return;
 	if (!pxAssertDev( ConLogSources[srcid] != NULL, "Invalid source log index (NULL pointer [separator])" )) return;
-	
+
 	if( wxMenuItem* item = GetMenuBar()->FindItem(evt.GetId()) )
 	{
 		pxAssertDev( item->IsCheckable(), "Uncheckable log source menu item?  Seems fishy!" );
@@ -926,7 +949,7 @@ void ConsoleLogFrame::DoFlushQueue()
 	// cap at 512k for now...
 	// fixme - 512k runs well on win32 but appears to be very sluggish on linux (but that could
 	// be a result of my using Xming + CoLinux).  Might need platform dependent defaults here. --air
-	
+
 	static const int BufferSize = 0x80000;
 	if( (insertPoint + m_CurQueuePos) > BufferSize )
 	{
@@ -1022,16 +1045,16 @@ static void __concall ConsoleToFile_DoWriteLn( const wxString& fmt )
 
 static void __concall ConsoleToFile_SetTitle( const wxString& title )
 {
-    ConsoleWriter_Stdout.SetTitle(title);
+	ConsoleWriter_Stdout.SetTitle(title);
 }
 
 static void __concall ConsoleToFile_DoSetColor( ConsoleColors color )
 {
-    ConsoleWriter_Stdout.DoSetColor(color);
+	ConsoleWriter_Stdout.DoSetColor(color);
 }
 
 extern const IConsoleWriter	ConsoleWriter_File;
-const IConsoleWriter    ConsoleWriter_File =
+const IConsoleWriter	ConsoleWriter_File =
 {
 	ConsoleToFile_DoWrite,
 	ConsoleToFile_DoWriteLn,
@@ -1040,6 +1063,8 @@ const IConsoleWriter    ConsoleWriter_File =
 	ConsoleToFile_DoWrite,
 	ConsoleToFile_Newline,
 	ConsoleToFile_SetTitle,
+
+	0
 };
 
 Mutex& Pcsx2App::GetProgramLogLock()
@@ -1053,7 +1078,7 @@ Mutex& Pcsx2App::GetProgramLogLock()
 template< const IConsoleWriter& secondary >
 static void __concall ConsoleToWindow_SetTitle( const wxString& title )
 {
-    secondary.SetTitle(title);
+	secondary.SetTitle(title);
 	wxCommandEvent evt( pxEvt_SetTitleText );
 	evt.SetString( title );
 	wxGetApp().ProgramLog_PostEvent( evt );
@@ -1062,7 +1087,7 @@ static void __concall ConsoleToWindow_SetTitle( const wxString& title )
 template< const IConsoleWriter& secondary >
 static void __concall ConsoleToWindow_DoSetColor( ConsoleColors color )
 {
-    secondary.DoSetColor(color);
+	secondary.DoSetColor(color);
 }
 
 template< const IConsoleWriter& secondary >
@@ -1111,6 +1136,8 @@ static const IConsoleWriter	ConsoleWriter_Window =
 	ConsoleToWindow_DoWrite<ConsoleWriter_Stdout>,
 	ConsoleToWindow_Newline<ConsoleWriter_Stdout>,
 	ConsoleToWindow_SetTitle<ConsoleWriter_Stdout>,
+
+	0
 };
 
 static const IConsoleWriter	ConsoleWriter_WindowAndFile =
@@ -1122,6 +1149,8 @@ static const IConsoleWriter	ConsoleWriter_WindowAndFile =
 	ConsoleToWindow_DoWrite<ConsoleWriter_File>,
 	ConsoleToWindow_Newline<ConsoleWriter_File>,
 	ConsoleToWindow_SetTitle<ConsoleWriter_File>,
+
+	0
 };
 
 void Pcsx2App::EnableAllLogging()

@@ -46,7 +46,7 @@ void StreamException_ThrowLastError( const wxString& streamname, HANDLE result )
 
 		default:
 		{
-			throw Exception::Stream( streamname ).SetDiagMsg(wxsFormat( L"General Win32 File/stream error [GetLastError: %d]", error ));
+			throw Exception::BadStream( streamname ).SetDiagMsg(pxsFmt( L"General Win32 File/stream error [GetLastError: %d]", error ));
 		}
 	}
 }
@@ -58,7 +58,7 @@ bool StreamException_LogLastError( const wxString& streamname, const wxChar* act
 	{
 		StreamException_ThrowLastError( streamname, result );
 	}
-	catch( Exception::Stream& ex )
+	catch( Exception::BadStream& ex )
 	{
 		Console.WriteLn( Color_Yellow, L"%s: %s", action, ex.FormatDiagnosticMessage().c_str() );
 		return true;
@@ -99,14 +99,15 @@ void NTFS_CompressFile( const wxString& file, bool compressStatus )
 		DWORD bytesReturned = 0;
 		DWORD compressMode = compressStatus ? COMPRESSION_FORMAT_DEFAULT : COMPRESSION_FORMAT_NONE;
 
-		BOOL result = DeviceIoControl(
+		/*BOOL result = */DeviceIoControl(
 			bloated_crap, FSCTL_SET_COMPRESSION,
 			&compressMode, 2, NULL, 0,
 			&bytesReturned, NULL
 		);
 
-		if( !result )
-			StreamException_LogLastError( file, L"NTFS Compress Notice" );
+		// No need to see this every time on my exFAT drive (rama)
+		//if( !result )
+		//	StreamException_LogLastError( file, L"NTFS Compress Notice" );
 
 		CloseHandle( bloated_crap );
 	}

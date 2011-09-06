@@ -107,17 +107,36 @@ __fi void vif0SetupTransfer()
 
 			if (vif0ch.chcr.TTE)
 			{
+				// Transfer dma tag if tte is set
+
 			    bool ret;
 
-				if (vif0.vifstalled)
-					ret = VIF0transfer((u32*)ptag + (2 + vif0.irqoffset), 2 - vif0.irqoffset);  //Transfer Tag on stall
-				else
-					ret = VIF0transfer((u32*)ptag + 2, 2);  //Transfer Tag
+				static __aligned16 u128 masked_tag;
 
-				if ((ret == false) && vif0.irqoffset < 2)
+				masked_tag._u64[0] = 0;
+				masked_tag._u64[1] = *((u64*)ptag + 1);
+
+				VIF_LOG("\tVIF0 SrcChain TTE=1, data = 0x%08x.%08x", masked_tag._u32[3], masked_tag._u32[2]);
+
+				if (vif0.vifstalled)
+				{
+					ret = VIF0transfer((u32*)&masked_tag + vif0.irqoffset, 4 - vif0.irqoffset, true);  //Transfer Tag on stall
+					//ret = VIF0transfer((u32*)ptag + (2 + vif0.irqoffset), 2 - vif0.irqoffset);  //Transfer Tag on stall
+				}
+				else
+				{
+					//Some games (like killzone) do Tags mid unpack, the nops will just write blank data
+					//to the VU's, which breaks stuff, this is where the 128bit packet will fail, so we ignore the first 2 words
+					vif0.irqoffset = 2;
+					ret = VIF0transfer((u32*)&masked_tag + 2, 2, true);  //Transfer Tag
+					//ret = VIF0transfer((u32*)ptag + 2, 2);  //Transfer Tag
+				}
+				
+				if (!ret && vif0.irqoffset)
 				{
 					vif0.inprogress = 0; //Better clear this so it has to do it again (Jak 1)
-					return;       //There has been an error or an interrupt
+					return;        //IRQ set by VIFTransfer
+					
 				}
 			}
 
@@ -144,8 +163,31 @@ __fi void vif0Interrupt()
 
 	g_vifCycles = 0;
 
+	vif0Regs.stat.FQC = min(vif0ch.qwc, (u16)8);
+
 	if (!(vif0ch.chcr.STR)) Console.WriteLn("vif0 running when CHCR == %x", vif0ch.chcr._u32);
 
+	if (vif0.irq && vif0.tag.size == 0)
+	{
+		vif0Regs.stat.INT = true;
+		hwIntcIrq(VIF0intc);
+		--vif0.irq;
+		if (vif0Regs.stat.test(VIF0_STAT_VSS | VIF0_STAT_VIS | VIF0_STAT_VFS))
+		{
+			//vif0Regs.stat.FQC = 0;
+
+			// One game doesn't like vif stalling at end, can't remember what. Spiderman isn't keen on it tho
+			//vif0ch.chcr.STR = false;
+			vif0Regs.stat.FQC = min((u16)0x8, vif0ch.qwc);
+			if(vif0ch.qwc > 0 || !vif0.done)	
+			{
+				VIF_LOG("VIF0 Stalled");
+				return;
+			}
+		}
+	}
+
+	//Must go after the Stall, incase it's still in progress, GTC africa likes to see it still transferring.
 	if (vif0.cmd) 
 	{
 		if(vif0.done == true && vif0ch.qwc == 0)	vif0Regs.stat.VPS = VPS_WAITING;
@@ -155,24 +197,10 @@ __fi void vif0Interrupt()
 		vif0Regs.stat.VPS = VPS_IDLE;
 	}
 
-	if (vif0.irq && vif0.tag.size == 0)
-	{
-		vif0Regs.stat.INT = true;
-		hwIntcIrq(VIF0intc);
-		--vif0.irq;
-		if (vif0Regs.stat.test(VIF0_STAT_VSS | VIF0_STAT_VIS | VIF0_STAT_VFS))
-		{
-			vif0Regs.stat.FQC = 0;
-
-			// One game doesn't like vif stalling at end, can't remember what. Spiderman isn't keen on it tho
-			//vif0ch.chcr.STR = false;
-			if(vif0ch.qwc > 0 || !vif0.done)	return;
-		}
-	}
-
 	if (vif0.inprogress & 0x1)
 	{
 		_VIF0chain();
+		vif0Regs.stat.FQC = min(vif0ch.qwc, (u16)8);
 		CPU_INT(DMAC_VIF0, g_vifCycles);
 		return;
 	}
@@ -187,7 +215,7 @@ __fi void vif0Interrupt()
 		}
 
 		if ((vif0.inprogress & 0x1) == 0) vif0SetupTransfer();
-
+		vif0Regs.stat.FQC = min(vif0ch.qwc, (u16)8);
 		CPU_INT(DMAC_VIF0, g_vifCycles);
 		return;
 	}
@@ -204,9 +232,11 @@ __fi void vif0Interrupt()
 #endif
 
 	vif0ch.chcr.STR = false;
+	vif0Regs.stat.FQC = min((u16)0x8, vif0ch.qwc);
 	g_vifCycles = 0;
 	hwDmacIrq(DMAC_VIF0);
 	vif0Regs.stat.FQC = 0;
+	DMA_LOG("VIF0 DMA End");
 }
 
 void dmaVIF0()

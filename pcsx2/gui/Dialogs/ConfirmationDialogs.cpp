@@ -39,7 +39,7 @@ bool MsgButtons::Allows( wxWindowID id ) const
 
 		// [TODO] : maybe add in an Ignore All?
 		case wxID_IGNORE:	return HasIgnore();
-		
+
 		case wxID_RESET:	return HasReset();
 		case wxID_CLOSE:	return HasClose();
 	}
@@ -65,7 +65,7 @@ static wxString ResultToString( int result, const MsgButtons& buttons )
 		case wxID_ABORT:	return L"abort";
 		case wxID_RETRY:	return L"retry";
 
-			// [TODO] : maybe add in an Ignore All?
+		// [TODO] : maybe add in an Ignore All?
 		case wxID_IGNORE:	return L"ignore";
 
 		case wxID_RESET:	return L"reset";
@@ -73,7 +73,7 @@ static wxString ResultToString( int result, const MsgButtons& buttons )
 	}
 
 	if (result <= wxID_LOWEST)
-		return buttons.GetCustomLabel();
+		return buttons.GetCustomLabelId();
 
 	return wxEmptyString;
 }
@@ -94,7 +94,7 @@ static wxWindowID ParseThatResult( const wxString& src, const MsgButtons& validT
 		wxID_ANY,
 	};
 
-	for( int i=0; i<ArraySize( retvals ); ++i )
+	for( uint i=0; i<ArraySize( retvals ); ++i )
 	{
 		if( (validTypes.Allows( retvals[i] )) && (src == ResultToString(retvals[i], validTypes)) )
 			return retvals[i];

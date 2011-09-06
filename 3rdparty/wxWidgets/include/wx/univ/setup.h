@@ -251,7 +251,6 @@
 // If enabled (1), compiles wxWidgets streams classes
 #define wxUSE_STREAMS 1
 
-
 // Use standard C++ streams if 1. If 0, use wxWin streams implementation.
 #ifdef __MWERKS__
     #define wxUSE_STD_IOSTREAM 1

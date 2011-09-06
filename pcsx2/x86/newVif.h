@@ -19,6 +19,8 @@
 #include "VU.h"
 
 #include "x86emitter/x86emitter.h"
+#include "System/RecTypes.h"
+
 using namespace x86Emitter;
 
 #define aMax(x, y) std::max(x,y)
@@ -28,14 +30,16 @@ using namespace x86Emitter;
 typedef u32  (__fastcall *nVifCall)(void*, const void*);
 typedef void (__fastcall *nVifrecCall)(uptr dest, uptr src);
 
-#include "newVif_BlockBuffer.h"
 #include "newVif_HashBucket.h"
 
 extern void  mVUmergeRegs(const xRegisterSSE& dest, const xRegisterSSE& src,  int xyzw, bool modXYZW = 0);
 extern void _nVifUnpack  (int idx, const u8* data, uint mode, bool isFill);
+extern void  dVifReserve (int idx);
 extern void  dVifReset   (int idx);
 extern void  dVifClose   (int idx);
+extern void  dVifRelease (int idx);
 extern void  VifUnpackSSE_Init();
+extern void  VifUnpackSSE_Destroy();
 
 _vifT extern void  dVifUnpack  (const u8* data, bool isFill);
 
@@ -53,7 +57,6 @@ _vifT extern void  dVifUnpack  (const u8* data, bool isFill);
 
 // nVifBlock - Ordered for Hashing; the 'num' field and the lower 6 bits of upkType are
 //             used as the hash bucket selector.
-//
 struct __aligned16 nVifBlock {
 	u8   num;		// [00] Num  Field
 	u8   upkType;	// [01] Unpack Type [usn*1:mask*1:upk*4]
@@ -70,28 +73,32 @@ struct __aligned16 nVifBlock {
 #define _tParams nVifBlock, _hSize, _cmpS
 struct nVifStruct {
 
+	__aligned16 nVifBlock   block;
+
 	// Buffer for partial transfers (should always be first to ensure alignment)
 	// Maximum buffer size is 256 (vifRegs.Num max range) * 16 (quadword)
 	__aligned16 u8			buffer[256*16];
 	u32						bSize;			// Size of 'buffer'
 	u32						bPtr;
 
-	u32						idx;			// VIF0 or VIF1
-	u8*						recPtr;			// Cur Pos to recompile to
-	u8*						recEnd;			// 'Safe' End of Rec Cache
-	BlockBuffer*			vifCache;		// Block Buffer
+	uint					recReserveSizeMB;	// reserve size, in megabytes.
+	RecompiledCodeReserve*	recReserve;
+	u8*						recWritePtr;		// current write pos into the reserve
+
 	HashBucket<_tParams>*	vifBlocks;		// Vif Blocks
 	int						numBlocks;		// # of Blocks Recompiled
-	
-	nVifStruct()
-	{
-		vifCache	=  NULL;
-		vifBlocks	=  NULL;
-		numBlocks	=  0;
-		recPtr		=  NULL;
-		recEnd		=  NULL;
-	}
+
+	// VIF0 or VIF1 - provided for debugging helpfulness only, and is generally unused.
+	// (templates are used for most or all VIF indexing)
+	u32						idx;
+
+	nVifStruct();
 };
+
+extern void reserveNewVif(int idx);
+extern void closeNewVif(int idx);
+extern void resetNewVif(int idx);
+extern void releaseNewVif(int idx);
 
 extern __aligned16 nVifStruct nVif[2];
 extern __aligned16 nVifCall nVifUpk[(2*2*16)*4]; // ([USN][Masking][Unpack Type]) [curCycle]

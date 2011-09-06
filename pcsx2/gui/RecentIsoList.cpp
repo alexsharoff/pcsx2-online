@@ -28,12 +28,17 @@ extern wxString GetMsg_IsoImageChanged();
 // selecting another iso would be undesirable).
 
 
-RecentIsoManager::RecentIsoManager( wxMenu* menu )
+RecentIsoManager::RecentIsoManager( wxMenu* menu, int firstIdForMenuItems_or_wxID_ANY )
 	: m_Menu( menu )
+	, m_firstIdForMenuItems_or_wxID_ANY ( firstIdForMenuItems_or_wxID_ANY )
 	, m_MaxLength( g_Conf->RecentIsoCount )
 {
 	m_cursel	= 0;
 	m_Separator	= NULL;
+
+	IniLoader loader;
+	LoadListFrom(loader);
+
 	Connect( wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler(RecentIsoManager::OnChangedSelection) );
 }
 
@@ -57,12 +62,20 @@ void RecentIsoManager::OnChangedSelection( wxCommandEvent& evt )
 		return;
 	}
 
+	// Actually there is no change on the selection so the event can be skip
+	// Note: It also avoids a deadlock which appears when the core thread is already paused
+	// and ScopedCoreThreadPopup try to stop the thread (GSOpen1 code path)
+	if( (g_Conf->CdvdSource == CDVDsrc_Iso) && (m_Items[i].Filename == g_Conf->CurrentIso) )
+	{
+		evt.Skip();
+		return;
+	}
+
+
 	m_cursel = i;
 
-	// TODO: Dialog asking for hotswap or reset!!!!
-
 	ScopedCoreThreadPopup stopped_core;
-	//SysUpdateIsoSrcFile( m_Items[i].Filename );
+
 #ifdef __LINUX__
 	// Likely not what was intended, but it compiles for the moment...
 	SwapOrReset_Iso( NULL, stopped_core, m_Items[i].Filename, GetMsg_IsoImageChanged());
@@ -70,6 +83,7 @@ void RecentIsoManager::OnChangedSelection( wxCommandEvent& evt )
 	// Getting a window from the menu?
 	SwapOrReset_Iso( m_Menu->GetWindow(), stopped_core, m_Items[i].Filename, GetMsg_IsoImageChanged());
 #endif
+
 	stopped_core.AllowResume();
 }
 
@@ -107,7 +121,9 @@ void RecentIsoManager::Repopulate()
 
 	m_Separator = m_Menu->AppendSeparator();
 	
-	for( int i=0; i<cnt; ++i )
+	//Note: the internal recent iso list (m_Items) has the most recent item last (also at the INI file)
+	//  but the menu is composed in reverse order such that the most recent item appears at the top.
+	for( int i=cnt-1; i>=0; --i )
 		InsertIntoMenu( i );
 }
 
@@ -138,23 +154,57 @@ void RecentIsoManager::Add( const wxString& src )
 		}
 	}
 
+	//New item doesn't exist at the menu/internal-list - add it, and refresh the menu.
+	RemoveAllFromMenu();
+
 	m_Items.push_back( RecentItem( normalized ) );
-	InsertIntoMenu( m_cursel = (m_Items.size()-1) );
 
 	while( m_Items.size() > m_MaxLength )
-	{
 		m_Items.erase( m_Items.begin() );
-	}
+
+	Repopulate();
+	m_Items[m_cursel = m_Items.size()-1].ItemPtr->Check();
 }
 
+//id here is the position index at the internal list of recent ISOs (m_Items)
 void RecentIsoManager::InsertIntoMenu( int id )
 {
 	if( m_Menu == NULL ) return;
 	RecentItem& curitem( m_Items[id] );
-	curitem.ItemPtr = m_Menu->Append( wxID_ANY, Path::GetFilename(curitem.Filename), curitem.Filename, wxITEM_RADIO );
+	
+	int wxid=wxID_ANY;
+	if (this->m_firstIdForMenuItems_or_wxID_ANY != wxID_ANY)
+		wxid = this->m_firstIdForMenuItems_or_wxID_ANY + id;
 
-	if( m_cursel == id )
+	curitem.ItemPtr = m_Menu->Append( wxid, Path::GetFilename(curitem.Filename), curitem.Filename, wxITEM_RADIO );
+	bool exists = wxFileExists( curitem.Filename );
+
+	if( m_cursel == id && exists )
 		curitem.ItemPtr->Check();
+
+	if ( !exists )
+		curitem.ItemPtr->Enable( false );
+}
+
+void RecentIsoManager::LoadListFrom( IniInterface& ini )
+{
+	if (!ini.IsOk()) return;
+
+	ini.GetConfig().SetRecordDefaults( false );
+
+	RemoveAllFromMenu();
+
+	m_MaxLength = g_Conf->RecentIsoCount;
+	ScopedIniGroup groupie( ini, L"RecentIso" );
+	for( uint i=0; i<m_MaxLength; ++i )
+	{
+		wxFileName loadtmp(L"");
+		ini.Entry( pxsFmt( L"Filename%02d", i ), loadtmp, loadtmp, true );
+		if( loadtmp.GetFullName()!=L"" ) Add( loadtmp.GetFullPath() );
+	}
+	Add( g_Conf->CurrentIso );
+
+	ini.GetConfig().SetRecordDefaults( true );
 }
 
 void RecentIsoManager::AppStatusEvent_OnSettingsApplied()
@@ -162,16 +212,16 @@ void RecentIsoManager::AppStatusEvent_OnSettingsApplied()
 	// TODO : Implement application of Recent Iso List "maximum" history option
 }
 
-void RecentIsoManager::AppStatusEvent_OnSettingsLoadSave( const AppSettingsEventInfo& evt )
+void RecentIsoManager::AppStatusEvent_OnUiSettingsLoadSave( const AppSettingsEventInfo& evt )
 {
 	IniInterface& ini( evt.GetIni() );
-
-	ini.GetConfig().SetRecordDefaults( false );
 
 	if( ini.IsSaving() )
 	{
 		// Wipe existing recent iso list if we're saving, because our size might have changed
 		// and that could leave some residual entries in the config.
+
+		ini.GetConfig().SetRecordDefaults( false );
 
 		ini.GetConfig().DeleteGroup( L"RecentIso" );
 		ScopedIniGroup groupie( ini, L"RecentIso" );
@@ -179,23 +229,14 @@ void RecentIsoManager::AppStatusEvent_OnSettingsLoadSave( const AppSettingsEvent
 		int cnt = m_Items.size();
 		for( int i=0; i<cnt; ++i )
 		{
-			ini.Entry( wxsFormat( L"Filename%02d", i ), m_Items[i].Filename );
+			wxFileName item_filename = wxFileName(m_Items[i].Filename);
+			ini.Entry( pxsFmt( L"Filename%02d", i ),  item_filename, wxFileName(L""), IsPortable());
 		}
+		
+		ini.GetConfig().SetRecordDefaults( true );
 	}
 	else
 	{
-		RemoveAllFromMenu();
-		
-		m_MaxLength = g_Conf->RecentIsoCount;
-		ScopedIniGroup groupie( ini, L"RecentIso" );
-		for( uint i=0; i<m_MaxLength; ++i )
-		{
-			wxString loadtmp;
-			ini.Entry( wxsFormat( L"Filename%02d", i ), loadtmp );
-			if( !loadtmp.IsEmpty() ) Add( loadtmp );
-		}
-		Add( g_Conf->CurrentIso );
+		LoadListFrom(ini);
 	}
-
-	ini.GetConfig().SetRecordDefaults( true );
 }

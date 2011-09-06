@@ -17,6 +17,8 @@
 #include "Common.h"
 #include "VUops.h"
 #include "GS.h"
+#include "Gif_Unit.h"
+#include "MTVU.h"
 
 #include <cmath>
 
@@ -2017,24 +2019,32 @@ static __ri void _vuEEXP(VURegs * VU) {
 
 static __ri void _vuXITOP(VURegs * VU) {
 	if (_It_ == 0) return;
-	VU->VI[_It_].US[0] = VU->GetVifRegs().itop;
+	if (VU==&VU1 && THREAD_VU1) VU->VI[_It_].US[0] = vu1Thread.vifRegs.itop;
+	else                        VU->VI[_It_].US[0] = VU->GetVifRegs().itop;
 }
 
 static __ri void _vuXGKICK(VURegs * VU)
 {
 	// flush all pipelines first (in the right order)
 	_vuFlushAll(VU);
+	u32 addr = (VU->VI[_Is_].US[0] & 0x3ff) * 16;
+	u32 diff = 0x4000 - addr;
+	u32 size = gifUnit.GetGSPacketSize(GIF_PATH_1, VU->Mem, addr);
 
-	u8* data = ((u8*)VU->Mem + ((VU->VI[_Is_].US[0]*16) & 0x3fff));
-	u32 size;
-	GetMTGS().PrepDataPacket( GIF_PATH_1, 0x400 );
-	size = GIFPath_CopyTag( GIF_PATH_1, (u128*)data, (0x400-(VU->VI[_Is_].US[0] & 0x3ff)) );
-	GetMTGS().SendDataPacket();
+	if (size > diff) {
+		//DevCon.WriteLn(Color_Green, "VU1 Int: XGkick Wrap!");
+		gifUnit.gifPath[GIF_PATH_1].CopyGSPacketData(  &VU->Mem[addr],  diff,true);
+		gifUnit.TransferGSPacketData(GIF_TRANS_XGKICK, &VU->Mem[0],size-diff,true);
+	}
+	else {
+		gifUnit.TransferGSPacketData(GIF_TRANS_XGKICK, &VU->Mem[addr], size, true);
+	}
 }
 
 static __ri void _vuXTOP(VURegs * VU) {
 	if(_It_ == 0) return;
-	VU->VI[_It_].US[0] = (u16)VU->GetVifRegs().top;
+	if (VU==&VU1 && THREAD_VU1) VU->VI[_It_].US[0] = (u16)vu1Thread.vifRegs.top;
+	else                        VU->VI[_It_].US[0] = (u16)VU->GetVifRegs().top;
 }
 
 #define GET_VF0_FLAG(reg) (((reg)==0)?(1<<REG_VF0_FLAG):0)

@@ -1,19 +1,16 @@
-/*  Pcsx2 - Pc Ps2 Emulator
- *  Copyright (C) 2009  Pcsx2 Team
+/*  PCSX2 - PS2 Emulator for PCs
+ *  Copyright (C) 2002-2010  PCSX2 Dev Team
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *  
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *  
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
+ *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
+ *  of the GNU Lesser General Public License as published by the Free Software Found-
+ *  ation, either version 3 of the License, or (at your option) any later version.
+ *
+ *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ *  PURPOSE.  See the GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along with PCSX2.
+ *  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -23,7 +20,7 @@ __fi void mVUdivSet(mV) {
 	if (mVUinfo.doDivFlag) {
 		if (!sFLAG.doFlag) { xMOV(getFlagReg(sFLAG.write), getFlagReg(sFLAG.lastWrite)); }
 		xAND(getFlagReg(sFLAG.write), 0xfff3ffff);
-		xOR (getFlagReg(sFLAG.write), ptr32[&mVU->divFlag]);
+		xOR (getFlagReg(sFLAG.write), ptr32[&mVU.divFlag]);
 	}
 }
 
@@ -54,7 +51,7 @@ __fi void mVUstatusFlagOp(mV) {
 
 int findFlagInst(int* fFlag, int cycles) {
 	int j = 0, jValue = -1;
-	for (int i = 0; i < 4; i++) {
+	for(int i = 0; i < 4; i++) {
 		if ((fFlag[i] <= cycles) && (fFlag[i] > jValue)) { j = i; jValue = fFlag[i]; }
 	}
 	return j;
@@ -64,13 +61,21 @@ int findFlagInst(int* fFlag, int cycles) {
 int sortFlag(int* fFlag, int* bFlag, int cycles) {
 	int lFlag = -5;
 	int x = 0;
-	for (int i = 0; i < 4; i++) {
+	for(int i = 0; i < 4; i++) {
 		bFlag[i] = findFlagInst(fFlag, cycles);
 		if (lFlag != bFlag[i]) { x++; }
 		lFlag = bFlag[i];
 		cycles++;
 	}
 	return x; // Returns the number of Valid Flag Instances
+}
+
+void sortFullFlag(int* fFlag, int* bFlag) {
+	int m = max(max(fFlag[0], fFlag[1]), max(fFlag[2], fFlag[3]));
+	for(int i = 0; i < 4; i++) {
+		int t = 3 - (m - fFlag[i]);
+		bFlag[i] = (t < 0) ? 0 : t+1;
+	}
 }
 
 #define sFlagCond (sFLAG.doFlag || mVUlow.isFSSET || mVUinfo.doDivFlag)
@@ -83,46 +88,74 @@ __fi void mVUsetFlags(mV, microFlagCycles& mFC) {
 	u32 aCount = 1; // Amount of instructions needed to get valid mac flag instances for block linking
 
 	// Ensure last ~4+ instructions update mac/status flags (if next block's first 4 instructions will read them)
-	for (int i = mVUcount; i > 0; i--, aCount++) {
+	for(int i = mVUcount; i > 0; i--, aCount++) {
 		if (sFLAG.doFlag) { 
-			if (__Mac)	  { mFLAG.doFlag = 1; } 
-			if (__Status) { sFLAG.doNonSticky = 1; } 		
-			if (aCount >= 4) { break; } 
+			if (__Mac)    mFLAG.doFlag = 1;
+			if (__Status) sFLAG.doNonSticky = 1; 		
+			if (aCount >= 4) break;
 		}
 		incPC2(-2);
 	}
 
 	// Status/Mac Flags Setup Code
 	int xS = 0, xM = 0, xC = 0;
-	for (int i = 0; i < 4; i++) {
+	u32 ff0=0, ff1=0, ffOn=0, fInfo=0;
+	
+	if (doFullFlagOpt) {
+		ff0   = mVUpBlock->pState.fullFlags0;
+		ff1   = mVUpBlock->pState.fullFlags1;
+		ffOn  = mVUpBlock->pState.flagInfo&1;
+		fInfo = mVUpBlock->pState.flagInfo;
+	}
+
+	for(int i = 0; i < 4; i++) {
 		mFC.xStatus[i] = i;
 		mFC.xMac   [i] = i;
 		mFC.xClip  [i] = i;
 	}
+	if (ffOn) { // Full Flags Enabled
+		xS = (fInfo >> 2) & 3;
+		xM = (fInfo >> 4) & 3;
+		xC = (fInfo >> 6) & 3;
+		mFC.xStatus[0] = ((ff0 >> (3*0+ 0)) & 7) - 1;
+		mFC.xStatus[1] = ((ff0 >> (3*1+ 0)) & 7) - 1;
+		mFC.xStatus[2] = ((ff0 >> (3*2+ 0)) & 7) - 1;
+		mFC.xStatus[3] = ((ff0 >> (3*3+ 0)) & 7) - 1;
+		mFC.xMac   [0] = ((ff0 >> (3*0+12)) & 7) - 1;
+		mFC.xMac   [1] = ((ff0 >> (3*1+12)) & 7) - 1;
+		mFC.xMac   [2] = ((ff0 >> (3*2+12)) & 7) - 1;
+		mFC.xMac   [3] = ((ff0 >> (3*3+12)) & 7) - 1;
+		mFC.xClip  [0] = ((ff0 >> (3*0+24)) & 7) - 1;
+		mFC.xClip  [1] = ((ff0 >> (3*1+24)) & 7) - 1;
+		mFC.xClip  [2] = ((ff1 >> (3*0+ 0)) & 7) - 1;
+		mFC.xClip  [3] = ((ff1 >> (3*1+ 0)) & 7) - 1;
+	}
 
-	if (!(mVUpBlock->pState.needExactMatch & 1)) {
-		xS = (mVUpBlock->pState.flags >> 0) & 3;
+	if(!ffOn && !(mVUpBlock->pState.needExactMatch & 1)) {
+		xS = (mVUpBlock->pState.flagInfo >> 2) & 3;
 		mFC.xStatus[0] = -1; mFC.xStatus[1] = -1;
 		mFC.xStatus[2] = -1; mFC.xStatus[3] = -1;
 		mFC.xStatus[(xS-1)&3] = 0;
 	}
 
-	if (!(mVUpBlock->pState.needExactMatch & 4)) {
-		xC = (mVUpBlock->pState.flags >> 2) & 3;
+	if(!ffOn && !(mVUpBlock->pState.needExactMatch & 2)) {
+		//xM = (mVUpBlock->pState.flagInfo >> 4) & 3;
+		mFC.xMac[0] = -1; mFC.xMac[1] = -1;
+		mFC.xMac[2] = -1; mFC.xMac[3] = -1;
+		//mFC.xMac[(xM-1)&3] = 0;
+	}
+
+	if(!ffOn && !(mVUpBlock->pState.needExactMatch & 4)) {
+		xC = (mVUpBlock->pState.flagInfo >> 6) & 3;
 		mFC.xClip[0] = -1; mFC.xClip[1] = -1;
 		mFC.xClip[2] = -1; mFC.xClip[3] = -1;
 		mFC.xClip[(xC-1)&3] = 0;
 	}
 
-	if (!(mVUpBlock->pState.needExactMatch & 2)) {
-		mFC.xMac[0] = -1; mFC.xMac[1] = -1;
-		mFC.xMac[2] = -1; mFC.xMac[3] = -1;
-	}
-
 	mFC.cycles	= 0;
 	u32 xCount	= mVUcount; // Backup count
 	iPC			= mVUstartPC;
-	for (mVUcount = 0; mVUcount < xCount; mVUcount++) {
+	for(mVUcount = 0; mVUcount < xCount; mVUcount++) {
 		if (mVUlow.isFSSET && !noFlagOpts) {
 			if (__Status) { // Don't Optimize out on the last ~4+ instructions
 				if ((xCount - mVUcount) > aCount) { mVUstatusFlagOp(mVU); }
@@ -131,17 +164,17 @@ __fi void mVUsetFlags(mV, microFlagCycles& mFC) {
 		}
 		mFC.cycles += mVUstall;
 
-		sFLAG.read = findFlagInst(mFC.xStatus, mFC.cycles);
-		mFLAG.read = findFlagInst(mFC.xMac,	   mFC.cycles);
-		cFLAG.read = findFlagInst(mFC.xClip,   mFC.cycles);
+		sFLAG.read  = doSFlagInsts ? findFlagInst(mFC.xStatus, mFC.cycles) : 0;
+		mFLAG.read  = doMFlagInsts ? findFlagInst(mFC.xMac,    mFC.cycles) : 0;
+		cFLAG.read  = doCFlagInsts ? findFlagInst(mFC.xClip,   mFC.cycles) : 0;
 		
-		sFLAG.write = xS;
-		mFLAG.write = xM;
-		cFLAG.write = xC;
+		sFLAG.write = doSFlagInsts ? xS : 0;
+		mFLAG.write = doMFlagInsts ? xM : 0;
+		cFLAG.write = doCFlagInsts ? xC : 0;
 
-		sFLAG.lastWrite = (xS-1) & 3;
-		mFLAG.lastWrite = (xM-1) & 3;
-		cFLAG.lastWrite = (xC-1) & 3;
+		sFLAG.lastWrite = doSFlagInsts ? (xS-1) & 3 : 0;
+		mFLAG.lastWrite = doMFlagInsts ? (xM-1) & 3 : 0;
+		cFLAG.lastWrite = doCFlagInsts ? (xC-1) & 3 : 0;
 
 		if (sHackCond)	  { sFLAG.doFlag = 0; }
 		if (sFLAG.doFlag) { if(noFlagOpts){sFLAG.doNonSticky=1;mFLAG.doFlag=1;}}
@@ -153,8 +186,26 @@ __fi void mVUsetFlags(mV, microFlagCycles& mFC) {
 		incPC2(2);
 	}
 
-	mVUregs.flags = ((__Clip) ? 0 : (xC << 2)) | ((__Status) ? 0 : xS);
+	mVUregs.flagInfo |= ((__Status) ? 0 : (xS << 2));
+	mVUregs.flagInfo |= ((__Mac||1) ? 0 : (xM << 4));
+	mVUregs.flagInfo |= ((__Clip)   ? 0 : (xC << 6));
 	iPC = endPC;
+
+	if (doFullFlagOpt && (mVUregs.flagInfo & 1)) {
+		//if (mVUregs.needExactMatch) DevCon.Error("mVU ERROR!!!");
+		int bS[4], bM[4], bC[4];
+		sortFullFlag(mFC.xStatus, bS);
+		sortFullFlag(mFC.xMac,    bM);
+		sortFullFlag(mFC.xClip,   bC);
+		mVUregs.flagInfo       = (xC<<6) | (xM<<4) | (xS<<2) | 1;
+		mVUregs.fullFlags0     = ((bS[3]<<9)|(bS[2]<<6)|(bS[1]<<3)|(bS[0]<<0)) << (12*0);
+		mVUregs.fullFlags0    |= ((bM[3]<<9)|(bM[2]<<6)|(bM[1]<<3)|(bM[0]<<0)) << (12*1);
+		mVUregs.fullFlags0    |= ((bC[1]<<3)|(bC[0]<<0)) << (12*2);
+		mVUregs.fullFlags1     = ((bC[3]<<3)|(bC[2]<<0)) << (12*0);
+		mVUregs.needExactMatch = 0;
+		DevCon.WriteLn("MVU FULL FLAG!!!!!!!! [0x%04x][0x%08x][0x%02x]",
+			   xPC, mVUregs.fullFlags0, (u32)mVUregs.fullFlags1);
+	}
 }
 
 #define getFlagReg2(x)	((bStatus[0] == x) ? getFlagReg(x) : gprT1)
@@ -166,7 +217,16 @@ __fi void mVUsetFlags(mV, microFlagCycles& mFC) {
 // Recompiles Code for Proper Flags on Block Linkings
 __fi void mVUsetupFlags(mV, microFlagCycles& mFC) {
 
-	if (__Status) {
+	if (mVUregs.flagInfo & 1) {
+		if (mVUregs.needExactMatch) DevCon.Error("mVU ERROR!!!");
+	}
+
+	const bool pf = 0; // Print Flag Info
+	if (pf)	DevCon.WriteLn("mVU%d - [#%d][sPC=%04x][bPC=%04x][mVUBranch=%d][branch=%d]",
+			mVU.index, mVU.prog.cur->idx, mVUstartPC/2*8, xPC, mVUbranch, mVUlow.branch);
+
+	if (doSFlagInsts && __Status) {
+		if (pf) DevCon.WriteLn("mVU%d - Status Flag", mVU.index);
 		int bStatus[4];
 		int sortRegs = sortFlag(mFC.xStatus, bStatus, mFC.cycles);
 		// DevCon::Status("sortRegs = %d", params sortRegs);
@@ -204,20 +264,22 @@ __fi void mVUsetupFlags(mV, microFlagCycles& mFC) {
 		}
 	}
 	
-	if (__Mac) {
+	if (doMFlagInsts && __Mac) {
+		if (pf) DevCon.WriteLn("mVU%d - Mac Flag", mVU.index);
 		int bMac[4];
 		sortFlag(mFC.xMac, bMac, mFC.cycles);
-		xMOVAPS(xmmT1, ptr128[mVU->macFlag]);
+		xMOVAPS(xmmT1, ptr128[mVU.macFlag]);
 		xSHUF.PS(xmmT1, xmmT1, shuffleMac);
-		xMOVAPS(ptr128[mVU->macFlag], xmmT1);
+		xMOVAPS(ptr128[mVU.macFlag], xmmT1);
 	}
 
-	if (__Clip) {
+	if (doCFlagInsts && __Clip) {
+		if (pf) DevCon.WriteLn("mVU%d - Clip Flag", mVU.index);
 		int bClip[4];
 		sortFlag(mFC.xClip, bClip, mFC.cycles);
-		xMOVAPS(xmmT2, ptr128[mVU->clipFlag]);
+		xMOVAPS(xmmT2, ptr128[mVU.clipFlag]);
 		xSHUF.PS(xmmT2, xmmT2, shuffleClip);
-		xMOVAPS(ptr128[mVU->clipFlag], xmmT2);
+		xMOVAPS(ptr128[mVU.clipFlag], xmmT2);
 	}
 }
 
@@ -249,7 +311,7 @@ void _mVUflagPass(mV, u32 startPC, u32 sCount, u32 found, vector<u32>& v) {
 	int aBranchAddr = 0;
 	iPC		  = startPC / 4;
 	mVUbranch = 0;
-	for (int branch = 0; sCount < 4; sCount += found) {
+	for(int branch = 0; sCount < 4; sCount += found) {
 		mVUregs.needExactMatch &= 7;
 		incPC(1);
 		mVUopU(mVU, 3);
@@ -278,27 +340,55 @@ void mVUflagPass(mV, u32 startPC, u32 sCount = 0, u32 found = 0) {
 	_mVUflagPass(mVU, startPC, sCount, found, v);
 }
 
-#define branchType1 if		(mVUbranch <= 2)	// B/BAL
-#define branchType2 else if (mVUbranch >= 9)	// JR/JALR
-#define branchType3 else						// Conditional Branch
+__fi void checkFFblock(mV, u32 addr, int& ffOpt) {
+	if (ffOpt && doFullFlagOpt) {
+		blockCreate(addr/8);
+		ffOpt = mVUblocks[addr/8]->getFullListCount() <= doFullFlagOpt;
+	}
+}
 
 // Checks if the first ~4 instructions of a block will read flags
-__fi void mVUsetFlagInfo(mV) {
-	branchType1 { incPC(-1); mVUflagPass(mVU, branchAddr); incPC(1); }
-	branchType2 { // This case can possibly be turned off via a hack for a small speedup...
-		if (!mVUlow.constJump.isValid || !doConstProp) { mVUregs.needExactMatch |= 0x7; } 
-		else { mVUflagPass(mVU, (mVUlow.constJump.regValue*8)&(mVU->microMemSize-8)); }
+void mVUsetFlagInfo(mV) {
+	if (noFlagOpts) {
+		mVUregs.needExactMatch  = 0x7;
+		mVUregs.fullFlags0      = 0x0;
+		mVUregs.fullFlags1      = 0x0;
+		mVUregs.flagInfo		= 0x0;
+		return;
 	}
-	branchType3 {
+	int ffOpt = doFullFlagOpt;
+	if (mVUbranch <= 2) { // B/BAL
 		incPC(-1);
-		mVUflagPass(mVU, branchAddr);
-		int backupFlagInfo = mVUregs.needExactMatch;
-		mVUregs.needExactMatch = 0;
-		incPC(4); // Branch Not Taken
-		mVUflagPass(mVU, xPC);
-		incPC(-3);
-		mVUregs.needExactMatch |= backupFlagInfo;
+		mVUflagPass (mVU, branchAddr);
+		checkFFblock(mVU, branchAddr, ffOpt);
+		incPC(1);
+
+		mVUregs.needExactMatch &= 0x7;
+		if (mVUregs.needExactMatch && ffOpt) {
+			mVUregs.flagInfo |= 1;
+		}
 	}
-	mVUregs.needExactMatch &= 0x7;
-	if (noFlagOpts) mVUregs.needExactMatch |= 0x7;
+	elif(mVUbranch <= 8) { // Conditional Branch
+		incPC(-1); // Branch Taken
+		mVUflagPass (mVU, branchAddr);
+		checkFFblock(mVU, branchAddr, ffOpt);
+		int backupFlagInfo     = mVUregs.needExactMatch;
+		mVUregs.needExactMatch = 0;
+		
+		incPC(4); // Branch Not Taken
+		mVUflagPass (mVU, xPC);
+		checkFFblock(mVU, xPC, ffOpt);
+		incPC(-3);
+
+		mVUregs.needExactMatch |= backupFlagInfo;
+		mVUregs.needExactMatch &= 0x7;
+		if (mVUregs.needExactMatch && ffOpt) {
+			mVUregs.flagInfo |= 1;
+		}
+	}
+	else { // JR/JALR
+		if (!doConstProp || !mVUlow.constJump.isValid) { mVUregs.needExactMatch |= 0x7; } 
+		else { mVUflagPass(mVU, (mVUlow.constJump.regValue*8)&(mVU.microMemSize-8)); }
+		mVUregs.needExactMatch &= 0x7;
+	}
 }

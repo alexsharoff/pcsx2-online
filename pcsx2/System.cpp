@@ -16,48 +16,145 @@
 #include "PrecompiledHeader.h"
 #include "Common.h"
 #include "IopCommon.h"
+#include "VUmicro.h"
+#include "newVif.h"
 
-#include "System/PageFaultSource.h"
-#include "Utilities/EventSource.inl"
+#include "SamplProf.h"
 
-// Includes needed for cleanup, since we don't have a good system (yet) for
-// cleaning up these things.
-#include "sVU_zerorec.h"
-#include "GameDatabase.h"
 #include "Elfheader.h"
 
-extern void closeNewVif(int idx);
-extern void resetNewVif(int idx);
+#include "System/RecTypes.h"
 
-template class EventSource< IEventListener_PageFault >;
+#include "Utilities/MemsetFast.inl"
 
-SrcType_PageFault Source_PageFault;
 
-EventListener_PageFault::EventListener_PageFault()
+// --------------------------------------------------------------------------------------
+//  RecompiledCodeReserve  (implementations)
+// --------------------------------------------------------------------------------------
+
+// Constructor!
+// Parameters:
+//   name - a nice long name that accurately describes the contents of this reserve.
+RecompiledCodeReserve::RecompiledCodeReserve( const wxString& name, uint defCommit )
+	: BaseVmReserveListener( name )
 {
-	Source_PageFault.Add( *this );
+	m_blocksize		= (1024 * 128) / __pagesize;
+	m_prot_mode		= PageAccess_Any();
+	m_def_commit	= defCommit / __pagesize;
+	
+	m_profiler_registered = false;
 }
 
-EventListener_PageFault::~EventListener_PageFault() throw()
+RecompiledCodeReserve::~RecompiledCodeReserve() throw()
 {
-	Source_PageFault.Remove( *this );
+	_termProfiler();
 }
 
-void SrcType_PageFault::Dispatch( const PageFaultInfo& params )
+void RecompiledCodeReserve::_registerProfiler()
 {
-	m_handled = false;
-	_parent::Dispatch( params );
+	if (m_profiler_name.IsEmpty() || !IsOk()) return;
+	ProfilerRegisterSource( m_profiler_name, m_baseptr, GetReserveSizeInBytes() );
+	m_profiler_registered = true;
 }
 
-void SrcType_PageFault::_DispatchRaw( ListenerIterator iter, const ListenerIterator& iend, const PageFaultInfo& evt )
+void RecompiledCodeReserve::_termProfiler()
 {
-	do {
-		(*iter)->DispatchEvent( evt, m_handled );
-	} while( (++iter != iend) && !m_handled );
+	if (m_profiler_registered)
+		ProfilerTerminateSource( m_profiler_name );
+}
+
+uint RecompiledCodeReserve::_calcDefaultCommitInBlocks() const
+{
+	return (m_def_commit + m_blocksize - 1) / m_blocksize;
+}
+
+void* RecompiledCodeReserve::Reserve( size_t size, uptr base, uptr upper_bounds )
+{
+	if (!_parent::Reserve(size, base, upper_bounds)) return NULL;
+	_registerProfiler();
+	return m_baseptr;
 }
 
 
-#if _MSC_VER
+// Sets the abbreviated name used by the profiler.  Name should be under 10 characters long.
+// After a name has been set, a profiler source will be automatically registered and cleared
+// in accordance with changes in the reserve area.
+RecompiledCodeReserve& RecompiledCodeReserve::SetProfilerName( const wxString& shortname )
+{
+	m_profiler_name = shortname;
+	_registerProfiler();
+	return *this;
+}
+
+void RecompiledCodeReserve::DoCommitAndProtect( uptr page )
+{
+	CommitBlocks(page, (m_pages_commited || !m_def_commit) ? 1 : _calcDefaultCommitInBlocks() );
+}
+
+void RecompiledCodeReserve::OnCommittedBlock( void* block )
+{
+	if (IsDevBuild)
+	{
+		// Clear the recompiled code block to 0xcc (INT3) -- this helps disasm tools show
+		// the assembly dump more cleanly.  We don't clear the block on Release builds since
+		// it can add a noticeable amount of overhead to large block recompilations.
+
+		memset_sse_a<0xcc>( block, m_blocksize * __pagesize );
+	}
+}
+
+// This error message is shared by R5900, R3000, and microVU recompilers.  It is not used by the
+// SuperVU recompiler, since it has its own customized message.
+void RecompiledCodeReserve::ThrowIfNotOk() const
+{
+	if (IsOk()) return;
+
+	throw Exception::OutOfMemory(m_name)
+		.SetDiagMsg(pxsFmt( L"Recompiled code cache could not be mapped." ))
+		.SetUserMsg( pxE( "!Notice:Recompiler:VirtualMemoryAlloc",
+			L"This recompiler was unable to reserve contiguous memory required for internal caches.  "
+			L"This error can be caused by low virtual memory resources, such as a small or disabled swapfile, "
+			L"or by another program that is hogging a lot of memory.  You can also try reducing the default "
+			L"cache sizes for all PCSX2 recompilers, found under Host Settings."
+		));
+}
+
+
+void SysOutOfMemory_EmergencyResponse(uptr blocksize)
+{
+	// An out of memory error occurred.  All we can try to do in response is reset the various
+	// recompiler caches (which can sometimes total over 120megs, so it can be quite helpful).
+	// If the user is using interpreters, or if the memory allocation failure was on a very small
+	// allocation, then this code could fail; but that's fine.  We're already trying harder than
+	// 99.995% of all programs ever written. -- air
+
+	if (Cpu)
+	{
+		Cpu->SetCacheReserve( (Cpu->GetCacheReserve() * 2) / 3 );
+		Cpu->Reset();
+	}
+
+	if (CpuVU0)
+	{
+		CpuVU0->SetCacheReserve( (CpuVU0->GetCacheReserve() * 2) / 3 );
+		CpuVU0->Reset();
+	}
+
+	if (CpuVU1)
+	{
+		CpuVU1->SetCacheReserve( (CpuVU1->GetCacheReserve() * 2) / 3 );
+		CpuVU1->Reset();
+	}
+
+	if (psxCpu)
+	{
+		psxCpu->SetCacheReserve( (psxCpu->GetCacheReserve() * 2) / 3 );
+		psxCpu->Reset();
+	}
+}
+
+
+#if _MSC_VER || defined(LINUX_PRINT_SVN_NUMBER)
 #	include "svnrev.h"
 #endif
 
@@ -101,30 +198,37 @@ TraceLogFilters& SetTraceConfig()
 // This function should be called once during program execution.
 void SysLogMachineCaps()
 {
-	Console.WriteLn( Color_StrongGreen, "PCSX2 %u.%u.%u.r%d %s - compiled on " __DATE__, PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo,
+	Console.WriteLn( Color_StrongGreen, "PCSX2 %u.%u.%u.r%d %s - compiled on " __DATE__,
+		PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo,
 		SVN_REV, SVN_MODS ? "(modded)" : ""
 	);
 
 	Console.WriteLn( "Savestate version: 0x%x", g_SaveVersion);
 	Console.Newline();
 
-	Console.WriteLn( Color_StrongBlack, "x86-32 Init:" );
+	Console.WriteLn( Color_StrongBlack, "Host Machine Init:" );
+
+	Console.Indent().WriteLn(
+		L"Operating System =  %s\n"
+		L"Physical RAM     =  %u MB",
+
+		GetOSVersionString().c_str(),
+		(u32)(GetPhysicalMemory() / _1mb)
+	);
 
 	u32 speed = x86caps.CalculateMHz();
 
 	Console.Indent().WriteLn(
-		L"CPU vendor name  =  %s\n"
-		L"FamilyID         =  %x\n"
-		L"x86Family        =  %s\n"
-		L"CPU speed        =  %d.%03d ghz\n"
-		L"Cores            =  %d physical [%d logical]\n"
+		L"CPU name         =  %s\n"
+		L"Vendor/Model     =  %s (stepping %02X)\n"
+		L"CPU speed        =  %u.%03u ghz (%u logical thread%s)\n"
 		L"x86PType         =  %s\n"
-		L"x86Flags         =  %8.8x %8.8x\n"
-		L"x86EFlags        =  %8.8x",
-			fromUTF8( x86caps.VendorName ).c_str(), x86caps.StepID,
+		L"x86Flags         =  %08x %08x\n"
+		L"x86EFlags        =  %08x",
 			fromUTF8( x86caps.FamilyName ).Trim().Trim(false).c_str(),
+			fromUTF8( x86caps.VendorName ).c_str(), x86caps.StepID,
 			speed / 1000, speed % 1000,
-			x86caps.PhysicalCores, x86caps.LogicalCores,
+			x86caps.LogicalCores, (x86caps.LogicalCores==1) ? L"" : L"s",
 			x86caps.GetTypeName().c_str(),
 			x86caps.Flags, x86caps.Flags2,
 			x86caps.EFlags
@@ -141,6 +245,8 @@ void SysLogMachineCaps()
 	if( x86caps.hasSupplementalStreamingSIMD3Extensions ) features[0].Add( L"SSSE3" );
 	if( x86caps.hasStreamingSIMD4Extensions )		features[0].Add( L"SSE4.1" );
 	if( x86caps.hasStreamingSIMD4Extensions2 )		features[0].Add( L"SSE4.2" );
+	if( x86caps.hasAVX )							features[0].Add( L"AVX" );
+	if( x86caps.hasFMA)								features[0].Add( L"FMA" );
 
 	if( x86caps.hasMultimediaExtensionsExt )		features[1].Add( L"MMX2  " );
 	if( x86caps.has3DNOWInstructionExtensions )		features[1].Add( L"3DNOW " );
@@ -190,7 +296,7 @@ CpuInitializer< CpuType >::CpuInitializer()
 {
 	try {
 		MyCpu = new CpuType();
-		MyCpu->Allocate();
+		MyCpu->Reserve();
 	}
 	catch( Exception::RuntimeError& ex )
 	{
@@ -209,7 +315,7 @@ CpuInitializer< CpuType >::CpuInitializer()
 template< typename CpuType >
 CpuInitializer< CpuType >::~CpuInitializer() throw()
 {
-	if( MyCpu )
+	if (MyCpu)
 		MyCpu->Shutdown();
 }
 
@@ -239,103 +345,141 @@ public:
 // returns the translated error message for the Virtual Machine failing to allocate!
 static wxString GetMemoryErrorVM()
 {
-	return pxE( ".Error:EmuCore::MemoryForVM",
+	return pxE( "!Notice:EmuCore::MemoryForVM",
 		L"PCSX2 is unable to allocate memory needed for the PS2 virtual machine. "
 		L"Close out some memory hogging background tasks and try again."
 	);
 }
 
 // --------------------------------------------------------------------------------------
-//  SysAllocVM  (implementations)
+//  SysReserveVM  (implementations)
 // --------------------------------------------------------------------------------------
-SysAllocVM::SysAllocVM()
+SysMainMemory::SysMainMemory()
 {
-	InstallSignalHandler();
-
-	Console.WriteLn( "Allocating memory for the PS2 virtual machine..." );
-
-	try
-	{
-		vtlb_Core_Alloc();
-		memAlloc();
-		psxMemAlloc();
-		vuMicroMemAlloc();
-	}
-	// ----------------------------------------------------------------------------
-	catch( Exception::OutOfMemory& ex )
-	{
-		ex.UserMsg() += L"\n\n" + GetMemoryErrorVM();
-		CleanupMess();
-		throw;
-	}
-	catch( std::bad_alloc& ex )
-	{
-		CleanupMess();
-
-		// re-throw std::bad_alloc as something more friendly.  This is needed since
-		// much of the code uses new/delete internally, which throw std::bad_alloc on fail.
-
-		throw Exception::OutOfMemory()
-			.SetDiagMsg(
-				L"std::bad_alloc caught while trying to allocate memory for the PS2 Virtual Machine.\n"
-				L"Error Details: " + fromUTF8( ex.what() )
-			)
-			.SetUserMsg(GetMemoryErrorVM()); 	// translated
-	}
 }
 
-void SysAllocVM::CleanupMess() throw()
+SysMainMemory::~SysMainMemory() throw()
 {
-	try
-	{
-		vuMicroMemShutdown();
-		psxMemShutdown();
-		memShutdown();
-		vtlb_Core_Shutdown();
-	}
-	DESTRUCTOR_CATCHALL
+	ReleaseAll();
 }
 
-SysAllocVM::~SysAllocVM() throw()
+void SysMainMemory::ReserveAll()
 {
-	CleanupMess();
+	pxInstallSignalHandler();
+
+	DevCon.WriteLn( Color_StrongBlue, "Mapping host memory for virtual systems..." );
+	ConsoleIndentScope indent(1);
+
+	m_ee.Reserve();
+	m_iop.Reserve();
+	m_vu.Reserve();
+	
+	reserveNewVif(0);
+	reserveNewVif(1);
 }
+
+void SysMainMemory::CommitAll()
+{
+	vtlb_Core_Alloc();
+	if (m_ee.IsCommitted() && m_iop.IsCommitted() && m_vu.IsCommitted()) return;
+
+	DevCon.WriteLn( Color_StrongBlue, "Allocating host memory for virtual systems..." );
+	ConsoleIndentScope indent(1);
+
+	m_ee.Commit();
+	m_iop.Commit();
+	m_vu.Commit();
+}
+
+
+void SysMainMemory::ResetAll()
+{
+	CommitAll();
+
+	DevCon.WriteLn( Color_StrongBlue, "Resetting host memory for virtual systems..." );
+	ConsoleIndentScope indent(1);
+
+	m_ee.Reset();
+	m_iop.Reset();
+	m_vu.Reset();
+
+	// Note: newVif is reset as part of other VIF structures.
+}
+
+void SysMainMemory::DecommitAll()
+{
+	if (!m_ee.IsCommitted() && !m_iop.IsCommitted() && !m_vu.IsCommitted()) return;
+
+	Console.WriteLn( Color_Blue, "Decommitting host memory for virtual systems..." );
+	ConsoleIndentScope indent(1);
+
+	m_ee.Decommit();
+	m_iop.Decommit();
+	m_vu.Decommit();
+
+	closeNewVif(0);
+	closeNewVif(1);
+	
+	vtlb_Core_Free();
+}
+
+void SysMainMemory::ReleaseAll()
+{
+	DecommitAll();
+
+	Console.WriteLn( Color_Blue, "Releasing host memory maps for virtual systems..." );
+	ConsoleIndentScope indent(1);
+
+	vtlb_Core_Free();		// Just to be sure... (calling order could result in it getting missed during Decommit).
+
+	releaseNewVif(0);
+	releaseNewVif(1);
+
+	m_ee.Decommit();
+	m_iop.Decommit();
+	m_vu.Decommit();
+
+	safe_delete(Source_PageFault);
+}
+
 
 // --------------------------------------------------------------------------------------
 //  SysCpuProviderPack  (implementations)
 // --------------------------------------------------------------------------------------
 SysCpuProviderPack::SysCpuProviderPack()
 {
-	Console.WriteLn( "Allocating memory for recompilers..." );
+	Console.WriteLn( Color_StrongBlue, "Reserving memory for recompilers..." );
+	ConsoleIndentScope indent(1);
 
 	CpuProviders = new CpuInitializerSet();
 
 	try {
-		recCpu.Allocate();
+		recCpu.Reserve();
 	}
 	catch( Exception::RuntimeError& ex )
 	{
 		m_RecExceptionEE = ex.Clone();
-		Console.Error( L"EE Recompiler Allocation Failed:\n" + ex.FormatDiagnosticMessage() );
+		Console.Error( L"EE Recompiler Reservation Failed:\n" + ex.FormatDiagnosticMessage() );
 		recCpu.Shutdown();
 	}
 
 	try {
-		psxRec.Allocate();
+		psxRec.Reserve();
 	}
 	catch( Exception::RuntimeError& ex )
 	{
 		m_RecExceptionIOP = ex.Clone();
-		Console.Error( L"IOP Recompiler Allocation Failed:\n" + ex.FormatDiagnosticMessage() );
+		Console.Error( L"IOP Recompiler Reservation Failed:\n" + ex.FormatDiagnosticMessage() );
 		psxRec.Shutdown();
 	}
 
 	// hmm! : VU0 and VU1 pre-allocations should do sVU and mVU separately?  Sounds complicated. :(
 
-	// If both VUrecs failed, then make sure the SuperVU is totally closed out, because it
-	// actually initializes everything once and then shares it between both VU recs.
-	if( !IsRecAvailable_SuperVU0() && !IsRecAvailable_SuperVU1() )
-		SuperVUDestroy( -1 );
+	if (newVifDynaRec)
+	{
+		dVifReserve(0);
+		dVifReserve(1);
+	}
 }
 
 bool SysCpuProviderPack::IsRecAvailable_MicroVU0() const { return CpuProviders->microVU0.IsAvailable(); }
@@ -353,14 +497,14 @@ void SysCpuProviderPack::CleanupMess() throw()
 {
 	try
 	{
-		closeNewVif(0);
-		closeNewVif(1);
-
-		// Special SuperVU "complete" terminator (stupid hacky recompiler)
-		SuperVUDestroy( -1 );
-
 		psxRec.Shutdown();
 		recCpu.Shutdown();
+
+		if (newVifDynaRec)
+		{
+			dVifRelease(0);
+			dVifRelease(1);
+		}
 	}
 	DESTRUCTOR_CATCHALL
 }
@@ -418,20 +562,21 @@ void SysClearExecutionCache()
 {
 	GetCpuProviders().ApplyConfig();
 
-	// SuperVUreset will do nothing is none of the recs are initialized.
-	// But it's needed if one or the other is initialized.
-	SuperVUReset(-1);
-
 	Cpu->Reset();
 	psxCpu->Reset();
-	// mVU's VU0 needs to be properly initialised for macro mode even if it's not used for micro mode!
+
+	// mVU's VU0 needs to be properly initialized for macro mode even if it's not used for micro mode!
 	if (CHECK_EEREC)
 		((BaseVUmicroCPU*)GetCpuProviders().CpuProviders->microVU0)->Reset();
+
 	CpuVU0->Reset();
 	CpuVU1->Reset();
 
-	resetNewVif(0);
-	resetNewVif(1);
+	if (newVifDynaRec)
+	{
+		dVifReset(0);
+		dVifReset(1);
+	}
 }
 
 // Maps a block of memory for use as a recompiled code buffer, and ensures that the
@@ -444,19 +589,17 @@ u8* SysMmapEx(uptr base, u32 size, uptr bounds, const char *caller)
 
 	if( (Mem == NULL) || (bounds != 0 && (((uptr)Mem + size) > bounds)) )
 	{
-		if( base != NULL )
+		if( base )
 		{
 			DbgCon.Warning( "First try failed allocating %s at address 0x%x", caller, base );
 
-			// memory allocation *must* have the top bit clear, so let's try again
-			// with NULL (let the OS pick something for us).
-
+			// Let's try again at an OS-picked memory area, and then hope it meets needed
+			// boundschecking criteria below.
 			SafeSysMunmap( Mem, size );
-
-			Mem = (u8*)HostSys::Mmap( NULL, size );
+			Mem = (u8*)HostSys::Mmap( 0, size );
 		}
 
-		if( bounds != 0 && (((uptr)Mem + size) > bounds) )
+		if( (bounds != 0) && (((uptr)Mem + size) > bounds) )
 		{
 			DevCon.Warning( "Second try failed allocating %s, block ptr 0x%x does not meet required criteria.", caller, Mem );
 			SafeSysMunmap( Mem, size );
@@ -476,10 +619,12 @@ wxString SysGetDiscID()
 	
 	if( !ElfCRC )
 	{
-		// FIXME: If the system is currently running the BIOS, it should return a serial based on
+		// FIXME: system is currently running the BIOS, so it should return a serial based on
 		// the BIOS being run (either a checksum of the BIOS roms, and/or a string based on BIOS
 		// region and revision).
+		
+		return wxEmptyString;
 	}
 
-	return wxsFormat( L"%8.8x", ElfCRC );
+	return pxsFmt( L"%08x", ElfCRC );
 }

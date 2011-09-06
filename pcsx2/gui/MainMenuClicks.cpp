@@ -1,17 +1,17 @@
 /*  PCSX2 - PS2 Emulator for PCs
-*  Copyright (C) 2002-2010  PCSX2 Dev Team
-*
-*  PCSX2 is free software: you can redistribute it and/or modify it under the terms
-*  of the GNU Lesser General Public License as published by the Free Software Found-
-*  ation, either version 3 of the License, or (at your option) any later version.
-*
-*  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-*  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-*  PURPOSE.  See the GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License along with PCSX2.
-*  If not, see <http://www.gnu.org/licenses/>.
-*/
+ *  Copyright (C) 2002-2010  PCSX2 Dev Team
+ *
+ *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
+ *  of the GNU Lesser General Public License as published by the Free Software Found-
+ *  ation, either version 3 of the License, or (at your option) any later version.
+ *
+ *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ *  PURPOSE.  See the GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along with PCSX2.
+ *  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #include "PrecompiledHeader.h"
 
@@ -24,24 +24,12 @@
 #include "Dialogs/ModalPopups.h"
 #include "Dialogs/ConfigurationDialog.h"
 #include "Dialogs/LogOptionsDialog.h"
-#include "Dialogs/NetplayDialog.h"
-#include "Dialogs/ConnectionStatusDialog.h"
 
 #include "Utilities/IniInterface.h"
 
-#include "Net.h"
-
+#include "Netplay/NetplayPlugin.h"
 
 using namespace Dialogs;
-
-void MainEmuFrame::SaveEmuOptions()
-{
-	if (wxConfigBase* conf = GetAppConfig())
-	{
-		IniSaver saver(*conf);
-		g_Conf->EmuOptions.LoadSave(saver);
-	}
-}
 
 void MainEmuFrame::Menu_SysSettings_Click(wxCommandEvent &event)
 {
@@ -51,6 +39,11 @@ void MainEmuFrame::Menu_SysSettings_Click(wxCommandEvent &event)
 void MainEmuFrame::Menu_McdSettings_Click(wxCommandEvent &event)
 {
 	AppOpenDialog<McdConfigDialog>( this );
+}
+
+void MainEmuFrame::Menu_GameDatabase_Click(wxCommandEvent &event)
+{
+	AppOpenDialog<GameDatabaseDialog>( this );
 }
 
 void MainEmuFrame::Menu_WindowSettings_Click(wxCommandEvent &event)
@@ -72,13 +65,19 @@ void MainEmuFrame::Menu_SelectPluginsBios_Click(wxCommandEvent &event)
 	AppOpenDialog<ComponentsConfigDialog>( this );
 }
 
+void MainEmuFrame::Menu_Language_Click(wxCommandEvent &event)
+{
+	//AppOpenDialog<InterfaceConfigDialog>( this );
+	InterfaceConfigDialog(this).ShowModal();
+}
 
 static void WipeSettings()
 {
 	wxGetApp().CleanupRestartable();
 	wxGetApp().CleanupResources();
 
-	wxRemoveFile( GetSettingsFilename() );
+	wxRemoveFile( GetUiSettingsFilename() );
+	wxRemoveFile( GetVmSettingsFilename() );
 
 	// FIXME: wxRmdir doesn't seem to work here for some reason (possible file sharing issue
 	// with a plugin that leaves a file handle dangling maybe?).  But deleting the inis folder
@@ -89,6 +88,8 @@ static void WipeSettings()
 	wxGetApp().GetRecentIsoManager().Clear();
 	g_Conf = new AppConfig();
 	sMainFrame.RemoveCdvdMenu();
+
+	sApp.WipeUserModeSettings();
 }
 
 void MainEmuFrame::RemoveCdvdMenu()
@@ -104,11 +105,11 @@ void MainEmuFrame::Menu_ResetAllSettings_Click(wxCommandEvent &event)
 	{
 		ScopedCoreThreadPopup suspender;
 		if( !Msgbox::OkCancel( pxsFmt(
-			pxE( ".Popup:DeleteSettings",
-			L"This command clears %s settings and allows you to re-run the First-Time Wizard.  You will need to "
-			L"manually restart %s after this operation.\n\n"
-			L"WARNING!!  Click OK to delete *ALL* settings for %s and force-close the app, losing any current emulation progress.  Are you absolutely sure?"
-			L"\n\n(note: settings for plugins are unaffected)"
+			pxE( "!Notice:DeleteSettings",
+				L"This command clears %s settings and allows you to re-run the First-Time Wizard.  You will need to "
+				L"manually restart %s after this operation.\n\n"
+				L"WARNING!!  Click OK to delete *ALL* settings for %s and force-close the app, losing any current emulation progress.  Are you absolutely sure?"
+				L"\n\n(note: settings for plugins are unaffected)"
 			), pxGetAppName().c_str(), pxGetAppName().c_str(), pxGetAppName().c_str() ),
 			_("Reset all settings?") ) )
 		{
@@ -146,7 +147,7 @@ wxWindowID SwapOrReset_Iso( wxWindow* owner, IScopedCoreThread& core_control, co
 		dialog += dialog.GetCharHeight();
 		dialog += dialog.Heading(_("Do you want to swap discs or boot the new image (via system reset)?"));
 
-		result = pxIssueConfirmation( dialog, MsgButtons().Reset().Cancel().Custom(_("Swap Disc")), L"DragDrop.BootSwapIso" );
+		result = pxIssueConfirmation( dialog, MsgButtons().Reset().Cancel().Custom(_("Swap Disc"), "swap"), L"DragDrop.BootSwapIso" );
 		if( result == wxID_CANCEL )
 		{
 			core_control.AllowResume();
@@ -154,6 +155,7 @@ wxWindowID SwapOrReset_Iso( wxWindow* owner, IScopedCoreThread& core_control, co
 		}
 	}
 
+	g_Conf->CdvdSource = CDVDsrc_Iso;
 	SysUpdateIsoSrcFile( isoFilename );
 	if( result == wxID_RESET )
 	{
@@ -163,10 +165,12 @@ wxWindowID SwapOrReset_Iso( wxWindow* owner, IScopedCoreThread& core_control, co
 	else
 	{
 		Console.Indent().WriteLn( "HotSwapping to new ISO src image!" );
-		g_Conf->CdvdSource = CDVDsrc_Iso;
+		//g_Conf->CdvdSource = CDVDsrc_Iso;
 		//CoreThread.ChangeCdvdSource();
 		core_control.AllowResume();
 	}
+
+	GetMainFrame().EnableCdvdPluginSubmenu( g_Conf->CdvdSource == CDVDsrc_Plugin );
 
 	return result;
 }
@@ -187,9 +191,9 @@ wxWindowID SwapOrReset_CdvdSrc( wxWindow* owner, CDVD_SourceType newsrc )
 
 		dialog += dialog.Heading(changeMsg + L"\n\n" +
 			_("Do you want to swap discs or boot the new image (system reset)?")
-			);
+		);
 
-		result = pxIssueConfirmation( dialog, MsgButtons().Reset().Cancel().Custom(_("Swap Disc")), L"DragDrop.BootSwapIso" );
+		result = pxIssueConfirmation( dialog, MsgButtons().Reset().Cancel().Custom(_("Swap Disc"), "swap"), L"DragDrop.BootSwapIso" );
 
 		if( result == wxID_CANCEL )
 		{
@@ -215,6 +219,8 @@ wxWindowID SwapOrReset_CdvdSrc( wxWindow* owner, CDVD_SourceType newsrc )
 		sApp.SysExecute( g_Conf->CdvdSource );
 	}
 
+	GetMainFrame().EnableCdvdPluginSubmenu( g_Conf->CdvdSource == CDVDsrc_Plugin );
+
 	return result;
 }
 
@@ -237,7 +243,7 @@ static wxString JoinFiletypes( const wxChar** src )
 
 		++src;
 	}
-
+	
 	return dest;
 }
 
@@ -251,7 +257,7 @@ bool MainEmuFrame::_DoSelectIsoBrowser( wxString& result )
 
 	const wxString isoSupportedLabel( JoinString(isoSupportedTypes, L" ") );
 	const wxString isoSupportedList( JoinFiletypes(isoSupportedTypes) );
-
+	
 	wxArrayString isoFilterTypes;
 
 	isoFilterTypes.Add(pxsFmt(_("All Supported (%s)"), (isoSupportedLabel + L" .dump").c_str()));
@@ -265,7 +271,7 @@ bool MainEmuFrame::_DoSelectIsoBrowser( wxString& result )
 
 	isoFilterTypes.Add(_("All Files (*.*)"));
 	isoFilterTypes.Add(L"*.*");
-
+	
 	wxFileDialog ctrl( this, _("Select CDVD source iso..."), g_Conf->Folders.RunIso.ToString(), wxEmptyString,
 		JoinString(isoFilterTypes, L"|"), wxFD_OPEN | wxFD_FILE_MUST_EXIST );
 
@@ -311,9 +317,9 @@ void MainEmuFrame::_DoBootCdvd()
 
 			wxDialogWithHelpers dialog( this, _("ISO file not found!") );
 			dialog += dialog.Heading(
-				_("An error occurred while trying to open the file:\n\n") + g_Conf->CurrentIso + L"\n\n" +
+				_("An error occurred while trying to open the file:") + wxString(L"\n\n") + g_Conf->CurrentIso + L"\n\n" +
 				_("Error: The configured ISO file does not exist.  Click OK to select a new ISO source for CDVD.")
-				);
+			);
 
 			pxIssueConfirmation( dialog, MsgButtons().OK() );
 
@@ -347,6 +353,11 @@ void MainEmuFrame::_DoBootCdvd()
 	}
 
 	sApp.SysExecute( g_Conf->CdvdSource );
+}
+
+void MainEmuFrame::EnableCdvdPluginSubmenu(bool isEnable)
+{
+	EnableMenuItem( GetPluginMenuId_Settings(PluginId_CDVD), isEnable );
 }
 
 void MainEmuFrame::_DoBootCdvdWithNetplay()
@@ -399,23 +410,10 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		}
 	}
 
-	NetplayDialog dialog(&g_Conf->Net, (wxWindow*)GetMainFramePtr());
-	if(dialog.ShowModal() == wxID_OK)
-	{
-		g_NetCore = new Netplay();
-		ConnectionStatusDialog connectionDialog(g_NetCore,&g_Conf->Net, 
-			(wxWindow*)GetMainFramePtr());
-		if( connectionDialog.ShowModal() == wxID_OK)
-		{
-			sApp.SysExecute( g_Conf->CdvdSource );
-		}
-		else
-		{
-			g_NetCore.Delete();
-		}
-	}
-
+	INetplayPlugin::GetInstance().ShowNetplayDialog(g_Conf->Net);
 }
+
+
 
 void MainEmuFrame::Menu_CdvdSource_Click( wxCommandEvent &event )
 {
@@ -423,9 +421,9 @@ void MainEmuFrame::Menu_CdvdSource_Click( wxCommandEvent &event )
 
 	switch( event.GetId() )
 	{
-	case MenuId_Src_Iso:	newsrc = CDVDsrc_Iso;		break;
-	case MenuId_Src_Plugin:	newsrc = CDVDsrc_Plugin;	break;
-	case MenuId_Src_NoDisc: newsrc = CDVDsrc_NoDisc;	break;
+		case MenuId_Src_Iso:	newsrc = CDVDsrc_Iso;		break;
+		case MenuId_Src_Plugin:	newsrc = CDVDsrc_Plugin;	break;
+		case MenuId_Src_NoDisc: newsrc = CDVDsrc_NoDisc;	break;
 		jNO_DEFAULT
 	}
 
@@ -450,6 +448,7 @@ void MainEmuFrame::Menu_BootNet_Click( wxCommandEvent &event )
 	_DoBootCdvdWithNetplay();
 }
 
+
 wxString GetMsg_IsoImageChanged()
 {
 	return _("You have selected the following ISO image into PCSX2:\n\n");
@@ -465,37 +464,50 @@ void MainEmuFrame::Menu_IsoBrowse_Click( wxCommandEvent &event )
 		core.AllowResume();
 		return;
 	}
-
+	
 	SwapOrReset_Iso(this, core, isofile, GetMsg_IsoImageChanged());
 	AppSaveSettings();		// save the new iso selection; update menus!
 }
+
 
 void MainEmuFrame::Menu_MultitapToggle_Click( wxCommandEvent& )
 {
 	g_Conf->EmuOptions.MultitapPort0_Enabled = GetMenuBar()->IsChecked( MenuId_Config_Multitap0Toggle );
 	g_Conf->EmuOptions.MultitapPort1_Enabled = GetMenuBar()->IsChecked( MenuId_Config_Multitap1Toggle );
 	AppApplySettings();
-	SaveEmuOptions();
+	AppSaveSettings();
 
 	//evt.Skip();
+}
+
+void MainEmuFrame::Menu_EnableBackupStates_Click( wxCommandEvent& )
+{
+	g_Conf->EmuOptions.BackupSavestate = GetMenuBar()->IsChecked( MenuId_EnableBackupStates );
+	
+	//without the next line, after toggling this menu-checkbox, the change only applies from the 2nd save and onwards
+	//  (1st save after the toggle keeps the old pre-toggle value)..
+	//  wonder what that means for all the other menu checkboxes which only use AppSaveSettings... (avih)
+	AppApplySettings();
+    
+	AppSaveSettings();
 }
 
 void MainEmuFrame::Menu_EnablePatches_Click( wxCommandEvent& )
 {
 	g_Conf->EmuOptions.EnablePatches = GetMenuBar()->IsChecked( MenuId_EnablePatches );
-	SaveEmuOptions();
+    AppSaveSettings();
 }
 
 void MainEmuFrame::Menu_EnableCheats_Click( wxCommandEvent& )
 {
 	g_Conf->EmuOptions.EnableCheats  = GetMenuBar()->IsChecked( MenuId_EnableCheats );
-	SaveEmuOptions();
+    AppSaveSettings();
 }
 
 void MainEmuFrame::Menu_EnableHostFs_Click( wxCommandEvent& )
 {
 	g_Conf->EmuOptions.HostFs = GetMenuBar()->IsChecked( MenuId_EnableHostFs );
-	SaveEmuOptions();
+    AppSaveSettings();
 }
 
 void MainEmuFrame::Menu_OpenELF_Click(wxCommandEvent&)
@@ -512,6 +524,12 @@ void MainEmuFrame::Menu_OpenELF_Click(wxCommandEvent&)
 
 void MainEmuFrame::Menu_LoadStates_Click(wxCommandEvent &event)
 {
+	if( event.GetId() == MenuId_State_LoadBackup )
+	{
+		States_DefrostCurrentSlotBackup();
+		return;
+	}
+
 	States_SetCurrentSlot( event.GetId() - MenuId_State_Load01 - 1 );
 	States_DefrostCurrentSlot();
 }
@@ -524,12 +542,12 @@ void MainEmuFrame::Menu_SaveStates_Click(wxCommandEvent &event)
 
 void MainEmuFrame::Menu_LoadStateOther_Click(wxCommandEvent &event)
 {
-	Console.WriteLn("If this were hooked up, it would load a savestate file.");
+   Console.WriteLn("If this were hooked up, it would load a savestate file.");
 }
 
 void MainEmuFrame::Menu_SaveStateOther_Click(wxCommandEvent &event)
 {
-	Console.WriteLn("If this were hooked up, it would save a savestate file.");
+   Console.WriteLn("If this were hooked up, it would save a savestate file.");
 }
 
 void MainEmuFrame::Menu_Exit_Click(wxCommandEvent &event)
@@ -621,14 +639,7 @@ void MainEmuFrame::Menu_ShowConsole(wxCommandEvent &event)
 void MainEmuFrame::Menu_ShowConsole_Stdio(wxCommandEvent &event)
 {
 	g_Conf->EmuOptions.ConsoleToStdio = GetMenuBar()->IsChecked( MenuId_Console_Stdio );
-	SaveEmuOptions();
-}
-
-void MainEmuFrame::Menu_PrintCDVD_Info(wxCommandEvent &event)
-{
-	g_Conf->EmuOptions.CdvdVerboseReads = GetMenuBar()->IsChecked( MenuId_CDVD_Info );
-	const_cast<Pcsx2Config&>(EmuConfig).CdvdVerboseReads = g_Conf->EmuOptions.CdvdVerboseReads;		// read-only in core thread, so it's safe to modify.
-	SaveEmuOptions();
+	AppSaveSettings();
 }
 
 void MainEmuFrame::Menu_ShowAboutBox(wxCommandEvent &event)

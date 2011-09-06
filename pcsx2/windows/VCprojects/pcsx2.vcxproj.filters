@@ -148,6 +148,15 @@
     <Filter Include="AppHost\Cheats">
       <UniqueIdentifier>{b9da6fbf-4fd9-4cfb-89f7-34ac0f933ce9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="AppHost\Netplay">
+      <UniqueIdentifier>{2b52fc9f-401d-43a5-b514-fc1e042d09e1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AppHost\Netplay\shoryu">
+      <UniqueIdentifier>{7fc7f0a9-c42d-4a6e-9379-59d7561c74e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AppHost\Netplay\gui">
+      <UniqueIdentifier>{c30819c8-e27d-42e8-8624-2b5b1f1c376a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\Utilities\folderdesc.txt">
@@ -313,6 +322,9 @@
     </ClCompile>
     <ClCompile Include="..\..\vtlb.cpp">
       <Filter>System\Ps2\EmotionEngine\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\MTVU.cpp">
+      <Filter>System\Ps2\EmotionEngine\VU</Filter>
     </ClCompile>
     <ClCompile Include="..\..\VUmicro.cpp">
       <Filter>System\Ps2\EmotionEngine\VU</Filter>
@@ -497,9 +509,6 @@
     <ClCompile Include="..\..\IopSio2.cpp">
       <Filter>System\Ps2\Iop</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\pcsx2hostfs.cpp">
-      <Filter>System\Ps2\Iop</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\R3000A.cpp">
       <Filter>System\Ps2\Iop</Filter>
     </ClCompile>
@@ -539,12 +548,6 @@
     <ClCompile Include="..\..\CDVD\CDVDisoReader.cpp">
       <Filter>System\Ps2\Iop\CDVD</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\CDVD\IsoFileTools.cpp">
-      <Filter>System\Ps2\Iop\CDVD</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\IPU\coroutine.cpp">
-      <Filter>System\Ps2\IPU</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\Ipu\IPU.cpp">
       <Filter>System\Ps2\IPU</Filter>
     </ClCompile>
@@ -559,9 +562,6 @@
     </ClCompile>
     <ClCompile Include="..\..\Ipu\mpeg2lib\Mpeg.cpp">
       <Filter>System\Ps2\IPU\mpeg2lib</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\ps2\GIFpath.cpp">
-      <Filter>System\Ps2\GS</Filter>
     </ClCompile>
     <ClCompile Include="..\..\GS.cpp">
       <Filter>System\Ps2\GS</Filter>
@@ -665,9 +665,6 @@
     <ClCompile Include="..\..\gui\i18n.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\IniInterface.cpp">
-      <Filter>AppHost</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\IsoDropTarget.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
@@ -686,25 +683,16 @@
     <ClCompile Include="..\..\gui\MSWstuff.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\Plugins.cpp">
-      <Filter>AppHost</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\pxLogTextCtrl.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\RecentIsoList.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\RecoverySystem.cpp">
-      <Filter>AppHost</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\Saveslots.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\Dialogs\AboutBoxDialog.cpp">
-      <Filter>AppHost\Dialogs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\gui\AdvancedDialog.cpp">
       <Filter>AppHost\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\Dialogs\AssertionDialog.cpp">
@@ -767,9 +755,6 @@
     <ClCompile Include="..\..\gui\Panels\MemoryCardListPanel.cpp">
       <Filter>AppHost\Panels</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\Panels\MemoryCardsPanel.cpp">
-      <Filter>AppHost\Panels</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\Panels\MiscPanelStuff.cpp">
       <Filter>AppHost\Panels</Filter>
     </ClCompile>
@@ -802,6 +787,59 @@
     </ClCompile>
     <ClCompile Include="..\cheats\cheats.cpp">
       <Filter>AppHost\Cheats</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\AppCorePlugins.cpp" />
+    <ClCompile Include="..\..\gui\ExecutorThread.cpp" />
+    <ClCompile Include="..\..\gui\UpdateUI.cpp" />
+    <ClCompile Include="..\..\gui\SysState.cpp" />
+    <ClCompile Include="..\..\ZipTools\thread_gzip.cpp" />
+    <ClCompile Include="..\..\ZipTools\thread_lzma.cpp" />
+    <ClCompile Include="..\..\GameDatabase.cpp" />
+    <ClCompile Include="..\..\Patch_Memory.cpp" />
+    <ClCompile Include="..\..\IPU\IPUdma.cpp">
+      <Filter>System\Ps2\IPU</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ps2\LegacyDmac.cpp">
+      <Filter>System\Ps2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\AppUserMode.cpp">
+      <Filter>AppHost</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\AppGameDatabase.cpp">
+      <Filter>AppHost</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\Dialogs\McdConfigDialog.cpp">
+      <Filter>AppHost\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\Dialogs\GameDatabaseDialog.cpp">
+      <Filter>AppHost\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\Panels\GameDatabasePanel.cpp">
+      <Filter>AppHost\Panels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\Panels\MemoryCardListView.cpp">
+      <Filter>AppHost\Panels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Gif_Unit.cpp">
+      <Filter>System\Ps2\GS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Gif_Logger.cpp">
+      <Filter>System\Ps2\GS</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\gui\NetplayDialog.cpp">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\gui\NetplayDialogBase.cpp">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\NetplayPlugin.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\EmulatorState.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\Message.cpp">
+      <Filter>AppHost\Netplay</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -882,6 +920,9 @@
     </ClInclude>
     <ClInclude Include="..\..\vtlb.h">
       <Filter>System\Ps2\EmotionEngine\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\MTVU.h">
+      <Filter>System\Ps2\EmotionEngine\VU</Filter>
     </ClInclude>
     <ClInclude Include="..\..\VU.h">
       <Filter>System\Ps2\EmotionEngine\VU</Filter>
@@ -1036,12 +1077,6 @@
     <ClInclude Include="..\..\CDVD\CDVDisoReader.h">
       <Filter>System\Ps2\Iop\CDVD</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\CDVD\IsoFileTools.h">
-      <Filter>System\Ps2\Iop\CDVD</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\IPU\coroutine.h">
-      <Filter>System\Ps2\IPU</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\Ipu\IPU.h">
       <Filter>System\Ps2\IPU</Filter>
     </ClInclude>
@@ -1098,9 +1133,6 @@
     </ClInclude>
     <ClInclude Include="..\..\CDVD\IsoFS\SectorSource.h">
       <Filter>System\IsoFS</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\gui\AdvancedDialog.h">
-      <Filter>AppHost\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\Dialogs\ConfigurationDialog.h">
       <Filter>AppHost\Dialogs</Filter>
@@ -1174,6 +1206,64 @@
     <ClInclude Include="..\cheats\cheats.h">
       <Filter>AppHost\Cheats</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\gui\AppCorePlugins.h" />
+    <ClInclude Include="..\..\gui\AppCoreThread.h" />
+    <ClInclude Include="..\..\gui\GSFrame.h" />
+    <ClInclude Include="..\..\gui\pxEventThread.h" />
+    <ClInclude Include="..\..\ZipTools\ThreadedZipTools.h" />
+    <ClInclude Include="..\..\GameDatabase.h" />
+    <ClInclude Include="..\..\Patch_Obsolete.h" />
+    <ClInclude Include="..\..\IPU\IPUdma.h">
+      <Filter>System\Ps2\IPU</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\AppGameDatabase.h">
+      <Filter>AppHost</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\Panels\MemoryCardPanels.h">
+      <Filter>AppHost\Panels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Gif_Unit.h">
+      <Filter>System\Ps2\GS</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\gui\NetplayDialog.h">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\gui\NetplayDialogBase.h">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\archive.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\async_transport.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\boost_extensions.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\datagram_header.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\peer.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\repeater.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\session.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\shoryu\tools.h">
+      <Filter>AppHost\Netplay\shoryu</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\NetplayPlugin.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\EmulatorState.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\Message.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\3rdparty\wxWidgets\include\wx\msw\wx.rc">
@@ -1244,6 +1334,9 @@
       <Filter>AppHost\Resources</Filter>
     </CustomBuild>
     <CustomBuild Include="..\..\gui\Resources\Dualshock.jpg">
+      <Filter>AppHost\Resources</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\..\gui\Resources\ConfigIcon_Appearance.png">
       <Filter>AppHost\Resources</Filter>
     </CustomBuild>
   </ItemGroup>

@@ -47,6 +47,14 @@ static const int pxID_PadHandler_Keydown = 8030;
 // single for-loop to create them.
 static const int PluginMenuId_Interval = 0x10;
 
+// ID and return code used for modal popups that have a custom button.
+static const wxWindowID pxID_CUSTOM = wxID_LOWEST - 1;
+
+// Return code used by first time wizard if the dialog needs to be automatically recreated
+// (assigned an arbitrary value)
+static const wxWindowID pxID_RestartWizard = wxID_LOWEST - 100;
+
+
 // Forces the Interface to destroy the GS viewport window when the GS plugin is
 // destroyed.  This has the side effect of forcing all plugins to close and re-open
 // along with the GS, since the GS viewport window handle will have changed.
@@ -78,12 +86,13 @@ enum MenuIdentifiers
 	MenuId_Src_NoDisc,
 	MenuId_Boot_Iso,			// Opens submenu with Iso browser, and recent isos.
 	MenuId_IsoSelector,			// Contains a submenu of selectable "favorite" isos
-	MenuId_IsoBrowse,			// Open dialog, runs selected iso.
+	MenuId_RecentIsos_reservedStart,
+	MenuId_IsoBrowse = MenuId_RecentIsos_reservedStart + 100,			// Open dialog, runs selected iso.
 	MenuId_Boot_CDVD,
 	MenuId_Boot_CDVD2,
 	MenuId_Boot_Net,
 	MenuId_Boot_ELF,
-	MenuId_Boot_Recent,			// Menu populated with recent source bootings
+	//MenuId_Boot_Recent,			// Menu populated with recent source bootings
 
 
 	MenuId_Sys_SuspendResume,	// suspends/resumes active emulation, retains plugin states
@@ -91,6 +100,7 @@ enum MenuIdentifiers
 	MenuId_Sys_Shutdown,		// Closes virtual machine, shuts down plugins, wipes states.
 	MenuId_Sys_LoadStates,		// Opens load states submenu
 	MenuId_Sys_SaveStates,		// Opens save states submenu
+	MenuId_EnableBackupStates,	// Checkbox to enable/disables savestates backup
 	MenuId_EnablePatches,
 	MenuId_EnableCheats,
 	MenuId_EnableHostFs,
@@ -98,7 +108,8 @@ enum MenuIdentifiers
 	MenuId_State_Load,
 	MenuId_State_LoadOther,
 	MenuId_State_Load01,		// first of many load slots
-	MenuId_State_Save = MenuId_State_Load01+20,
+	MenuId_State_LoadBackup = MenuId_State_Load01+20,
+	MenuId_State_Save,
 	MenuId_State_SaveOther,
 	MenuId_State_Save01,		// first of many save slots
 
@@ -108,7 +119,9 @@ enum MenuIdentifiers
 	MenuId_Config_SysSettings,
 	MenuId_Config_McdSettings,
 	MenuId_Config_AppSettings,
+	MenuId_Config_GameDatabase,
 	MenuId_Config_BIOS,
+	MenuId_Config_Language,
 
 	// Plugin ID order is important.  Must match the order in tbl_PluginInfo.
 	MenuId_Config_GS,
@@ -140,7 +153,6 @@ enum MenuIdentifiers
 	MenuId_Profiler,			// Enable profiler
 	MenuId_Console,				// Enable console
 	MenuId_Console_Stdio,		// Enable Stdio
-	MenuId_CDVD_Info,
 
 	// Debug Subsection
 	MenuId_Debug_Open,			// opens the debugger window / starts a debug session
@@ -181,14 +193,15 @@ struct AppImageIds
 			Gamefixes,
 			MemoryCard,
 			Video,
-			Cpu;
+			Cpu,
+			Appearance;
 
 		ConfigIds()
 		{
-			Paths		= Plugins	=
-			Speedhacks	= Gamefixes	=
-			Video		= Cpu		= 
-			MemoryCard	= -1;
+			Paths		= Plugins		=
+			Speedhacks	= Gamefixes		=
+			Video		= Cpu			= 
+			MemoryCard	= Appearance	= -1;
 		}
 	} Config;
 
@@ -262,6 +275,7 @@ class StartupOptions
 public:
 	bool			ForceWizard;
 	bool			ForceConsole;
+	bool			PortableMode;
 
 	// Disables the fast boot option when auto-running games.  This option only applies
 	// if SysAutoRun is also true.
@@ -280,8 +294,9 @@ public:
 	StartupOptions()
 	{
 		ForceWizard				= false;
-		NoFastBoot				= false;
 		ForceConsole			= false;
+		PortableMode			= false;
+		NoFastBoot				= false;
 		SysAutoRun				= false;
 		CdvdSource				= CDVDsrc_NoDisc;
 	}
@@ -299,7 +314,7 @@ class CommandlineOverrides
 public:
 	AppConfig::FilenameOptions	Filenames;
 	wxDirName		SettingsFolder;
-	wxFileName		SettingsFile;
+	wxFileName		VmSettingsFile;
 
 	bool			DisableSpeedhacks;
 
@@ -332,7 +347,7 @@ public:
 
 	bool HasSettingsOverride() const
 	{
-		return SettingsFolder.IsOk() || SettingsFile.IsOk();
+		return SettingsFolder.IsOk() || VmSettingsFile.IsOk();
 	}
 
 	bool HasPluginsOverride() const
@@ -359,6 +374,10 @@ class Pcsx2AppTraits : public wxGUIAppTraits
 public:
 	virtual ~Pcsx2AppTraits() {}
 	wxMessageOutput* CreateMessageOutput();
+
+#ifdef wxUSE_STDPATHS
+	wxStandardPathsBase& GetStandardPaths();
+#endif
 };
 
 // =====================================================================================================
@@ -442,7 +461,8 @@ public:
 	void DispatchEvent( PluginEventType evt );
 	void DispatchEvent( AppEventType evt );
 	void DispatchEvent( CoreThreadStatus evt );
-	void DispatchEvent( IniInterface& ini );
+	void DispatchUiSettingsEvent( IniInterface& ini );
+	void DispatchVmSettingsEvent( IniInterface& ini );
 
 	// ----------------------------------------------------------------------------
 protected:
@@ -476,7 +496,7 @@ public:
 	// blocked threads stalling the GUI.
 	ExecutorThread					SysExecutorThread;
 	ScopedPtr<SysCpuProviderPack>	m_CpuProviders;
-	ScopedPtr<SysAllocVM>			m_VmAllocs;
+	ScopedPtr<SysMainMemory>	m_VmReserve;
 
 protected:
 	wxWindowID			m_id_MainFrame;
@@ -497,6 +517,8 @@ public:
 	void SysExecute();
 	void SysExecute( CDVD_SourceType cdvdsrc, const wxString& elf_override=wxEmptyString );
 	void LogicalVsync();
+	
+	SysMainMemory& GetVmReserve();
 	
 	GSFrame&		GetGsFrame() const;
 	MainEmuFrame&	GetMainFrame() const;
@@ -522,13 +544,16 @@ public:
 	void CleanupRestartable();
 	void CleanupResources();
 	void WipeUserModeSettings();
-	void ReadUserModeSettings();
+	bool TestUserPermissionsRights( const wxDirName& testFolder, wxString& createFailedStr, wxString& accessFailedStr );
+	void EstablishAppUserMode();
 
+	wxConfigBase* OpenInstallSettingsFile();
+	wxConfigBase* TestForPortableInstall();
+
+	bool HasPendingSaves() const;
 	void StartPendingSave();
 	void ClearPendingSave();
 	
-	void AllocateVM();
-
 	// --------------------------------------------------------------------------
 	//  App-wide Resources
 	// --------------------------------------------------------------------------
@@ -713,3 +738,5 @@ extern void UI_DisableSysShutdown();
 	pxAssertMsg( !wxGetApp().SysExecutorThread.IsSelf(), "Thread affinity violation: Call is *not* allowed from SysExecutor thread." )
 
 extern ExecutorThread& GetSysExecutorThread();
+
+extern bool g_ConfigPanelChanged; //Indicates that the main config panel is open and holds unapplied changes.

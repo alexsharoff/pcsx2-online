@@ -20,58 +20,70 @@
 #include <wx/dnd.h>
 #include <wx/listctrl.h>
 
+struct ListViewColumnInfo
+{
+	const wxChar*		name;
+	int					width;
+	wxListColumnFormat	align;
+};
+
 // --------------------------------------------------------------------------------------
 //  McdListItem / IMcdList
+//
+//  These are the items at the list-view.
+//  Each item holds:
+//     - An internal slot association (or -1 if it isn't associated with an internal slot)
+//     - Properties of the internal slot (when associated with one)
+//     - Properties of the file associated with this list item (when associated with one)
 // --------------------------------------------------------------------------------------
-struct McdListItem
+struct McdSlotItem
 {
-	bool		IsPresent;
-	bool		IsEnabled;
+	int			Slot;			//0-7: internal slot. -1: unrelated to an internal slot (the rest of the files at the folder).
+	bool		IsPresent;		//Whether or not a file is associated with this item (true/false when 0<=Slot<=7. Always true when Slot==-1)
+	
+	//Only meaningful when IsPresent==true (a file exists for this item):
+	wxFileName	Filename;		// full pathname
 	bool		IsFormatted;
-
 	uint		SizeInMB;		// size, in megabytes!
 	wxDateTime	DateCreated;
 	wxDateTime	DateModified;
 
-	int			Slot;
+	//Only meaningful when 0<=Slot<=7 (associated with an internal slot):
+	//  Properties of an internal slot, and translation from internal slot index to ps2 physical port (0-based-indexes).
+	bool IsEnabled;					//This slot is enabled/disabled
+	bool IsMultitapSlot() const;
+	uint GetMtapPort() const;
+	uint GetMtapSlot() const;
 
-	wxFileName	Filename;		// full pathname (optional)
+	bool operator==( const McdSlotItem& right ) const;
+	bool operator!=( const McdSlotItem& right ) const;
 
-	McdListItem()
+	McdSlotItem()
 	{
-		//Port = -1;
 		Slot		= -1;
 		
 		IsPresent = false;
 		IsEnabled = false;
 	}
-	
-	bool IsMultitapSlot() const;
-	uint GetMtapPort() const;
-	uint GetMtapSlot() const;
 
-	bool operator==( const McdListItem& right ) const;
-	bool operator!=( const McdListItem& right ) const;
 };
 
-typedef std::vector<McdListItem> McdList;
+typedef std::vector<McdSlotItem> McdList;
 
 class IMcdList
 {
 public:
 	virtual void RefreshMcds() const=0;
 	virtual int GetLength() const=0;
-	virtual const McdListItem& GetCard( int idx ) const=0;
-	virtual McdListItem& GetCard( int idx )=0;
-
+	virtual McdSlotItem& GetCardForViewIndex( int idx )=0;
+	virtual int GetSlotIndexForViewIndex( int listViewIndex )=0;
 	virtual wxDirName GetMcdPath() const=0;
-};
-
-struct ListViewColumnInfo
-{
-	const wxChar*		name;
-	int					width;
-	wxListColumnFormat	align;
+	virtual void PublicApply() =0;
+	virtual bool isFileAssignedToInternalSlot(const wxFileName cardFile) const =0;
+	virtual void RemoveCardFromSlot(const wxFileName cardFile) =0;
+	virtual bool IsNonEmptyFilesystemCards() const =0;
+	virtual bool UiDuplicateCard( McdSlotItem& src, McdSlotItem& dest ) =0;
+	
 };
 
 // --------------------------------------------------------------------------------------
@@ -82,16 +94,23 @@ class BaseMcdListView : public wxListView
 	typedef wxListView _parent;
 
 protected:
-	const IMcdList*		m_CardProvider;
+	IMcdList*		m_CardProvider;
 
 	// specifies the target of a drag&drop operation
-	int					m_TargetedItem;
+	int				m_TargetedItem;
 
 public:
+	void (*m_externHandler)(void);
+	void setExternHandler(void (*f)(void)){m_externHandler=f;};
+	void OnChanged(wxEvent& evt){if (m_externHandler) m_externHandler(); evt.Skip();}
+
 	virtual ~BaseMcdListView() throw() { }
 	BaseMcdListView( wxWindow* parent )
 		: _parent( parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_VIRTUAL )
 	{
+		m_externHandler=NULL;
+		Connect( this->GetId(),				wxEVT_LEFT_UP, wxEventHandler(BaseMcdListView::OnChanged));
+
 		m_CardProvider = NULL;
 	}
 
@@ -101,7 +120,7 @@ public:
 	virtual void LoadSaveColumns( IniInterface& ini );
 	virtual const ListViewColumnInfo& GetDefaultColumnInfo( uint idx ) const=0;
 
-	virtual const IMcdList& GetMcdProvider() const;
+	virtual IMcdList& GetMcdProvider();
 	virtual void SetTargetedItem( int sel );
 };
 
@@ -156,7 +175,7 @@ namespace Panels
 
 		virtual wxDirName GetMcdPath() const
 		{
-			pxAssume(m_FolderPicker);
+			pxAssert(m_FolderPicker);
 			return m_FolderPicker->GetPath();
 		}
 
@@ -184,16 +203,22 @@ namespace Panels
 		typedef BaseMcdListPanel _parent;
 
 	protected:
-		McdListItem		m_Cards[8]; 
+		McdSlotItem		m_Cards[8];
+
+		wxButton*		m_button_Rename;
 		
 		// Doubles as Create and Delete buttons
 		wxButton*		m_button_Create;
 		
-		// Doubles as Mount and Unmount buttons
-		wxButton*		m_button_Mount;
+		// Doubles as Mount and Unmount buttons ("Enable"/"Disable" port)
+//		wxButton*		m_button_Mount;
+
+		wxButton*		m_button_AssignUnassign; //insert/eject card
+		wxButton*		m_button_Duplicate;
+
 
 	public:
-		virtual ~MemoryCardListPanel_Simple() throw() {}
+		virtual ~MemoryCardListPanel_Simple() throw();
 		MemoryCardListPanel_Simple( wxWindow* parent );
 
 		void UpdateUI();
@@ -201,24 +226,50 @@ namespace Panels
 		// Interface Implementation for IMcdList
 		virtual int GetLength() const;
 
-		virtual const McdListItem& GetCard( int idx ) const;
-		virtual McdListItem& GetCard( int idx );
+		virtual McdSlotItem& GetCardForViewIndex( int idx );
+		virtual int GetSlotIndexForViewIndex( int viewIndex );
+		virtual void PublicApply(){ Apply(); };
+		void OnChangedListSelection(){ UpdateUI(); };
+		virtual bool UiDuplicateCard( McdSlotItem& src, McdSlotItem& dest );
 
 	protected:
-		void OnCreateCard(wxCommandEvent& evt);
+		void OnCreateOrDeleteCard(wxCommandEvent& evt);
 		void OnMountCard(wxCommandEvent& evt);
-		void OnRelocateCard(wxCommandEvent& evt);
+//		void OnRelocateCard(wxCommandEvent& evt);
+		void OnRenameFile(wxCommandEvent& evt);
+		void OnDuplicateFile(wxCommandEvent& evt);
+		void OnAssignUnassignFile(wxCommandEvent& evt);
 		
 		void OnListDrag(wxListEvent& evt);
 		void OnListSelectionChanged(wxListEvent& evt);
 		void OnOpenItemContextMenu(wxListEvent& evt);
+		void OnItemActivated(wxListEvent& evt);
 
 		virtual bool OnDropFiles(wxCoord x, wxCoord y, const wxArrayString& filenames);
+
+		std::vector<McdSlotItem> m_allFilesystemCards;
+		McdSlotItem m_filesystemPlaceholderCard;
+
+		virtual int GetNumFilesVisibleAsFilesystem() const;
+		virtual int GetNumVisibleInternalSlots() const;
+		virtual McdSlotItem& GetNthVisibleFilesystemCard(int n);
+		virtual bool IsSlotVisible(int slotIndex) const;
+		virtual void ReadFilesAtMcdFolder();
+		virtual bool isFileAssignedAndVisibleOnList(const wxFileName cardFile) const;
+		virtual bool isFileAssignedToInternalSlot(const wxFileName cardFile) const;
+		virtual void RemoveCardFromSlot(const wxFileName cardFile);
+		virtual bool IsNonEmptyFilesystemCards() const;
 
 		virtual void Apply();
 		virtual void AppStatusEvent_OnSettingsApplied();
 		virtual void DoRefresh();
 		virtual bool ValidateEnumerationStatus();
+
+		virtual void UiRenameCard( McdSlotItem& card );
+		virtual void UiCreateNewCard( McdSlotItem& card );
+		virtual void UiDeleteCard( McdSlotItem& card );
+		virtual void UiAssignUnassignFile( McdSlotItem& card );
+		
 	};
 
 	// --------------------------------------------------------------------------------------
@@ -229,8 +280,11 @@ namespace Panels
 		typedef BaseApplicableConfigPanel _parent;
 
 	protected:
-		pxCheckBox*		m_check_Multitap[2];
+		//pxCheckBox*		m_check_Multitap[2];
 		pxCheckBox*		m_check_Ejection;
+
+		//moved to the system menu, just below "Save State"
+		//pxCheckBox*		m_check_SavestateBackup;
 
 	public:
 		McdConfigPanel_Toggles( wxWindow* parent );
@@ -244,5 +298,6 @@ namespace Panels
 
 };
 
-extern bool EnumerateMemoryCard( McdListItem& dest, const wxFileName& filename );
+//avih: is the first one used??
+extern bool EnumerateMemoryCard( McdSlotItem& dest, const wxFileName& filename );
 //extern bool EnumerateMemoryCard( SimpleMcdItem& dest, const wxFileName& filename );

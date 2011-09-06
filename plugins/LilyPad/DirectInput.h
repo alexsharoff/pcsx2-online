@@ -1,0 +1,1 @@
+void EnumDirectInputDevices(int ignoreXInput);

@@ -20,7 +20,7 @@
 using namespace pxSizerFlags;
 
 Panels::GameFixesPanel::GameFixesPanel( wxWindow* parent )
-	: BaseApplicableConfigPanel( parent )
+	: BaseApplicableConfigPanel_SpecificConfig( parent )
 {
 	wxStaticBoxSizer& groupSizer = *new wxStaticBoxSizer( wxVERTICAL, this, _("Gamefixes") );
 
@@ -64,7 +64,7 @@ Panels::GameFixesPanel::GameFixesPanel( wxWindow* parent )
 		},
 		{
 			_("EE timing hack - Multi purpose hack. Try if all else fails."),
-			pxE( ".Tooltip:Gamefixes:EE Timing Hack",
+			pxEt( "!ContextTip:Gamefixes:EE Timing Hack",
 				L"Known to affect following games:\n"
 				L" * Digital Devil Saga (Fixes FMV and crashes)\n"
 				L" * SSX (Fixes bad graphics and crashes)\n"
@@ -77,12 +77,35 @@ Panels::GameFixesPanel::GameFixesPanel( wxWindow* parent )
 		},
 		{
 			_("OPH Flag hack - Try if your game freezes showing the same frame."),
-			pxE( ".Tooltip:Gamefixes:OPH Flag hack",
+			pxEt( "!ContextTip:Gamefixes:OPH Flag hack",
 				L"Known to affect following games:\n"
 				L" * Bleach Blade Battler\n"
 				L" * Growlanser II and III\n"
 				L" * Wizardry"
 			)
+		},
+		{
+			_("Ignore DMAC writes when it is busy."),
+			pxEt( "!ContextTip:Gamefixes:DMA Busy hack",
+				L"Known to affect following games:\n"
+				L" * Mana Khemia 1 (Going \"off campus\")\n"
+			)
+		},
+		{
+			_("Simulate VIF1 FIFO read ahead. Fixes slow loading games."),
+			pxEt( "!ContextTip:Gamefixes:VIF1 FIFO hack",
+				L"Known to affect following games:\n"
+				L" * Test Drive Unlimited\n"
+				L" * Transformers"
+			)
+		},
+		{
+			_("Delay VIF1 Stalls (VIF1 FIFO) - For SOCOM 2 HUD."),
+			wxEmptyString
+		},
+		{
+			_("Ignore Bus Direction on Path3 Transfer - Used for Hotwheels"),
+			wxEmptyString
 		}
 	};
 
@@ -92,11 +115,12 @@ Panels::GameFixesPanel::GameFixesPanel( wxWindow* parent )
 		m_checkbox[i]->SetToolTip( check_text[i].tooltip );
 	}
 
-	m_check_Enable = new pxCheckBox( this, _("Enable game fixes"),
-		pxE( ".Panel:Gamefixes:Compat Warning",
-			L"Gamefixes can fix wrong emulation in some games. However "
-            L"it can cause compatibility or performance issues in other games.  You "
-			L"will need to turn off fixes manually when changing games."
+	m_check_Enable = new pxCheckBox( this, _("Enable manual game fixes [Not recommended]"),
+		pxE( "!Panel:Gamefixes:Compat Warning",
+			L"Gamefixes can work around wrong emulation in some titles. \n"
+			L"They may also cause compatibility or performance issues. \n\n"
+			L"It's better to enable 'Automatic game fixes' at the main menu instead, and leave this page empty. \n"
+			L"('Automatic' means: selectively use specific tested fixes for specific games)"
 		)
 	);
 
@@ -117,28 +141,42 @@ void Panels::GameFixesPanel::Apply()
 	g_Conf->EnableGameFixes = m_check_Enable->GetValue();
 
 	Pcsx2Config::GamefixOptions& opts( g_Conf->EmuOptions.Gamefixes );
-    for (GamefixId i=GamefixId_FIRST; i < pxEnumEnd; ++i)
+	for (GamefixId i=GamefixId_FIRST; i < pxEnumEnd; ++i)
 		opts.Set((GamefixId)i, m_checkbox[i]->GetValue());
 
 	// make sure the user's command line specifications are disabled (if present).
 	wxGetApp().Overrides.ApplyCustomGamefixes = false;
 }
 
-void Panels::GameFixesPanel::EnableStuff()
+void Panels::GameFixesPanel::EnableStuff( AppConfig* configToUse )
 {
-    for (GamefixId i=GamefixId_FIRST; i < pxEnumEnd; ++i)
-    	m_checkbox[i]->Enable(m_check_Enable->GetValue());
+	if( !configToUse ) configToUse = g_Conf;
+	for (GamefixId i=GamefixId_FIRST; i < pxEnumEnd; ++i)
+		m_checkbox[i]->Enable(m_check_Enable->GetValue() && !configToUse->EnablePresets);
 }
 
 void Panels::GameFixesPanel::OnEnable_Toggled( wxCommandEvent& evt )
 {
-	EnableStuff();
+	AppConfig tmp=*g_Conf;
+	tmp.EnablePresets=false; //if clicked, button was enabled, so not using a preset --> let EnableStuff work
+
+	EnableStuff( &tmp );
 	evt.Skip();
 }
 
 void Panels::GameFixesPanel::AppStatusEvent_OnSettingsApplied()
 {
-	const Pcsx2Config::GamefixOptions& opts( g_Conf->EmuOptions.Gamefixes );
+	ApplyConfigToGui( *g_Conf );
+}
+
+void Panels::GameFixesPanel::ApplyConfigToGui( AppConfig& configToApply, int flags )
+{
+	const Pcsx2Config::GamefixOptions& opts( configToApply.EmuOptions.Gamefixes );
 	for (GamefixId i=GamefixId_FIRST; i < pxEnumEnd; ++i)
-		m_checkbox[i]->SetValue( opts.Get((GamefixId)i) );
+		m_checkbox[i]->SetValue( opts.Get((GamefixId)i) );//apply the use/don't-use fix values
+	
+	m_check_Enable->SetValue( configToApply.EnableGameFixes );//main gamefixes checkbox
+	EnableStuff( &configToApply );// enable/disable the all the fixes controls according to the main one
+	
+	this->Enable(!configToApply.EnablePresets);
 }

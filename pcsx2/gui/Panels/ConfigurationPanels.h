@@ -44,6 +44,8 @@ namespace Panels
 		FoldersEnum_t		m_FolderId;
 		wxDirPickerCtrl*	m_pickerCtrl;
 		pxCheckBox*			m_checkCtrl;
+		wxTextCtrl*			m_textCtrl;
+		wxButton*			b_explore;
 
 	public:
 		DirPickerPanel( wxWindow* parent, FoldersEnum_t folderid, const wxString& label, const wxString& dialogLabel );
@@ -68,6 +70,8 @@ namespace Panels
 
 	protected:
 		void Init( FoldersEnum_t folderid, const wxString& dialogLabel, bool isCompact );
+		void InitForPortableMode( const wxString& normalized );
+		void InitForRegisteredMode( const wxString& normalized, const wxString& dialogLabel, bool isCompact );
 
 		void UseDefaultPath_Click( wxCommandEvent &event );
 		void Explore_Click( wxCommandEvent &event );
@@ -109,56 +113,24 @@ namespace Panels
 
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+
+	protected:
+		void OnApplyLanguage_Clicked( wxCommandEvent& evt );
 	};
 
 	// --------------------------------------------------------------------------------------
-	//  CpuPanelEE / CpuPanelVU
+	//  CpuPanelEE / CpuPanelVU : Sub Panels
 	// --------------------------------------------------------------------------------------
-	class CpuPanelEE : public BaseApplicableConfigPanel
-	{
-	protected:
-		pxRadioPanel*	m_panel_RecEE;
-		pxRadioPanel*	m_panel_RecIOP;
-
-	public:
-		CpuPanelEE( wxWindow* parent );
-		virtual ~CpuPanelEE() throw() {}
-
-		void Apply();
-		void AppStatusEvent_OnSettingsApplied();
-
-	protected:
-		void OnRestoreDefaults( wxCommandEvent& evt );
-	};
-
-	class CpuPanelVU : public BaseApplicableConfigPanel
-	{
-	protected:
-		pxRadioPanel*	m_panel_VU0;
-		pxRadioPanel*	m_panel_VU1;
-
-	public:
-		CpuPanelVU( wxWindow* parent );
-		virtual ~CpuPanelVU() throw() {}
-
-		void Apply();
-		void AppStatusEvent_OnSettingsApplied();
-
-	protected:
-		void OnRestoreDefaults( wxCommandEvent& evt );
-	};
 
 	// --------------------------------------------------------------------------------------
 	//  BaseAdvancedCpuOptions
 	// --------------------------------------------------------------------------------------
-	class BaseAdvancedCpuOptions : public BaseApplicableConfigPanel
+	class BaseAdvancedCpuOptions : public BaseApplicableConfigPanel_SpecificConfig
 	{
+
 	protected:
 		pxRadioPanel*	m_RoundModePanel;
 		pxRadioPanel*	m_ClampModePanel;
-
-		pxCheckBox*		m_Option_FTZ;
-		pxCheckBox*		m_Option_DAZ;
 
 	public:
 		BaseAdvancedCpuOptions( wxWindow* parent );
@@ -181,6 +153,7 @@ namespace Panels
 		virtual ~AdvancedOptionsFPU() throw() { }
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 	};
 
 	class AdvancedOptionsVU : public BaseAdvancedCpuOptions
@@ -190,18 +163,60 @@ namespace Panels
 		virtual ~AdvancedOptionsVU() throw() { }
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
+
+	};
+
+	// --------------------------------------------------------------------------------------
+	//  CpuPanelEE / CpuPanelVU : Actual Panels
+	// --------------------------------------------------------------------------------------
+	class CpuPanelEE : public BaseApplicableConfigPanel_SpecificConfig
+	{
+	protected:
+		pxRadioPanel*		m_panel_RecEE;
+		pxRadioPanel*		m_panel_RecIOP;
+		pxCheckBox*			m_check_EECacheEnable;
+		AdvancedOptionsFPU*	m_advancedOptsFpu;
+
+	public:
+		CpuPanelEE( wxWindow* parent );
+		virtual ~CpuPanelEE() throw() {}
+
+		void Apply();
+		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui(AppConfig& configToApply, int flags=0);
+
+	protected:
+		void OnRestoreDefaults( wxCommandEvent& evt );
+	};
+
+	class CpuPanelVU : public BaseApplicableConfigPanel_SpecificConfig
+	{
+	protected:
+		pxRadioPanel*				m_panel_VU0;
+		pxRadioPanel*				m_panel_VU1;
+		Panels::AdvancedOptionsVU*	m_advancedOptsVu;
+
+	public:
+		CpuPanelVU( wxWindow* parent );
+		virtual ~CpuPanelVU() throw() {}
+
+		void Apply();
+		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
+
+	protected:
+		void OnRestoreDefaults( wxCommandEvent& evt );
 	};
 
 	// --------------------------------------------------------------------------------------
 	//  FrameSkipPanel
 	// --------------------------------------------------------------------------------------
-	class FrameSkipPanel : public BaseApplicableConfigPanel
+	class FrameSkipPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
 		wxSpinCtrl*		m_spin_FramesToSkip;
 		wxSpinCtrl*		m_spin_FramesToDraw;
-		//pxCheckBox*		m_check_EnableSkip;
-		//pxCheckBox*		m_check_EnableSkipOnTurbo;
 
 		pxRadioPanel*	m_radio_SkipMode;
 
@@ -211,12 +226,13 @@ namespace Panels
 
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 	};
 
 	// --------------------------------------------------------------------------------------
 	//  FramelimiterPanel
 	// --------------------------------------------------------------------------------------
-	class FramelimiterPanel : public BaseApplicableConfigPanel
+	class FramelimiterPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
 		pxCheckBox*		m_check_LimiterDisable;
@@ -237,22 +253,36 @@ namespace Panels
 
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 	};
 
 	// --------------------------------------------------------------------------------------
 	//  GSWindowSettingsPanel
 	// --------------------------------------------------------------------------------------
-	class GSWindowSettingsPanel : public BaseApplicableConfigPanel
+	class GSWindowSettingsPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
 		wxComboBox*		m_combo_AspectRatio;
 
+		wxTextCtrl*		m_text_Zoom;
+
 		pxCheckBox*		m_check_CloseGS;
 		pxCheckBox*		m_check_SizeLock;
 		pxCheckBox*		m_check_VsyncEnable;
+		pxCheckBox*		m_check_ManagedVsync;
 		pxCheckBox*		m_check_Fullscreen;
-		pxCheckBox*		m_check_ExclusiveFS;
+
+		//Exclusive mode is currently not used (true for svn r4399).
+		//PCSX2 has partial infrastructure for it:
+		//  - The plugin APIs have GSsetExclusive.
+		//  - GSdx seem to support it (it supports the API and has implementation), but I don't know if it ever got called.
+		//  - BUT, the configuration (AppConfig, and specifically GSWindowOptions) do NOT seem to have a place to store this value,
+		//         and PCSX2's code doesn't seem to use this API anywhere. So, no exclusive mode for now.
+		//           - avih
+		//pxCheckBox*		m_check_ExclusiveFS;
+
 		pxCheckBox*		m_check_HideMouse;
+		pxCheckBox*		m_check_DclickFullscreen;
 
 		wxTextCtrl*		m_text_WindowWidth;
 		wxTextCtrl*		m_text_WindowHeight;
@@ -262,19 +292,23 @@ namespace Panels
 		virtual ~GSWindowSettingsPanel() throw() {}
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 	};
 
-	class VideoPanel : public BaseApplicableConfigPanel
+	class VideoPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
-		pxCheckBox*		m_check_SynchronousGS;
-		pxCheckBox*		m_check_DisableOutput;
+		pxCheckBox*			m_check_SynchronousGS;
+		pxCheckBox*			m_check_DisableOutput;
+		FrameSkipPanel*		m_span;
+		FramelimiterPanel*	m_fpan;
 
 	public:
 		VideoPanel( wxWindow* parent );
 		virtual ~VideoPanel() throw() {}
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 
 	protected:
 		void OnOpenWindowSettings( wxCommandEvent& evt );
@@ -283,7 +317,7 @@ namespace Panels
 	// --------------------------------------------------------------------------------------
 	//  SpeedHacksPanel
 	// --------------------------------------------------------------------------------------
-	class SpeedHacksPanel : public BaseApplicableConfigPanel
+	class SpeedHacksPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
 		wxFlexGridSizer* s_table;
@@ -301,15 +335,15 @@ namespace Panels
 		pxCheckBox*		m_check_fastCDVD;
 		pxCheckBox*		m_check_vuFlagHack;
 		pxCheckBox*		m_check_vuBlockHack;
-		pxCheckBox*		m_check_vuMinMax;
+		pxCheckBox*		m_check_vuThread;
 
 	public:
 		virtual ~SpeedHacksPanel() throw() {}
 		SpeedHacksPanel( wxWindow* parent );
 		void Apply();
-		void EnableStuff();
+		void EnableStuff( AppConfig* configToUse=NULL );
 		void AppStatusEvent_OnSettingsApplied();
-		void AppStatusEvent_OnSettingsApplied( const Pcsx2Config::SpeedhackOptions& opt );
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 
 	protected:
 		const wxChar* GetEEcycleSliderMsg( int val );
@@ -327,7 +361,7 @@ namespace Panels
 	// --------------------------------------------------------------------------------------
 	//  GameFixesPanel
 	// --------------------------------------------------------------------------------------
-	class GameFixesPanel : public BaseApplicableConfigPanel
+	class GameFixesPanel : public BaseApplicableConfigPanel_SpecificConfig
 	{
 	protected:
 		pxCheckBox*			m_checkbox[GamefixId_COUNT];
@@ -336,10 +370,11 @@ namespace Panels
 	public:
 		GameFixesPanel( wxWindow* parent );
 		virtual ~GameFixesPanel() throw() { }
-		void EnableStuff();
+		void EnableStuff( AppConfig* configToUse=NULL );
 		void OnEnable_Toggled( wxCommandEvent& evt );
 		void Apply();
 		void AppStatusEvent_OnSettingsApplied();
+		void ApplyConfigToGui( AppConfig& configToApply, int flags=0 );
 	};
 
 	// --------------------------------------------------------------------------------------
@@ -396,6 +431,21 @@ namespace Panels
 	};
 
 	// --------------------------------------------------------------------------------------
+	//  AppearanceThemesPanel
+	// --------------------------------------------------------------------------------------
+	class AppearanceThemesPanel : public BaseApplicableConfigPanel
+	{
+		typedef BaseApplicableConfigPanel _parent;
+
+	public:
+		virtual ~AppearanceThemesPanel() throw();
+		AppearanceThemesPanel( wxWindow* parent );
+
+		void Apply();
+		void AppStatusEvent_OnSettingsApplied();
+	};
+
+	// --------------------------------------------------------------------------------------
 	//  BaseSelectorPanel
 	// --------------------------------------------------------------------------------------
 	class BaseSelectorPanel: public BaseApplicableConfigPanel
@@ -415,9 +465,45 @@ namespace Panels
 	protected:
 		void OnRefreshSelections( wxCommandEvent& evt );
 
+		// This method is called when the enumeration contents have changed.  The implementing
+		// class should populate or re-populate listbox/selection components when invoked.
+		// 
 		virtual void DoRefresh()=0;
+
+		// This method is called when an event has indicated that the enumeration status of the
+		// selector may have changed.  The implementing class should re-enumerate the folder/source
+		// data and return either TRUE (enumeration status unchanged) or FALSE (enumeration status
+		// changed).
+		//
+		// If the implementation returns FALSE, then the BaseSelectorPanel will invoke a call to
+		// DoRefresh() [which also must be implemented]
+		//
 		virtual bool ValidateEnumerationStatus()=0;
+	
 		void OnShow(wxShowEvent& evt);
+	};
+
+	// --------------------------------------------------------------------------------------
+	//  ThemeSelectorPanel
+	// --------------------------------------------------------------------------------------
+	class ThemeSelectorPanel : public BaseSelectorPanel
+	{
+		typedef BaseSelectorPanel _parent;
+
+	protected:
+		ScopedPtr<wxArrayString>	m_ThemeList;
+		wxListBox*					m_ComboBox;
+		DirPickerPanel*				m_FolderPicker;
+
+	public:
+		virtual ~ThemeSelectorPanel() throw();
+		ThemeSelectorPanel( wxWindow* parent );
+
+	protected:
+		virtual void Apply();
+		virtual void AppStatusEvent_OnSettingsApplied();
+		virtual void DoRefresh();
+		virtual bool ValidateEnumerationStatus();	
 	};
 
 	// --------------------------------------------------------------------------------------

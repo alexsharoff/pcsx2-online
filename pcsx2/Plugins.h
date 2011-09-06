@@ -57,12 +57,15 @@ namespace Exception
 	// Exception thrown when a corrupted or truncated savestate is encountered.
 	class SaveStateLoadError : public BadStream
 	{
-		DEFINE_STREAM_EXCEPTION( SaveStateLoadError, BadStream, wxLt("The savestate appears to be corrupt or incomplete.") )
+		DEFINE_STREAM_EXCEPTION( SaveStateLoadError, BadStream )
+
+		virtual wxString FormatDiagnosticMessage() const;
+		virtual wxString FormatDisplayMessage() const;
 	};
 
 	class PluginError : public RuntimeError
 	{
-		DEFINE_RUNTIME_EXCEPTION( PluginError, RuntimeError, L"Generic plugin error")
+		DEFINE_RUNTIME_EXCEPTION( PluginError, RuntimeError, L"Generic plugin error!" )
 
 	public:
 		PluginsEnum_t PluginId;
@@ -323,6 +326,10 @@ public:
 	virtual bool IsInitialized( PluginsEnum_t pid ) const;
 	virtual bool IsLoaded( PluginsEnum_t pid ) const;
 	
+	virtual size_t GetFreezeSize( PluginsEnum_t pid );
+	virtual void FreezeOut( PluginsEnum_t pid, void* dest );
+	virtual void FreezeOut( PluginsEnum_t pid, pxOutputStream& outfp );
+	virtual void FreezeIn( PluginsEnum_t pid, pxInputStream& infp );
 	virtual void Freeze( PluginsEnum_t pid, SaveStateBase& state );
 	virtual bool DoFreeze( PluginsEnum_t pid, int mode, freezeData* data );
 
@@ -336,7 +343,24 @@ public:
 
 	const wxString GetName( PluginsEnum_t pid ) const;
 	const wxString GetVersion( PluginsEnum_t pid ) const;
-
+	
+	virtual bool OpenPlugin_GS();
+	virtual bool OpenPlugin_CDVD();
+	virtual bool OpenPlugin_PAD();
+	virtual bool OpenPlugin_SPU2();
+	virtual bool OpenPlugin_DEV9();
+	virtual bool OpenPlugin_USB();
+	virtual bool OpenPlugin_FW();
+	virtual bool OpenPlugin_Mcd();
+	
+	virtual void ClosePlugin_GS();
+	virtual void ClosePlugin_CDVD();
+	virtual void ClosePlugin_PAD();
+	virtual void ClosePlugin_SPU2();
+	virtual void ClosePlugin_DEV9();
+	virtual void ClosePlugin_USB();
+	virtual void ClosePlugin_FW();
+	virtual void ClosePlugin_Mcd();
 protected:
 	virtual bool NeedsClose() const;
 	virtual bool NeedsOpen() const;
@@ -347,27 +371,7 @@ protected:
 	virtual bool NeedsLoad() const;
 	virtual bool NeedsUnload() const;
 
-	virtual bool OpenPlugin_GS();
-	virtual bool OpenPlugin_CDVD();
-	virtual bool OpenPlugin_PAD();
-	virtual bool OpenPlugin_SPU2();
-	virtual bool OpenPlugin_DEV9();
-	virtual bool OpenPlugin_USB();
-	virtual bool OpenPlugin_FW();
-	virtual bool OpenPlugin_Mcd();
-	virtual bool OpenPlugin_Net();
-
 	void _generalclose( PluginsEnum_t pid );
-
-	virtual void ClosePlugin_GS();
-	virtual void ClosePlugin_CDVD();
-	virtual void ClosePlugin_PAD();
-	virtual void ClosePlugin_SPU2();
-	virtual void ClosePlugin_DEV9();
-	virtual void ClosePlugin_USB();
-	virtual void ClosePlugin_FW();
-	virtual void ClosePlugin_Mcd();
-	virtual void ClosePlugin_Net();
 
 	friend class SysMtgsThread;
 };
@@ -387,5 +391,5 @@ extern "C" const PS2E_LibraryAPI* FileMcd_InitAPI( const PS2E_EmulatorInfo* emui
 
 // Per ChickenLiver, this is being used to pass the GS plugins window handle to the Pad plugins.
 // So a rename to pDisplay is in the works, but it will not, in fact, be removed.
-extern uptr pDsp;
+extern uptr pDsp[2];
 

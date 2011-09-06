@@ -15,16 +15,16 @@
 
 #include "PrecompiledHeader.h"
 #include "Common.h"
-
+#include "gui/App.h"
 #include "IopBios.h"
 
 #include "Counters.h"
 #include "GS.h"
 #include "Elfheader.h"
 #include "Patch.h"
-#include "PageFaultSource.h"
 #include "SysThreads.h"
 
+#include "Utilities/PageFaultSource.h"
 #include "Utilities/TlsVariable.inl"
 
 #ifdef __WXMSW__
@@ -111,12 +111,23 @@ void SysCoreThread::SetElfOverride( const wxString& elf )
 	Hle_SetElfPath(elf.ToUTF8());
 }
 
-void SysCoreThread::Reset()
+// Performs a quicker reset that does not deallocate memory associated with PS2 virtual machines
+// or cpu providers (recompilers).
+void SysCoreThread::ResetQuick()
 {
 	Suspend();
+
 	m_resetVirtualMachine	= true;
 	m_hasActiveMachine		= false;
 }
+
+void SysCoreThread::Reset()
+{
+	ResetQuick();
+	GetVmMemory().DecommitAll();
+	SysClearExecutionCache();
+}
+
 
 // Applies a full suite of new settings, which will automatically facilitate the necessary
 // resets of the core and components (including plugins, if needed).  The scope of resetting
@@ -139,8 +150,8 @@ void SysCoreThread::UploadStateCopy( const VmStateBuffer& copy )
 {
 	if( !pxAssertDev( IsPaused(), "CoreThread is not paused; new VM state cannot be uploaded." ) ) return;
 
-	SysClearExecutionCache();
-	memLoadingState( copy ).FreezeAll();
+	memLoadingState loadme( copy );
+	loadme.FreezeAll();
 	m_resetVirtualMachine = false;
 }
 
@@ -158,6 +169,8 @@ void SysCoreThread::_reset_stuff_as_needed()
 	// Note that resetting recompilers along with the virtual machine is only really needed
 	// because of changes to the TLB.  We don't actually support the TLB, however, so rec
 	// resets aren't in fact *needed* ... yet.  But might as well, no harm.  --air
+
+	GetVmMemory().CommitAll();
 
 	if( m_resetVirtualMachine || m_resetRecompilers || m_resetProfilers )
 	{
@@ -227,12 +240,13 @@ bool SysCoreThread::StateCheckInThread()
 void SysCoreThread::DoCpuExecute()
 {
 	m_hasActiveMachine = true;
+	UI_EnableSysActions();
 	Cpu->Execute();
 }
 
 void SysCoreThread::ExecuteTaskInThread()
 {
-	Threading::EnableHiresScheduler();
+	Threading::EnableHiresScheduler(); // Note that *something* in SPU2-X and GSdx also set the timer resolution to 1ms.
 	m_sem_event.WaitWithoutYield();
 
 	m_mxcsr_saved.bitmask = _mm_getcsr();

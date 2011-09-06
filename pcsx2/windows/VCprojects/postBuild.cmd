@@ -33,14 +33,16 @@ cd %mycwd%
 
 set pcsxoutdir=%~1\%~5
 set pcsxoutname=%pcsxoutdir%\%~3%4
+set pcsxnewname=%pcsxoutdir%\%~3-r4891m%4
 
 IF NOT EXIST "%pcsxoutdir%" (
     md "%pcsxoutdir%"
 )
 
 copy /Y "%~2" "%pcsxoutname%"
+copy /Y "%~2" "%pcsxnewname%"
 if %ERRORLEVEL% EQU 0 (
-    echo Target copied to %pcsxoutname%
+    echo Target copied to %pcsxnewname%
 )
 
 goto :eof

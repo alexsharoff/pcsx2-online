@@ -59,13 +59,13 @@ void x86capabilities::SIMD_EstablishMXCSRmask()
 	// the fxsave buffer must be 16-byte aligned to avoid GPF.  I just save it to an
 	// unused portion of recSSE, since it has plenty of room to spare.
 
-	HostSys::MemProtectStatic( recSSE, Protect_ReadWrite, true );
+	HostSys::MemProtectStatic( recSSE, PageAccess_ReadWrite() );
 
 	xSetPtr( recSSE );
 	xFXSAVE( ptr[&targetFXSAVE] );
 	xRET();
 
-	HostSys::MemProtectStatic( recSSE, Protect_ReadOnly, true );
+	HostSys::MemProtectStatic( recSSE, PageAccess_ExecOnly() );
 
 	CallAddress( recSSE );
 
@@ -133,23 +133,6 @@ void x86capabilities::CountCores()
 	s32 regs[ 4 ];
 	u32 cmds;
 
-	LogicalCoresPerPhysicalCPU = 0;
-	PhysicalCoresPerPhysicalCPU = 1;
-
-	// detect multicore for Intel cpu
-
-	__cpuid( regs, 0 );
-	cmds = regs[ 0 ];
-	
-	if( cmds >= 0x00000001 )
-		LogicalCoresPerPhysicalCPU = ( regs[1] >> 16 ) & 0xff;
-
-	if ((cmds >= 0x00000004) && (VendorID == x86Vendor_Intel))
-	{
-		__cpuid( regs, 0x00000004 );
-		PhysicalCoresPerPhysicalCPU += ( regs[0] >> 26) & 0x3f;
-	}
-
 	__cpuid( regs, 0x80000000 );
 	cmds = regs[ 0 ];
 
@@ -157,18 +140,12 @@ void x86capabilities::CountCores()
 
 	if ((cmds >= 0x80000008) && (VendorID == x86Vendor_AMD) )
 	{
-		__cpuid( regs, 0x80000008 );
-		PhysicalCoresPerPhysicalCPU += ( regs[2] ) & 0xff;
-		
 		// AMD note: they don't support hyperthreading, but they like to flag this true
 		// anyway.  Let's force-unflag it until we come up with a better solution.
 		// (note: seems to affect some Phenom II's only? -- Athlon X2's and PhenomI's do
 		// not seem to do this) --air
 		hasMultiThreading = 0;
 	}
-
-	if( !hasMultiThreading || LogicalCoresPerPhysicalCPU == 0 )
-		LogicalCoresPerPhysicalCPU = 1;
 
 	// This will assign values into LogicalCores and PhysicalCores
 	CountLogicalCores();
@@ -281,6 +258,15 @@ void x86capabilities::Identify()
 	hasSupplementalStreamingSIMD3Extensions		= ( Flags2 >> 9 ) & 1; //ssse3
 	hasStreamingSIMD4Extensions					= ( Flags2 >> 19 ) & 1; //sse4.1
 	hasStreamingSIMD4Extensions2				= ( Flags2 >> 20 ) & 1; //sse4.2
+	
+	if((Flags2 >> 27) & 1) // OSXSAVE
+	{
+		if((__xgetbv(0) & 6) == 6) // XFEATURE_ENABLED_MASK[2:1] = ‘11b’ (XMM state and YMM state are enabled by OS).
+		{
+			hasAVX								= ( Flags2 >> 28 ) & 1; //avx
+			hasFMA								= ( Flags2 >> 12 ) & 1; //fma
+		}
+	}
 
 	// Ones only for AMDs:
 	hasMultimediaExtensionsExt					= ( EFlags >> 22 ) & 1; //mmx2
@@ -310,7 +296,7 @@ u32 x86capabilities::CalculateMHz() const
 // Results of CPU
 void x86capabilities::SIMD_ExceptionTest()
 {
-	HostSys::MemProtectStatic( recSSE, Protect_ReadWrite, true );
+	HostSys::MemProtectStatic( recSSE, PageAccess_ReadWrite() );
 
 	//////////////////////////////////////////////////////////////////////////////////////////
 	// SIMD Instruction Support Detection (Second Pass)
@@ -336,7 +322,7 @@ void x86capabilities::SIMD_ExceptionTest()
 		xMOVDQU( xmm1, ptr[ecx] );
 		xRET();
 
-		HostSys::MemProtectStatic( recSSE, Protect_ReadOnly, true );
+		HostSys::MemProtectStatic( recSSE, PageAccess_ExecOnly() );
 
 		bool sse3_result = _test_instruction( recSSE );  // sse3
 		bool ssse3_result = _test_instruction( funcSSSE3 );

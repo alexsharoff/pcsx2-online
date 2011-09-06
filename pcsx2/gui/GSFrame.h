@@ -51,6 +51,7 @@ public:
 	void DoResize();
 	void DoShowMouse();
 	void DirectKeyCommand( wxKeyEvent& evt );
+	void DirectKeyCommand( const KeyAcceleratorCode& kac );
 
 protected:
 	void AppStatusEvent_OnSettingsApplied();
@@ -63,11 +64,14 @@ protected:
 
 	void OnCloseWindow( wxCloseEvent& evt );
 	void OnResize(wxSizeEvent& event);
-	void OnShowMouse( wxMouseEvent& evt );
+	void OnMouseEvent( wxMouseEvent& evt );
 	void OnHideMouseTimeout( wxTimerEvent& evt );
 	void OnKeyDown( wxKeyEvent& evt );
 	void OnFocus( wxFocusEvent& evt );
 	void OnFocusLost( wxFocusEvent& evt );
+
+	void OnLeftDclick( wxMouseEvent& evt );
+
 };
 
 

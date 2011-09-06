@@ -34,9 +34,9 @@ void BaseMcdListView::SetMcdProvider( IMcdList* face )
 	SetCardCount( m_CardProvider ? m_CardProvider->GetLength() : 0 );
 }
 
-const IMcdList& BaseMcdListView::GetMcdProvider() const
+IMcdList& BaseMcdListView::GetMcdProvider()
 {
-	pxAssume( m_CardProvider );
+	pxAssert( m_CardProvider );
 	return *m_CardProvider;
 }
 
@@ -72,12 +72,12 @@ void BaseMcdListView::LoadSaveColumns( IniInterface& ini )
 enum McdColumnType_Simple
 {
 	McdColS_PortSlot,	// port and slot of the card
-	McdColS_Status,		// either Enabled/Disabled, or Missing (no card).
+	//McdColS_Status,		// either Enabled/Disabled, or Missing (no card).
+	McdColS_Filename,
 	McdColS_Size,
 	McdColS_Formatted,
 	McdColS_DateModified,
 	McdColS_DateCreated,
-	McdColS_Filename,
 	McdColS_Count
 };
 
@@ -102,16 +102,16 @@ const ListViewColumnInfo& MemoryCardListView_Simple::GetDefaultColumnInfo( uint 
 {
 	static const ListViewColumnInfo columns[] =
 	{
-		{ L"Slot",			48,		wxLIST_FORMAT_CENTER	},
-		{ L"Status",		96,		wxLIST_FORMAT_CENTER	},
-		{ L"Size",			72,		wxLIST_FORMAT_LEFT		},
-		{ L"Formatted",		96,		wxLIST_FORMAT_CENTER	},
-		{ L"Modified",		120,	wxLIST_FORMAT_LEFT		},
-		{ L"Created",		120,	wxLIST_FORMAT_LEFT		},
-		{ L"Filename",		256,	wxLIST_FORMAT_LEFT		},
+		{ _("PS2 Port")		, 154 , wxLIST_FORMAT_LEFT	},
+		//{ _("Port status")	, 80  , wxLIST_FORMAT_LEFT	},
+		{ _("Card (file) name")	, 126 , wxLIST_FORMAT_LEFT	},
+		{ _("Card size")	, 60  , wxLIST_FORMAT_LEFT	},
+		{ _("Formatted")	, 80  , wxLIST_FORMAT_LEFT	},
+		{ _("Last Modified"), 85 , wxLIST_FORMAT_LEFT	},
+		{ _("Created on")	, 85 , wxLIST_FORMAT_LEFT	},
 	};
 
-	pxAssumeDev( idx < ArraySize(columns), "ListView column index is out of bounds." );
+	pxAssertDev( idx < ArraySize(columns), "ListView column index is out of bounds." );
 	return columns[idx];
 }
 
@@ -127,26 +127,56 @@ void MemoryCardListView_Simple::SetCardCount( int length )
 wxString MemoryCardListView_Simple::OnGetItemText(long item, long column) const
 {
 	if( !m_CardProvider ) return _parent::OnGetItemText(item, column);
-
-	const McdListItem& it( m_CardProvider->GetCard(item) );
+	const McdSlotItem& it( m_CardProvider->GetCardForViewIndex(item) );
+	wxString prefix=L"  ";
 
 	switch( column )
 	{
-		case McdColS_PortSlot:		return pxsFmt( L"%u", item+1);
-		case McdColS_Status:		return it.IsPresent ? ( it.IsEnabled ? _("Enabled") : _("Disabled")) : _("Missing");
-		case McdColS_Size:			return it.IsPresent ? pxsFmt( L"%u MB", it.SizeInMB ) : (wxString)_("N/A");
-		case McdColS_Formatted:		return it.IsFormatted ? _("Yes") : _("No");
-		case McdColS_DateModified:	return it.IsPresent ? it.DateModified.FormatDate()	: (wxString)_("N/A");
-		case McdColS_DateCreated:	return it.IsPresent ? it.DateCreated.FormatDate()	: (wxString)_("N/A");
+		case McdColS_PortSlot:
+			if (it.Slot>=0)
+			{
+				if( !it.IsMultitapSlot() )
+					return pxsFmt(wxString(L" ") + _("Port-%u / Multitap-%u--Port-1"), it.GetMtapPort()+1, it.GetMtapPort()+1);
+				return pxsFmt(wxString(L" ")+_("             Multitap-%u--Port-%u"), it.GetMtapPort()+1, it.GetMtapSlot()+1);
+			}
+			
+			return L"";
+/*
+		case McdColS_Status:
+		{
+			wxString res = prefix + (it.IsEnabled ? _("Enabled") : _("Disabled"));
+			if( !it.IsPresent && it.Slot>=0 )
+				res = prefix + _("Empty");
+			else if ( it.Slot == -1 )
+				res= L"";
+			return prefix + res;
+		}
+*/		
+		case McdColS_Size:			return prefix + ( !it.IsPresent ? L"" : pxsFmt( L"%u MB", it.SizeInMB ) );
+		case McdColS_Formatted:		return prefix + ( !it.IsPresent ? L"" : ( it.IsFormatted ? _("Yes") : _("No")) );
+		case McdColS_DateModified:	return prefix + ( !it.IsPresent ? L"" : it.DateModified.FormatDate() );
+		case McdColS_DateCreated:	return prefix + ( !it.IsPresent ? L"" : it.DateCreated.FormatDate() );
 
 		case McdColS_Filename:
 		{
+			if (!it.IsPresent && it.Slot!=-1) return L"";
+			else if (!it.IsPresent && it.Slot==-1)
+			{
+				//UGLY #2: because this method must be const to be used at the list,
+				//  it cannot access GetMcdProvider() which isn't (and shouldn't be) const.
+				//so.. a plain old cast does the trick. Hope it's not too bad. - avih.
+				if (((MemoryCardListView_Simple*)this)->GetMcdProvider().IsNonEmptyFilesystemCards())
+					return _("[-- Unused cards --]");
+				else
+					return _("[-- No unused cards --]");
+			}
+
 			wxDirName filepath( it.Filename.GetPath() );
 			
 			if (filepath.SameAs(g_Conf->Folders.MemoryCards))
-				return it.Filename.GetFullName();
+				return prefix + it.Filename.GetFullName();
 			else
-				return it.Filename.GetFullPath();
+				return prefix + it.Filename.GetFullPath();
 		}
 	}
 
@@ -177,15 +207,15 @@ wxListItemAttr* MemoryCardListView_Simple::OnGetItemAttr(long item) const
 	//m_targeted.SetBackgroundColour( wxColour(L"Yellow") );
 
 	if( !m_CardProvider ) return _parent::OnGetItemAttr(item);
-	const McdListItem& it( m_CardProvider->GetCard(item) );
+	const McdSlotItem& it( m_CardProvider->GetCardForViewIndex(item) );
 
 	m_ItemAttr = wxListItemAttr();		// Wipe it clean!
 
-	if( !it.IsPresent )
+	if( it.Slot==-1 || it.IsPresent && !it.IsEnabled)
 		m_ItemAttr.SetTextColour( *wxLIGHT_GREY );
-
+/*
 	if( m_TargetedItem == item )
 		m_ItemAttr.SetBackgroundColour( wxColour(L"Wheat") );
-
+*/
 	return &m_ItemAttr;
 }

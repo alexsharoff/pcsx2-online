@@ -26,7 +26,7 @@
 #include "sVU_Micro.h"
 #include "sVU_Debug.h"
 #include "sVU_zerorec.h"
-#include "Gif.h"
+#include "Gif_Unit.h"
 
 using namespace x86Emitter;
 //------------------------------------------------------------------
@@ -1972,55 +1972,20 @@ void recVUMI_XTOP( VURegs *VU, int info )
 //------------------------------------------------------------------
 // VU1XGKICK_MTGSTransfer() - Called by ivuZerorec.cpp
 //------------------------------------------------------------------
-extern bool SIGNAL_IMR_Pending;
 
-void __fastcall VU1XGKICK_MTGSTransfer(u32 *pMem, u32 addr)
+void __fastcall VU1XGKICK_MTGSTransfer(u32 addr)
 {
 	addr &= 0x3fff;
-	u8* data  = VU1.Mem + (addr);
-	u32 diff  = 0x400 - (addr / 16);
-	u32 size;
-	u8* pDest;
+	u32 diff = 0x4000 - addr;
+	u32 size = gifUnit.GetGSPacketSize(GIF_PATH_1, vuRegs[1].Mem, addr);
 
-	if(gifRegs.stat.APATH <= GIF_APATH1 || (gifRegs.stat.APATH == GIF_APATH3 && gifRegs.stat.IP3 == true) && SIGNAL_IMR_Pending == false)
-	{
-		if(Path1WritePos != 0)	
-		{
-			//Flush any pending transfers so things dont go up in the wrong order
-			while(gifRegs.stat.P1Q == true) gsPath1Interrupt();
-		}
-		GetMTGS().PrepDataPacket(GIF_PATH_1, 0x400);
-		size = GIFPath_CopyTag(GIF_PATH_1, (u128*)data, diff);
-		GetMTGS().SendDataPacket();
-
-		if(GSTransferStatus.PTH1 == STOPPED_MODE )
-		{
-			gifRegs.stat.OPH = false;
-			gifRegs.stat.APATH = GIF_APATH_IDLE;
-		}
+	if (size > diff) {
+		//DevCon.WriteLn(Color_Green, "superVU1: XGkick Wrap!");
+		gifUnit.gifPath[0].CopyGSPacketData(&vuRegs[1].Mem[addr], diff, true);
+		gifUnit.TransferGSPacketData(GIF_TRANS_XGKICK, &vuRegs[1].Mem[0],size-diff,true);
 	}
-	else
-	{
-		//DevCon.Warning("GIF APATH busy %x Holding for later  W %x, R %x", gifRegs.stat.APATH, Path1WritePos, Path1ReadPos);
-		size = GIFPath_ParseTagQuick(GIF_PATH_1, data, diff);
-		pDest = &Path1Buffer[Path1WritePos*16];
-
-		Path1WritePos += size;
-
-		pxAssumeMsg((Path1WritePos+size < sizeof(Path1Buffer)), "XGKick Buffer Overflow detected on Path1Buffer!");
-
-		if (size > diff) {
-			//DevCon.Status("XGkick Wrap!");
-			memcpy_qwc(pDest, VU1.Mem + addr, diff);
-			memcpy_qwc(pDest+(diff*16), VU1.Mem, size-diff);
-		}
-		else {
-			memcpy_qwc(pDest, VU1.Mem + addr, size);
-		}
-		//if(!gifRegs.stat.P1Q) CPU_INT(28, 128);
-		gifRegs.stat.P1Q = true;
+	else {
+		gifUnit.TransferGSPacketData(GIF_TRANS_XGKICK, &vuRegs[1].Mem[addr], size, true);
 	}
-
-
 }
 //------------------------------------------------------------------

@@ -17,7 +17,6 @@
 #include "App.h"
 #include "ConfigurationPanels.h"
 
-#include "Utilities/ScopedPtr.h"
 #include "ps2/BiosTools.h"
 
 #include <wx/dir.h>
@@ -29,6 +28,18 @@ using namespace pxSizerFlags;
 // =====================================================================================================
 //  BaseSelectorPanel
 // =====================================================================================================
+// This base class provides event hookups and virtual functions for enumerating items in a folder.
+// The most important feature of this base panel is that enumeration is done when the panel is first
+// *shown*, not when it is created.  This functionality allows the panel to work either as a stand alone
+// dialog, a child of a complex tabbed dialog, and as a member of a wxWizard!
+//
+// In addition, this panel automatically intercepts and responds to DIRPICKER messages, so that your
+// panel may provide a dir picker to the user.
+//
+// [TODO] : wxWidgets 2.9.1 provides a class for watching directory contents changes.  When PCSX2 is
+// upgraded to wx2.9/3.0, it should incorporate such functionality into this base class.  (for now
+// we just provide the user with a "refresh" button).
+//
 Panels::BaseSelectorPanel::BaseSelectorPanel( wxWindow* parent )
 	: BaseApplicableConfigPanel( parent, wxVERTICAL )
 {
@@ -96,7 +107,8 @@ Panels::BiosSelectorPanel::BiosSelectorPanel( wxWindow* parent )
 	m_ComboBox->SetFont( wxFont( m_ComboBox->GetFont().GetPointSize()+1, wxFONTFAMILY_MODERN, wxNORMAL, wxNORMAL, false, L"Lucida Console" ) );
 	m_ComboBox->SetMinSize( wxSize( wxDefaultCoord, std::max( m_ComboBox->GetMinSize().GetHeight(), 96 ) ) );
 	
-	m_FolderPicker->SetStaticDesc( _("Click the Browse button to select a different folder where PCSX2 will look for PS2 BIOS roms.") );
+	//if (InstallationMode != InstallMode_Portable)
+		m_FolderPicker->SetStaticDesc( _("Click the Browse button to select a different folder where PCSX2 will look for PS2 BIOS roms.") );
 
 	wxButton* refreshButton = new wxButton( this, wxID_ANY, _("Refresh list") );
 
@@ -123,9 +135,9 @@ void Panels::BiosSelectorPanel::Apply()
 	{
 		throw Exception::CannotApplySettings(this)
 			.SetDiagMsg(L"User did not specify a valid BIOS selection.")
-			.SetUserMsg( pxE( ".Error:BIOS:InvalidSelection",
+			.SetUserMsg( pxE( "!Notice:BIOS:InvalidSelection",
 				L"Please select a valid BIOS.  If you are unable to make a valid selection "
-				L"then press cancel to close the Configuration panel."
+				L"then press Cancel to close the Configuration panel."
 			) );
 	}
 

@@ -60,6 +60,26 @@ extern void pcsx2_aligned_free(void* pmem);
 # 	define _aligned_realloc	pcsx2_aligned_realloc
 #endif
 
+// --------------------------------------------------------------------------------------
+//  pxDoOutOfMemory
+// --------------------------------------------------------------------------------------
+
+typedef void FnType_OutOfMemory( uptr blocksize );
+typedef FnType_OutOfMemory* Fnptr_OutOfMemory;
+
+// This method is meant to be assigned by applications that link against pxWex.  It is called
+// (invoked) prior to most pxWex built-in memory/array classes throwing exceptions, and can be
+// used by an application to remove unneeded memory allocations and/or reduce internal cache
+// reserves.
+//
+// Example: PCSX2 uses several bloated recompiler code caches.  Larger caches improve performance,
+// however a rouge cache growth could cause memory constraints in the operating system.  If an out-
+// of-memory error occurs, PCSX2's implementation of this function attempts to reset all internal
+// recompiler caches.  This can typically free up 100-150 megs of memory, and will allow the app
+// to continue running without crashing or hanging the operating system, etc.
+//
+extern Fnptr_OutOfMemory pxDoOutOfMemory;
+
 
 // --------------------------------------------------------------------------------------
 //  BaseScopedAlloc
@@ -87,7 +107,7 @@ public:
 
 	virtual ~BaseScopedAlloc() throw()
 	{
-		//pxAssume(m_buffer==NULL);
+		//pxAssert(m_buffer==NULL);
 	}
 
 public:
@@ -156,8 +176,10 @@ public:
 template< typename T >
 class ScopedAlloc : public BaseScopedAlloc<T>
 {
+	typedef BaseScopedAlloc<T> _parent;
+
 public:
-	ScopedAlloc( size_t size=0 ) : BaseScopedAlloc<T>()
+	ScopedAlloc( size_t size=0 ) : _parent()
 	{
 		Alloc(size);
 	}
@@ -175,17 +197,19 @@ public:
 
 		this->m_buffer = (T*)malloc( this->m_size * sizeof(T) );
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory("ScopedAlloc");
+			throw Exception::OutOfMemory(L"ScopedAlloc");
 	}
 
 	virtual void Resize( size_t newsize )
 	{
 		this->m_size		= newsize;
-		this->m_buffer	= (T*)realloc(this->m_buffer * sizeof(T), newsize);
+		this->m_buffer		= (T*)realloc(this->m_buffer, this->m_size * sizeof(T));
 
 		if (!this->m_buffer)
-			throw Exception::OutOfMemory("ScopedAlloc::Resize");
+			throw Exception::OutOfMemory(L"ScopedAlloc::Resize");
 	}
+	
+	using _parent::operator[];
 };
 
 // --------------------------------------------------------------------------------------
@@ -200,8 +224,10 @@ public:
 template< typename T, uint align >
 class ScopedAlignedAlloc : public BaseScopedAlloc<T>
 {
+	typedef BaseScopedAlloc<T> _parent;
+
 public:
-	ScopedAlignedAlloc( size_t size=0 ) : BaseScopedAlloc<T>()
+	ScopedAlignedAlloc( size_t size=0 ) : _parent()
 	{
 		Alloc(size);
 	}
@@ -230,4 +256,6 @@ public:
 		if (!this->m_buffer)
 			throw Exception::OutOfMemory(L"ScopedAlignedAlloc::Resize");
 	}
+	
+	using _parent::operator[];
 };

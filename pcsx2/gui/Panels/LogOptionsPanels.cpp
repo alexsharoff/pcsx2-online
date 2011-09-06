@@ -138,16 +138,17 @@ static SysTraceLog * const traceLogList[] =
 	&SysTrace.EE.IPU,
 	&SysTrace.EE.GIFtag,
 	&SysTrace.EE.VIFcode,
+	&SysTrace.EE.MSKPATH3,
 
 	&SysTrace.EE.DMAC,
 	&SysTrace.EE.Counters,
 	&SysTrace.EE.SPR,
 	&SysTrace.EE.VIF,
 	&SysTrace.EE.GIF,
-	
-	
+
+
 	// IOP Section
-	
+
 	&SysTrace.IOP.Bios,
 	&SysTrace.IOP.Memcards,
 	&SysTrace.IOP.PAD,
@@ -164,7 +165,7 @@ static SysTraceLog * const traceLogList[] =
 	&SysTrace.IOP.CDVD,
 };
 
-static const int traceLogCount = ArraySize(traceLogList);
+static const uint traceLogCount = ArraySize(traceLogList);
 
 void SysTraceLog_LoadSaveSettings( IniInterface& ini )
 {
@@ -270,7 +271,7 @@ Panels::BaseCpuLogOptionsPanel* Panels::LogOptionsPanel::GetCpuPanel( const wxSt
 {
 	if( token == L"EE" )	return m_eeSection;
 	if( token == L"IOP" )	return m_iopSection;
-	
+
 	return NULL;
 }
 
@@ -316,7 +317,7 @@ void Panels::LogOptionsPanel::Apply()
 	m_iopSection->Apply();
 
 	m_IsDirty = false;
-	
+
 	for( uint i = 0; i<traceLogCount; ++i )
 	{
 		if (!traceLogList[i] || !m_checks[i]) continue;

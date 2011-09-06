@@ -39,6 +39,14 @@ u64 GetCPUTicks()
 	return count.QuadPart;
 }
 
+u64 GetPhysicalMemory()
+{
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	GlobalMemoryStatusEx(&status);
+	return status.ullTotalPhys;
+}
+
 // Windows SDK 7 provides this but previous ones do not, so roll our own in those cases:
 #ifndef VER_SUITE_WH_SERVER
 #	define VER_SUITE_WH_SERVER                 0x00008000
@@ -96,7 +104,6 @@ wxString GetOSVersionString()
 
 		pGPI( osvi.dwMajorVersion, osvi.dwMinorVersion, 0, 0, &dwType);
 
-		
 		switch( dwType )
 		{
 			case PRODUCT_ULTIMATE:						retval += L"Ultimate Edition";							break;

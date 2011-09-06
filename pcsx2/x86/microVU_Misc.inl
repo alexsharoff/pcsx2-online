@@ -214,32 +214,39 @@ void mVUmergeRegs(const xmm& dest, const xmm& src, int xyzw, bool modXYZW)
 //------------------------------------------------------------------
 
 // Backup Volatile Regs (EAX, ECX, EDX, MM0~7, XMM0~7, are all volatile according to 32bit Win/Linux ABI)
-__fi void mVUbackupRegs(microVU* mVU, bool toMemory = false)
+__fi void mVUbackupRegs(microVU& mVU, bool toMemory = false)
 {
 	if (toMemory) {
 		for(int i = 0; i < 8; i++) {
-			xMOVAPS(ptr128[&mVU->xmmBackup[i][0]], xmm(i));
+			xMOVAPS(ptr128[&mVU.xmmBackup[i][0]], xmm(i));
 		}
 	}
 	else {
-		mVU->regAlloc->flushAll(); // Flush Regalloc
-		xMOVAPS(ptr128[&mVU->xmmBackup[xmmPQ.Id][0]], xmmPQ);
+		mVU.regAlloc->flushAll(); // Flush Regalloc
+		xMOVAPS(ptr128[&mVU.xmmBackup[xmmPQ.Id][0]], xmmPQ);
 	}
 }
 
 // Restore Volatile Regs
-__fi void mVUrestoreRegs(microVU* mVU, bool fromMemory = false)
+__fi void mVUrestoreRegs(microVU& mVU, bool fromMemory = false)
 {
 	if (fromMemory) {
 		for(int i = 0; i < 8; i++) {
-			xMOVAPS(xmm(i), ptr128[&mVU->xmmBackup[i][0]]);
+			xMOVAPS(xmm(i), ptr128[&mVU.xmmBackup[i][0]]);
 		}
 	}
-	else xMOVAPS(xmmPQ, ptr128[&mVU->xmmBackup[xmmPQ.Id][0]]);
+	else xMOVAPS(xmmPQ, ptr128[&mVU.xmmBackup[xmmPQ.Id][0]]);
 }
 
 // Gets called by mVUaddrFix at execution-time
-static void __fastcall mVUwarningRegAccess(u32 prog, u32 pc) { Console.Error("microVU0 Warning: Accessing VU1 Regs! [%04x] [%x]", pc, prog); }
+static void __fc mVUwarningRegAccess(u32 prog, u32 pc) {
+	Console.Error("microVU0 Warning: Accessing VU1 Regs! [%04x] [%x]", pc, prog);
+}
+
+static void __fc mVUwaitMTVU() {
+	if (IsDevBuild) DevCon.WriteLn("microVU0: Waiting on VU1 thread to access VU1 regs!");
+	if (THREAD_VU1) vu1Thread.WaitVU();
+}
 
 // Transforms the Address in gprReg to valid VU0/VU1 Address
 __fi void mVUaddrFix(mV, const x32& gprReg)
@@ -249,28 +256,31 @@ __fi void mVUaddrFix(mV, const x32& gprReg)
 		xSHL(gprReg, 4);
 	}
 	else {
-		if (IsDevBuild && !isCOP2) mVUbackupRegs(mVU, true);
 		xTEST(gprReg, 0x400);
-		xForwardJNZ8 jmpA; // if addr & 0x4000, reads VU1's VF regs and VI regs
+		xForwardJNZ8 jmpA;		// if addr & 0x4000, reads VU1's VF regs and VI regs
 			xAND(gprReg, 0xff); // if !(addr & 0x4000), wrap around
-			xForwardJump8 jmpB;
+			xForwardJump32 jmpB;
 		jmpA.SetTarget();
-			if (IsDevBuild && !isCOP2) { // Lets see which games do this!
-				xPUSH(gprT1);			 // Note: Kernel does it via COP2 to initialize VU1!
-				xPUSH(gprT2);			 // So we don't spam console, we'll only check micro-mode...
+			if (THREAD_VU1 || (IsDevBuild && !isCOP2)) {
+				mVUbackupRegs(mVU, true);
+				xPUSH(gprT1);
+				xPUSH(gprT2);
 				xPUSH(gprT3);
-				xMOV (gprT2, mVU->prog.cur->idx);
-				xMOV (gprT3, xPC);
-				xCALL(mVUwarningRegAccess);
+				if (IsDevBuild && !isCOP2) {         // Lets see which games do this!
+					xMOV (gprT2, mVU.prog.cur->idx); // Note: Kernel does it via COP2 to initialize VU1!
+					xMOV (gprT3, xPC);               // So we don't spam console, we'll only check micro-mode...
+					xCALL(mVUwarningRegAccess);
+				}
+				xCALL(mVUwaitMTVU);
 				xPOP (gprT3);
 				xPOP (gprT2);
 				xPOP (gprT1);
+				mVUrestoreRegs(mVU, true);
 			}
 			xAND(gprReg, 0x3f); // ToDo: theres a potential problem if VU0 overrides VU1's VF0/VI0 regs!
 			xADD(gprReg, (u128*)VU1.VF - (u128*)VU0.Mem);
 		jmpB.SetTarget();
 		xSHL(gprReg, 4); // multiply by 16 (shift left by 4)
-		if (IsDevBuild && !isCOP2) mVUrestoreRegs(mVU, true);
 	}
 }
 
@@ -288,53 +298,76 @@ static const __aligned16 SSEMaskPair MIN_MAX =
 
 
 // Warning: Modifies t1 and t2
-void MIN_MAX_PS(microVU* mVU, const xmm& to, const xmm& from, const xmm& t1in, const xmm& t2in, bool min)
+void MIN_MAX_PS(microVU& mVU, const xmm& to, const xmm& from, const xmm& t1in, const xmm& t2in, bool min)
 {
-	const xmm& t1 = t1in.IsEmpty() ? mVU->regAlloc->allocReg() : t1in;
-	const xmm& t2 = t2in.IsEmpty() ? mVU->regAlloc->allocReg() : t2in;
-	// ZW
-	xPSHUF.D(t1, to, 0xfa);
-	xPAND   (t1, ptr128[MIN_MAX.mask1]);
-	xPOR    (t1, ptr128[MIN_MAX.mask2]);
-	xPSHUF.D(t2, from, 0xfa);
-	xPAND   (t2, ptr128[MIN_MAX.mask1]);
-	xPOR    (t2, ptr128[MIN_MAX.mask2]);
-	if (min) xMIN.PD(t1, t2);
-	else     xMAX.PD(t1, t2);
+	const xmm& t1 = t1in.IsEmpty() ? mVU.regAlloc->allocReg() : t1in;
+	const xmm& t2 = t2in.IsEmpty() ? mVU.regAlloc->allocReg() : t2in;
 
-	// XY
-	xPSHUF.D(t2, from, 0x50);
-	xPAND   (t2, ptr128[MIN_MAX.mask1]);
-	xPOR    (t2, ptr128[MIN_MAX.mask2]);
-	xPSHUF.D(to, to, 0x50);
-	xPAND   (to, ptr128[MIN_MAX.mask1]);
-	xPOR    (to, ptr128[MIN_MAX.mask2]);
-	if (min) xMIN.PD(to, t2);
-	else     xMAX.PD(to, t2);
+	if (0) { // use double comparison
+		// ZW
+		xPSHUF.D(t1, to, 0xfa);
+		xPAND   (t1, ptr128[MIN_MAX.mask1]);
+		xPOR    (t1, ptr128[MIN_MAX.mask2]);
+		xPSHUF.D(t2, from, 0xfa);
+		xPAND   (t2, ptr128[MIN_MAX.mask1]);
+		xPOR    (t2, ptr128[MIN_MAX.mask2]);
+		if (min) xMIN.PD(t1, t2);
+		else     xMAX.PD(t1, t2);
 
-	xSHUF.PS(to, t1, 0x88);
-	if (t1 != t1in) mVU->regAlloc->clearNeeded(t1);
-	if (t2 != t2in) mVU->regAlloc->clearNeeded(t2);
+		// XY
+		xPSHUF.D(t2, from, 0x50);
+		xPAND   (t2, ptr128[MIN_MAX.mask1]);
+		xPOR    (t2, ptr128[MIN_MAX.mask2]);
+		xPSHUF.D(to, to, 0x50);
+		xPAND   (to, ptr128[MIN_MAX.mask1]);
+		xPOR    (to, ptr128[MIN_MAX.mask2]);
+		if (min) xMIN.PD(to, t2);
+		else     xMAX.PD(to, t2);
+
+		xSHUF.PS(to, t1, 0x88);
+	}
+	else { // use integer comparison
+		const xmm& c1 = min ? t2 : t1;
+		const xmm& c2 = min ? t1 : t2;
+
+		xMOVAPS  (t1, to);
+		xPSRA.D  (t1, 31);
+		xPSRL.D  (t1,  1);
+		xPXOR    (t1, to);
+
+		xMOVAPS  (t2, from);
+		xPSRA.D  (t2, 31);
+		xPSRL.D  (t2,  1);
+		xPXOR    (t2, from);
+
+		xPCMP.GTD(c1, c2);
+		xPAND    (to, c1);
+		xPANDN   (c1, from);
+		xPOR     (to, c1);
+	}
+
+	if (t1 != t1in) mVU.regAlloc->clearNeeded(t1);
+	if (t2 != t2in) mVU.regAlloc->clearNeeded(t2);
 }
 
 // Warning: Modifies to's upper 3 vectors, and t1
 void MIN_MAX_SS(mV, const xmm& to, const xmm& from, const xmm& t1in, bool min)
 {
-	const xmm& t1 = t1in.IsEmpty() ? mVU->regAlloc->allocReg() : t1in;
+	const xmm& t1 = t1in.IsEmpty() ? mVU.regAlloc->allocReg() : t1in;
 	xSHUF.PS(to, from, 0);
 	xPAND	(to, ptr128[MIN_MAX.mask1]);
 	xPOR	(to, ptr128[MIN_MAX.mask2]);
 	xPSHUF.D(t1, to, 0xee);
 	if (min) xMIN.PD(to, t1);
 	else	 xMAX.PD(to, t1);
-	if (t1 != t1in) mVU->regAlloc->clearNeeded(t1);
+	if (t1 != t1in) mVU.regAlloc->clearNeeded(t1);
 }
 
 // Warning: Modifies all vectors in 'to' and 'from', and Modifies xmmT1 and xmmT2
-void ADD_SS(microVU* mVU, const xmm& to, const xmm& from, const xmm& t1in, const xmm& t2in)
+void ADD_SS(microVU& mVU, const xmm& to, const xmm& from, const xmm& t1in, const xmm& t2in)
 {
-	const xmm& t1 = t1in.IsEmpty() ? mVU->regAlloc->allocReg() : t1in;
-	const xmm& t2 = t2in.IsEmpty() ? mVU->regAlloc->allocReg() : t2in;
+	const xmm& t1 = t1in.IsEmpty() ? mVU.regAlloc->allocReg() : t1in;
+	const xmm& t2 = t2in.IsEmpty() ? mVU.regAlloc->allocReg() : t2in;
 
 	xMOVAPS(t1, to);
 	xMOVAPS(t2, from);
@@ -397,8 +430,8 @@ void ADD_SS(microVU* mVU, const xmm& to, const xmm& from, const xmm& t1in, const
 	xAND.PS(to,   t1); // to   contains mask
 	xAND.PS(from, t2); // from contains mask
 	xADD.SS(to, from);
-	if (t1 != t1in) mVU->regAlloc->clearNeeded(t1);
-	if (t2 != t2in) mVU->regAlloc->clearNeeded(t2);
+	if (t1 != t1in) mVU.regAlloc->clearNeeded(t1);
+	if (t2 != t2in) mVU.regAlloc->clearNeeded(t2);
 }
 
 #define clampOp(opX, isPS) {					\
@@ -434,7 +467,7 @@ void SSE_ADD2SS(mV, const xmm& to, const xmm& from, const xmm& t1 = xEmptyReg, c
 	else					 { ADD_SS(mVU, to, from, t1, t2); }
 }
 
-// FIXME: why do we need two identical definitions with different names?
+// Does same as SSE_ADDPS since tri-ace games only need SS implementation of VUADDSUBHACK...
 void SSE_ADD2PS(mV, const xmm& to, const xmm& from, const xmm& t1 = xEmptyReg, const xmm& t2 = xEmptyReg)
 {
 	clampOp(xADD.PS, 1);
@@ -481,7 +514,7 @@ static __pagealigned u8 mVUsearchXMM[__pagesize];
 // Generates a custom optimized block-search function
 // Note: Structs must be 16-byte aligned! (GCC doesn't guarantee this)
 void mVUcustomSearch() {
-	HostSys::MemProtectStatic(mVUsearchXMM, Protect_ReadWrite, false);
+	HostSys::MemProtectStatic(mVUsearchXMM, PageAccess_ReadWrite());
 	memset_8<0xcc,__pagesize>(mVUsearchXMM);
 	xSetPtr(mVUsearchXMM);
 
@@ -526,5 +559,5 @@ void mVUcustomSearch() {
 
 	exitPoint.SetTarget();
 	xRET();
-	HostSys::MemProtectStatic(mVUsearchXMM, Protect_ReadOnly, true);
+	HostSys::MemProtectStatic(mVUsearchXMM, PageAccess_ExecOnly());
 }

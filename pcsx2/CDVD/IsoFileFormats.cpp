@@ -78,7 +78,6 @@ bool isoFile::tryIsoType(u32 _size, s32 _offset, s32 _blockofs)
 bool isoFile::Detect( bool readType )
 {
 	char buf[32];
-	int len = m_filename.Length();
 
 	m_type = ISOTYPE_ILLEGAL;
 
@@ -130,6 +129,7 @@ bool isoFile::Detect( bool readType )
 	m_blockofs	= 0;
 	m_type		= ISOTYPE_AUDIO;
 
+	//BUG: This also detects a memory-card-file as a valid Audio-CD ISO... -avih
 	return true;
 }
 
@@ -185,14 +185,14 @@ void isoFile::_ReadBlockD(u8* dst, uint lsn)
 
 void isoFile::_ReadBlock(u8* dst, uint lsn)
 {
-	pxAssumeMsg(lsn <= m_blocks,	"Invalid lsn passed into isoFile::_ReadBlock.");
-	pxAssumeMsg(m_numparts,			"Invalid isoFile object state; an iso file needs at least one part!");
+	pxAssertMsg(lsn <= m_blocks,	"Invalid lsn passed into isoFile::_ReadBlock.");
+	pxAssertMsg(m_numparts,			"Invalid isoFile object state; an iso file needs at least one part!");
 
 	uint i;
 	for (i = 0; i < m_numparts-1; ++i)
 	{
 		// lsn indexes should always go in order; use an assertion just to be sure:
-		pxAssume(lsn >= m_parts[i].slsn);
+		pxAssert(lsn >= m_parts[i].slsn);
 		if (lsn <= m_parts[i].elsn) break;
 	}
 
@@ -245,7 +245,7 @@ void isoFile::_WriteBlock(const u8* src, uint lsn)
 void isoFile::_WriteBlockD(const u8* src, uint lsn)
 {
 	// Find and ignore blocks that have already been dumped:
-	for (uint i=0; i<m_dtablesize; ++i)
+	for (int i=0; i<m_dtablesize; ++i)
 	{
 		if (m_dtable[i] == lsn) return;
 	}
@@ -412,7 +412,9 @@ void isoFile::Open( const wxString& srcfile )
 	// (and if numparts is incremented, elsn will get assigned accordingly)
 	
 	if (!Detect())
-		throw Exception::BadStream().SetUserMsg(wxLt("Unrecognized ISO file format."));
+		throw Exception::BadStream()
+			.SetUserMsg(_("Unrecognized ISO image file format"))
+			.SetDiagMsg(L"ISO mounting failed: PCSX2 is unable to identify the ISO image type.");
 
 	if (!(m_flags & ISOFLAGS_BLOCKDUMP_V2))
 	{
@@ -524,8 +526,11 @@ void _IsoPart::Read( void* dest, size_t size )
 	// must always use the explicit check against the number of bytes read to determine
 	// end-of-stream conditions.
 
+	// Throwing exceptions here ends emulation. 
+	// We should let the game decide what to do with missing data though.
 	if ((size_t)handle->LastRead() < size)
-		throw Exception::EndOfStream( filename );
+		Console.Warning( "ISO read problem (Bad game rip?)" );
+		//throw Exception::EndOfStream( filename );
 }
 
 void _IsoPart::Seek(wxFileOffset pos, wxSeekMode mode)

@@ -13,27 +13,21 @@
 *  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// svnrev_genric.h --> svnrev.h
+// svnrev_template.h --> svnrev.h
 //
-// This file acts as a placebo for people who do not have TortoiseSVN installed.
-// It provides "empty" revision information to the Pcsx2 Playground projects in
-// the absence of real revisions derived from the repository being built.
+// This file acts as a template for the automatic SVN revision/version tag.
+// It is used by the utility SubWCrev.exe to create an "svnrev.h" file for
+// whichever project is being compiled (as indicated by command line options
+// passed to SubWCRev.exe during the project's pre-build step).
 //
-// This file does not affect application/dll builds in any significant manner,
-// other than the lack of automatic revision tags inserted into the app (which
-// is very convenient but hardly necessary).
+// The SubWCRev.exe utility is part of TortoiseSVN and requires several DLLs
+// installed by TortoiseSVN, so it will only be available if you have TortoiseSVN
+// installed on your system.  If you do not have it installed, a generic template
+// is used instead (see svnrev_generic.h).  Having TortoiseSVN is handy but not
+// necessary.  If you do not have it installed, everything will still compile
+// fine except without the SVN revision tagged to the application/dll version.
 //
-// See svn_template.h for more information on how the process of revision
-// templating works.
-//
-// If you would like to enable automatic revisin tagging, TortoiseSVN can be
-// downloaded from http://tortoisesvn.tigris.org
+// TortoiseSVN can be downloaded from http://tortoisesvn.tigris.org
 
-#define SVN_REV_UNKNOWN
-
-// The following defines are included so that code will still compile even if it
-// doesn't check for the SVN_REV_UNKNOWN define.
-
-#define SVN_REV 0
-#define SVN_MODS 0
-
+#define SVN_REV 4891
+#define SVN_MODS 1

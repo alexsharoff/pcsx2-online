@@ -111,8 +111,8 @@ class MainEmuFrame : public wxFrame,
 protected:
 	bool			m_RestartEmuOnDelete;
 
-    wxStatusBar&	m_statusbar;
-    wxStaticBitmap	m_background;
+	wxStatusBar&	m_statusbar;
+	wxStaticBitmap	m_background;
 
 	wxMenuBar&		m_menubar;
 
@@ -132,12 +132,11 @@ protected:
 
 	virtual void DispatchEvent( const PluginEventType& plugin_evt );
 	virtual void DispatchEvent( const CoreThreadStatus& status );
-	virtual void AppStatusEvent_OnSettingsLoadSave();
 	virtual void AppStatusEvent_OnSettingsApplied();
 
 public:
-    MainEmuFrame(wxWindow* parent, const wxString& title);
-    virtual ~MainEmuFrame() throw();
+	MainEmuFrame(wxWindow* parent, const wxString& title);
+	virtual ~MainEmuFrame() throw();
 
 	void OnLogBoxHidden();
 
@@ -145,13 +144,19 @@ public:
 	void UpdateIsoSrcSelection();
 	void RemoveCdvdMenu();
 	void EnableMenuItem( int id, bool enable );
+	void EnableCdvdPluginSubmenu(bool isEnable = true);
+	
+	bool Destroy();
+
+	void ApplyConfigToGui( AppConfig& configToApply, int flags=0 ); //flags are: AppConfig::APPLY_CONFIG_FROM_PRESET and (currently unused) AppConfig::APPLY_CONFIG_MANUALLY PROPAGATE
+	void CommitPreset_noTrigger();
 
 protected:
 	void DoGiveHelp(const wxString& text, bool show);
 
+	//Apply here is from config to GUI.
 	void ApplySettings();
 	void ApplyCoreStatus();
-	void SaveEmuOptions();
 
 	void InitLogBoxPosition( AppConfig::ConsoleLogOptions& conf );
 
@@ -162,12 +167,15 @@ protected:
 
 	void Menu_SysSettings_Click(wxCommandEvent &event);
 	void Menu_McdSettings_Click(wxCommandEvent &event);
+	void Menu_GameDatabase_Click(wxCommandEvent &event);
 	void Menu_WindowSettings_Click(wxCommandEvent &event);
 	void Menu_GSSettings_Click(wxCommandEvent &event);
 	void Menu_SelectPluginsBios_Click(wxCommandEvent &event);
+	void Menu_Language_Click(wxCommandEvent &event);
 	void Menu_ResetAllSettings_Click(wxCommandEvent &event);
 
 	void Menu_IsoBrowse_Click(wxCommandEvent &event);
+	void Menu_EnableBackupStates_Click(wxCommandEvent &event);
 	void Menu_EnablePatches_Click(wxCommandEvent &event);
 	void Menu_EnableCheats_Click(wxCommandEvent &event);
 	void Menu_EnableHostFs_Click(wxCommandEvent &event);
@@ -197,7 +205,6 @@ protected:
 
 	void Menu_ShowConsole(wxCommandEvent &event);
 	void Menu_ShowConsole_Stdio(wxCommandEvent &event);
-	void Menu_PrintCDVD_Info(wxCommandEvent &event);
 	void Menu_ShowAboutBox(wxCommandEvent &event);
 
 	void _DoBootCdvd();
@@ -205,11 +212,12 @@ protected:
 	bool _DoSelectELFBrowser();
 
 	void _DoBootCdvdWithNetplay();
+
 // ------------------------------------------------------------------------
 //     MainEmuFram Internal API for Populating Main Menu Contents
 // ------------------------------------------------------------------------
 
-	wxMenu* MakeStatesSubMenu( int baseid ) const;
+	wxMenu* MakeStatesSubMenu( int baseid, int loadBackupId=-1 ) const;
 	wxMenu* MakeStatesMenu();
 	wxMenu* MakeLanguagesMenu() const;
 
@@ -218,3 +226,4 @@ protected:
 	friend class Pcsx2App;
 };
 
+extern int GetPluginMenuId_Settings( PluginsEnum_t pid );

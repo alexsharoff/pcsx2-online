@@ -106,14 +106,14 @@ int IPU_Fifo_Input::read(void *value)
 
 int IPU_Fifo_Output::write(const u32 *value, uint size)
 {
-	pxAssumeMsg(size>0, "Invalid size==0 when calling IPU_Fifo_Output::write");
+	pxAssertMsg(size>0, "Invalid size==0 when calling IPU_Fifo_Output::write");
 
 	uint origsize = size;
-	do {
-		IPU0dma();
+	/*do {*/
+		//IPU0dma();
 	
 		uint transsize = min(size, 8 - (uint)ipuRegs.ctrl.OFC);
-		if(!transsize) break;
+		if(!transsize) return 0;
 
 		ipuRegs.ctrl.OFC = transsize;
 		size -= transsize;
@@ -124,14 +124,14 @@ int IPU_Fifo_Output::write(const u32 *value, uint size)
 			value += 4;
 			--transsize;
 		}
-	} while(true);
+	/*} while(true);*/
 
 	return origsize - size;
 }
 
 void IPU_Fifo_Output::read(void *value, uint size)
 {
-	pxAssume(ipuRegs.ctrl.OFC >= size);
+	pxAssert(ipuRegs.ctrl.OFC >= size);
 	ipuRegs.ctrl.OFC -= size;
 	
 	// Zeroing the read data is not needed, since the ringbuffer design will never read back

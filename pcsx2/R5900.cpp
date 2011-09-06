@@ -21,6 +21,7 @@
 #include "R3000A.h"
 #include "VUmicro.h"
 #include "COP0.h"
+#include "MTVU.h"
 
 #include "System/SysThreads.h"
 #include "R5900Exceptions.h"
@@ -32,7 +33,6 @@
 #include "CDVD/CDVD.h"
 #include "Patch.h"
 #include "GameDatabase.h"
-#include "SamplProf.h"
 
 using namespace R5900;	// for R5900 disasm tools
 
@@ -51,14 +51,15 @@ static const uint eeWaitCycles = 3072;
 
 bool eeEventTestIsActive = false;
 
+extern SysMainMemory& GetVmMemory();
+
 void cpuReset()
 {
-	if( GetMTGS().IsOpen() )
+	vu1Thread.WaitVU();
+	if (GetMTGS().IsOpen())
 		GetMTGS().WaitGS();		// GS better be done processing before we reset the EE, just in case.
 
-	memReset();
-	psxMemReset();
-	vuMicroMemReset();
+	GetVmMemory().ResetAll();
 
 	memzero(cpuRegs);
 	memzero(fpuRegs);
@@ -89,12 +90,21 @@ void cpuReset()
 	DiscSerial = L"";
 	ElfEntry = -1;
 
+	// Probably not the right place, but it has to be done when the ram is actually initialized
+	if(USBsetRAM != 0)
+		USBsetRAM(iopMem->Main);
+
 	// FIXME: LastELF should be reset on media changes as well as on CPU resets, in
 	// the very unlikely case that a user swaps to another media source that "looks"
 	// the same (identical ELF names) but is actually different (devs actually could
 	// run into this while testing minor binary hacked changes to ISO images, which
 	// is why I found out about this) --air
 	LastELF = L"";
+}
+
+void cpuShutdown()
+{
+	hwShutdown();
 }
 
 __ri void cpuException(u32 code, u32 bd)
@@ -274,10 +284,10 @@ static __fi void _cpuTestInterrupts()
 	   that depends on the cycle timings */
 
 	TESTINT(DMAC_VIF1,		vif1Interrupt);	
-	TESTINT(DMAC_GIF,		gsInterrupt);	
+	TESTINT(DMAC_GIF,		gifInterrupt);
 	TESTINT(DMAC_SIF0,		EEsif0Interrupt);
 	TESTINT(DMAC_SIF1,		EEsif1Interrupt);
-
+	
 	// Profile-guided Optimization (sorta)
 	// The following ints are rarely called.  Encasing them in a conditional
 	// as follows helps speed up most games.
@@ -484,7 +494,7 @@ __fi void cpuTestHwInts() {
 
 __fi void CPU_INT( EE_EventType n, s32 ecycle)
 {
-	if( n != 2 && cpuRegs.interrupt & (1<<n) ){ //2 is Gif, and every path 3 masking game triggers this :/
+	if( n != 2 && cpuRegs.interrupt & (1<<n) ){ // 2 is Gif, and every path 3 masking game triggers this :/
 		DevCon.Warning( "***** EE > Twice-thrown int on IRQ %d", n );
 	}
 

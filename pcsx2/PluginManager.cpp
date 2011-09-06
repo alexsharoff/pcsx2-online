@@ -20,14 +20,15 @@
 #include <wx/file.h>
 
 #include "GS.h"
+#include "Gif.h"
 #include "CDVD/CDVDisoReader.h"
 
+#include "Netplay/NetplayPlugin.h"
+
 #include "Utilities/ScopedPtr.h"
+#include "Utilities/pxStreams.h"
 
-#include "Net.h"
-#include "AppConfig.h"
-
-#if _MSC_VER
+#if _MSC_VER || defined(LINUX_PRINT_SVN_NUMBER)
 #	include "svnrev.h"
 #endif
 
@@ -155,7 +156,7 @@ _GSgifSoftReset    GSgifSoftReset;
 _GSreadFIFO        GSreadFIFO;
 _GSreadFIFO2       GSreadFIFO2;
 _GSchangeSaveState GSchangeSaveState;
-_GSgetTitleInfo    GSgetTitleInfo;
+_GSgetTitleInfo2   GSgetTitleInfo2;
 _GSmakeSnapshot	   GSmakeSnapshot;
 _GSmakeSnapshot2   GSmakeSnapshot2;
 _GSirqCallback 	   GSirqCallback;
@@ -188,19 +189,23 @@ static void CALLBACK GS_printf(int timeout, char *fmt, ...)
 	Console.WriteLn(msg);
 }
 
-void CALLBACK GS_getTitleInfo( char dest[128] )
+void CALLBACK GS_getTitleInfo2( char* dest, size_t length )
 {
+	// Just return a generic "GS" title -- a plugin actually implementing this feature
+	// should return a title such as "GSdx" or "ZZogl" instead.  --air
+
 	dest[0] = 'G';
 	dest[1] = 'S';
 	dest[2] = 0;
 }
 
+#if COPY_GS_PACKET_TO_MTGS == 1
 // This legacy passthrough function is needed because the old GS plugins tended to assume that
 // a PATH1 transfer that didn't EOP needed an automatic EOP (which was needed to avoid a crash
 // in the BIOS when it starts an XGKICK prior to having an EOP written to VU1 memory).  The new
 // MTGS wraps data around the end of the MTGS buffer, so it often splits PATH1 data into two
 // transfers now.
-static void CALLBACK GS_gifTransferLegacy( const u32* src, u32 data )
+static void CALLBACK GS_Legacy_gifTransfer( const u32* src, u32 data )
 {
 	static __aligned16 u128 path1queue[0x400];
 	static uint path1size = 0;
@@ -226,7 +231,7 @@ static void CALLBACK GS_gifTransferLegacy( const u32* src, u32 data )
 
 			if (src128 == RingBuffer.m_Ring)
 			{
-				pxAssume( (data+path1size) <= 0x400 );
+				pxAssert( (data+path1size) <= 0x400 );
 				memcpy_qwc( &path1queue[path1size], src128, data );
 				path1size += data;
 			}
@@ -239,7 +244,19 @@ static void CALLBACK GS_gifTransferLegacy( const u32* src, u32 data )
 		}
 	}
 }
+#else
+// In this case the MTGS thread will only be using the "GSgifTransfer"
+// callback, which falls back to this function if its an old plugin.
+// Since GSgifTransfer2 is the least hacky old call-back, and MTGS will
+// just be using a single gif path, we'll just solely use path 2...
+static void CALLBACK GS_Legacy_gifTransfer(const u32* src, u32 data) {
+	GSgifTransfer2((u32*)src, data);
+}
+#endif
 
+static void CALLBACK GS_Legacy_GSreadFIFO2(u64* pMem, int qwc) {
+	while(qwc--) GSreadFIFO(pMem);
+}
 
 // PAD
 _PADinit           PADinit;
@@ -251,6 +268,7 @@ _PADupdate         PADupdate;
 _PADkeyEvent       PADkeyEvent;
 _PADsetSlot        PADsetSlot;
 _PADqueryMtap      PADqueryMtap;
+_PADWriteEvent	   PADWriteEvent;
 
 static void PAD_update( u32 padslot ) { }
 
@@ -322,7 +340,7 @@ _FWirqCallback     FWirqCallback;
 
 DEV9handler dev9Handler;
 USBhandler usbHandler;
-uptr pDsp;
+uptr pDsp[2];
 
 static s32 CALLBACK _hack_PADinit()
 {
@@ -359,10 +377,10 @@ static const LegacyApi_ReqMethod s_MethMessReq_GS[] =
 {
 	{	"GSopen",			(vMeth**)&GSopen,			NULL	},
 	{	"GSvsync",			(vMeth**)&GSvsync,			NULL	},
-	{	"GSgifTransfer",	(vMeth**)&GSgifTransfer,	(vMeth*)GS_gifTransferLegacy },
+	{	"GSgifTransfer",	(vMeth**)&GSgifTransfer,	(vMeth*)GS_Legacy_gifTransfer },
 	{	"GSgifTransfer2",	(vMeth**)&GSgifTransfer2,	NULL	},
 	{	"GSgifTransfer3",	(vMeth**)&GSgifTransfer3,	NULL	},
-	{	"GSreadFIFO2",		(vMeth**)&GSreadFIFO2,		NULL	},
+	{	"GSreadFIFO2",		(vMeth**)&GSreadFIFO2,		(vMeth*)GS_Legacy_GSreadFIFO2 },
 
 	{	"GSmakeSnapshot",	(vMeth**)&GSmakeSnapshot,	(vMeth*)GS_makeSnapshot },
 	{	"GSirqCallback",	(vMeth**)&GSirqCallback,	(vMeth*)GS_irqCallback },
@@ -375,7 +393,7 @@ static const LegacyApi_ReqMethod s_MethMessReq_GS[] =
 	{	"GSsetVsync",		(vMeth**)&GSsetVsync,		(vMeth*)GS_setVsync	},
 	{	"GSsetExclusive",	(vMeth**)&GSsetExclusive,	(vMeth*)GS_setExclusive	},
 	{	"GSchangeSaveState",(vMeth**)&GSchangeSaveState,(vMeth*)GS_changeSaveState },
-	{	"GSgetTitleInfo",	(vMeth**)&GSgetTitleInfo,	(vMeth*)GS_getTitleInfo },
+	{	"GSgetTitleInfo2",	(vMeth**)&GSgetTitleInfo2,	(vMeth*)GS_getTitleInfo2 },
 	{ NULL }
 };
 
@@ -416,6 +434,7 @@ static const LegacyApi_ReqMethod s_MethMessReq_PAD[] =
 static const LegacyApi_OptMethod s_MethMessOpt_PAD[] =
 {
 	{	"PADupdate",		(vMeth**)&PADupdate },
+	{   "PADWriteEvent",	(vMeth**)&PADWriteEvent },
 	{ NULL },
 };
 
@@ -629,6 +648,7 @@ static const LegacyApi_ReqMethod s_MethMessReq_USB[] =
 static const LegacyApi_OptMethod s_MethMessOpt_USB[] =
 {
 	{	"USBasync",		(vMeth**)&USBasync },
+	{	"USBsetRAM",	(vMeth**)&USBsetRAM },
 	{ NULL }
 };
 
@@ -677,18 +697,35 @@ SysCorePlugins *g_plugins = NULL;
 //       Plugin-related Exception Implementations
 // ---------------------------------------------------------------------------------
 
+wxString Exception::SaveStateLoadError::FormatDiagnosticMessage() const
+{
+	FastFormatUnicode retval;
+	retval.Write("Savestate is corrupt or incomplete!\n");
+	_formatDiagMsg(retval);
+	return retval;
+}
+
+wxString Exception::SaveStateLoadError::FormatDisplayMessage() const
+{
+	FastFormatUnicode retval;
+	retval.Write(_("The savestate cannot be loaded, as it appears to be corrupt or incomplete."));
+	retval.Write("\n");
+	_formatUserMsg(retval);
+	return retval;
+}
+
 Exception::PluginOpenError::PluginOpenError( PluginsEnum_t pid )
 {
 	PluginId = pid;
 	m_message_diag = L"%s plugin failed to open!";
-	m_message_user = L"%s plugin failed to open.  Your computer may have insufficient resources, or incompatible hardware/drivers.";
+	m_message_user = _("%s plugin failed to open.  Your computer may have insufficient resources, or incompatible hardware/drivers.");
 }
 
 Exception::PluginInitError::PluginInitError( PluginsEnum_t pid )
 {
 	PluginId = pid;
 	m_message_diag = L"%s plugin initialization failed!";
-	m_message_user = L"%s plugin failed to initialize.  Your system may have insufficient memory or resources needed.";
+	m_message_user = _("%s plugin failed to initialize.  Your system may have insufficient memory or resources needed.");
 }
 
 Exception::PluginLoadError::PluginLoadError( PluginsEnum_t pid )
@@ -698,29 +735,29 @@ Exception::PluginLoadError::PluginLoadError( PluginsEnum_t pid )
 
 wxString Exception::PluginLoadError::FormatDiagnosticMessage() const
 {
-	return wxsFormat( m_message_diag, tbl_PluginInfo[PluginId].GetShortname().c_str() ) +
+	return pxsFmt( m_message_diag, tbl_PluginInfo[PluginId].GetShortname().c_str() ) +
 		L"\n\n" + StreamName;
 }
 
 wxString Exception::PluginLoadError::FormatDisplayMessage() const
 {
-	return wxsFormat( m_message_user, tbl_PluginInfo[PluginId].GetShortname().c_str() ) +
+	return pxsFmt( m_message_user, tbl_PluginInfo[PluginId].GetShortname().c_str() ) +
 		L"\n\n" + StreamName;
 }
 
 wxString Exception::PluginError::FormatDiagnosticMessage() const
 {
-	return wxsFormat( m_message_diag, tbl_PluginInfo[PluginId].GetShortname().c_str() );
+	return pxsFmt( m_message_diag, tbl_PluginInfo[PluginId].GetShortname().c_str() );
 }
 
 wxString Exception::PluginError::FormatDisplayMessage() const
 {
-	return wxsFormat( m_message_user, tbl_PluginInfo[PluginId].GetShortname().c_str() );
+	return pxsFmt( m_message_user, tbl_PluginInfo[PluginId].GetShortname().c_str() );
 }
 
 wxString Exception::FreezePluginFailure::FormatDiagnosticMessage() const
 {
-	return wxsFormat(
+	return pxsFmt(
 		L"%s plugin returned an error while saving the state.\n\n",
 		tbl_PluginInfo[PluginId].shortname
 	);
@@ -734,7 +771,7 @@ wxString Exception::FreezePluginFailure::FormatDisplayMessage() const
 
 wxString Exception::ThawPluginFailure::FormatDiagnosticMessage() const
 {
-	return wxsFormat(
+	return pxsFmt(
 		L"%s plugin returned an error while loading the state.\n\n",
 		tbl_PluginInfo[PluginId].shortname
 	);
@@ -794,11 +831,11 @@ SysCorePlugins::PluginStatus_t::PluginStatus_t( PluginsEnum_t _pid, const wxStri
 
 	if( !wxFile::Exists( Filename ) )
 		throw Exception::PluginLoadError( pid ).SetStreamName(srcfile)
-			.SetBothMsgs(wxLt("The configured %s plugin file was not found"));
+			.SetBothMsgs(pxL("The configured %s plugin file was not found"));
 
 	if( !Lib.Load( Filename ) )
 		throw Exception::PluginLoadError( pid ).SetStreamName(Filename)
-			.SetBothMsgs(wxLt("The configured %s plugin file is not a valid dynamic library"));
+			.SetBothMsgs(pxL("The configured %s plugin file is not a valid dynamic library"));
 
 
 	// Try to enumerate the new v2.0 plugin interface first.
@@ -931,7 +968,7 @@ SysCorePlugins::~SysCorePlugins() throw()
 void SysCorePlugins::Load( PluginsEnum_t pid, const wxString& srcfile )
 {
 	ScopedLock lock( m_mtx_PluginStatus );
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	Console.Indent().WriteLn( L"Binding %s\t: %s ", tbl_PluginInfo[pid].GetShortname().c_str(), srcfile.c_str() );
 	m_info[pid] = new PluginStatus_t( pid, srcfile );
 }
@@ -997,7 +1034,7 @@ void SysCorePlugins::Load( const wxString (&folders)[PluginId_Count] )
 void SysCorePlugins::Unload(PluginsEnum_t pid)
 {
 	ScopedLock lock( m_mtx_PluginStatus );
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	m_info[pid].Delete();
 }
 
@@ -1040,12 +1077,12 @@ bool SysCorePlugins::OpenPlugin_GS()
 
 bool SysCorePlugins::OpenPlugin_PAD()
 {
-	return !PADopen( (void*)&pDsp );
+	return !PADopen( (void*)pDsp );
 }
 
 bool SysCorePlugins::OpenPlugin_SPU2()
 {
-	if( SPU2open((void*)&pDsp) ) return false;
+	if( SPU2open((void*)pDsp) ) return false;
 
 #ifdef ENABLE_NEW_IOPDMA_SPU2
 	SPU2irqCallback( spu2Irq );
@@ -1061,7 +1098,7 @@ bool SysCorePlugins::OpenPlugin_DEV9()
 {
 	dev9Handler = NULL;
 
-	if( DEV9open( (void*)&pDsp ) ) return false;
+	if( DEV9open( (void*)pDsp ) ) return false;
 	DEV9irqCallback( dev9Irq );
 	dev9Handler = DEV9irqHandler();
 	return true;
@@ -1071,17 +1108,18 @@ bool SysCorePlugins::OpenPlugin_USB()
 {
 	usbHandler = NULL;
 
-	if( USBopen((void*)&pDsp) ) return false;
+	if( USBopen((void*)pDsp) ) return false;
 	USBirqCallback( usbIrq );
 	usbHandler = USBirqHandler();
-	if( USBsetRAM != NULL )
-		USBsetRAM(iopMem->Main);
+	// iopMem is not initialized yet. Moved elsewhere
+	//if( USBsetRAM != NULL )
+	//	USBsetRAM(iopMem->Main);
 	return true;
 }
 
 bool SysCorePlugins::OpenPlugin_FW()
 {
-	if( FWopen((void*)&pDsp) ) return false;
+	if( FWopen((void*)pDsp) ) return false;
 	FWirqCallback( fwIrq );
 	return true;
 }
@@ -1097,15 +1135,9 @@ bool SysCorePlugins::OpenPlugin_Mcd()
 	return true;
 }
 
-bool SysCorePlugins::OpenPlugin_Net()
-{
-	Net::Open();
-	return true;
-}
-
 void SysCorePlugins::Open( PluginsEnum_t pid )
 {
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	if( IsOpen(pid) ) return;
 
 	Console.Indent().WriteLn( "Opening %s", tbl_PluginInfo[pid].shortname );
@@ -1147,7 +1179,15 @@ void SysCorePlugins::Open()
 		// If GS doesn't support GSopen2, need to wait until call to GSopen
 		// returns to populate pDsp.  If it does, can initialize other plugins
 		// at same time as GS, as long as GSopen2 does not subclass its window.
+#ifdef __LINUX__
+		// On linux, application have also a channel (named display) to communicate with the
+		// Xserver. The safe rule is 1 thread, 1 channel. In our case we use the display in
+		// several places. Save yourself of multithread headache. Wait few seconds the end of 
+		// gsopen -- Gregory
+		if (pi->id == PluginId_GS) GetMTGS().WaitForOpen();
+#else
 		if (pi->id == PluginId_GS && !GSopen2) GetMTGS().WaitForOpen();
+#endif
 	} while( ++pi, pi->shortname != NULL );
 
 	if (GSopen2) GetMTGS().WaitForOpen();
@@ -1157,11 +1197,11 @@ void SysCorePlugins::Open()
 		DbgCon.Indent().WriteLn( "Opening Memorycards");
 		OpenPlugin_Mcd();
 	}
-
-	if(g_NetCore)
+	
+	if(INetplayPlugin::GetInstance().IsEnabled())
 	{
 		DbgCon.Indent().WriteLn( "Opening Netplay");
-		OpenPlugin_Net();
+		INetplayPlugin::GetInstance().Open();
 	}
 
 	Console.WriteLn( Color_StrongBlue, "Plugins opened successfully." );
@@ -1222,23 +1262,11 @@ void SysCorePlugins::ClosePlugin_Mcd()
 	if( SysPlugins.Mcd ) SysPlugins.Mcd->Base.EmuClose( (PS2E_THISPTR) SysPlugins.Mcd );
 }
 
-void SysCorePlugins::ClosePlugin_Net()
-{
-	ScopedLock lock( m_mtx_PluginStatus );
-	if(g_NetCore)
-	{
-		Net::Close();
-	}
-}
-
 void SysCorePlugins::Close( PluginsEnum_t pid )
 {
-	if(pid != PluginId_Mcd)
-	{
-		pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 
-		if( !IsOpen(pid) ) return;
-	}
+	if( !IsOpen(pid) ) return;
 	
 	if( !GetMTGS().IsSelf() )		// stop the spam!
 		Console.Indent().WriteLn( "Closing %s", tbl_PluginInfo[pid].shortname );
@@ -1256,11 +1284,9 @@ void SysCorePlugins::Close( PluginsEnum_t pid )
 		
 		jNO_DEFAULT;
 	}
-	if(pid != PluginId_Mcd)
-	{
-		ScopedLock lock( m_mtx_PluginStatus );
-		if( m_info[pid] ) m_info[pid]->IsOpened = false;
-	}
+
+	ScopedLock lock( m_mtx_PluginStatus );
+	if( m_info[pid] ) m_info[pid]->IsOpened = false;
 }
 
 void SysCorePlugins::Close()
@@ -1271,11 +1297,12 @@ void SysCorePlugins::Close()
 	// ensures the GS gets closed last.
 
 	Console.WriteLn( Color_StrongBlue, "Closing plugins..." );
-
-	if(g_NetCore) 
+	
+	if(INetplayPlugin::GetInstance().IsEnabled()) 
 	{
 		DbgCon.Indent().WriteLn( "Closing Netplay");
-		ClosePlugin_Net();
+		ScopedLock lock( m_mtx_PluginStatus );
+		INetplayPlugin::GetInstance().Close();
 	}
 
 	if( AtomicExchange( m_mcdOpen, false ) )
@@ -1297,7 +1324,7 @@ void SysCorePlugins::Init( PluginsEnum_t pid )
 	if( !m_info[pid] || m_info[pid]->IsInitialized ) return;
 
 	Console.Indent().WriteLn( "Init %s", tbl_PluginInfo[pid].shortname );
-	if( NULL != m_info[pid]->CommonBindings.Init() )
+	if( 0 != m_info[pid]->CommonBindings.Init() )
 		throw Exception::PluginInitError( pid );
 
 	m_info[pid]->IsInitialized = true;
@@ -1327,12 +1354,13 @@ void SysCorePlugins::Shutdown( PluginsEnum_t pid )
 bool SysCorePlugins::Init()
 {
 	if( !NeedsInit() ) return false;
-	
-	if(g_NetCore)
+
+	if(INetplayPlugin::GetInstance().IsEnabled())
 	{
 		Console.Indent().WriteLn( "Init Net" );
-		Net::Init();
+		INetplayPlugin::GetInstance().Init();
 	}
+
 
 	Console.WriteLn( Color_StrongBlue, "\nInitializing plugins..." );
 	const PluginInfo* pi = tbl_PluginInfo; do {
@@ -1346,7 +1374,7 @@ bool SysCorePlugins::Init()
 		{
 			// fixme: use plugin's GetLastError (not implemented yet!)
 			throw Exception::PluginInitError( PluginId_Mcd )
-				.SetBothMsgs(wxLt("Internal Memorycard Plugin failed to initialize."));
+				.SetBothMsgs(pxLt("Internal Memorycard Plugin failed to initialize."));
 		}
 	}
 
@@ -1424,15 +1452,15 @@ void SysCorePlugins::Freeze( PluginsEnum_t pid, SaveStateBase& state )
 	// No locking leeded -- DoFreeze locks as needed, and this avoids MTGS deadlock.
 	//ScopedLock lock( m_mtx_PluginStatus );
 
-	Console.Indent().WriteLn( "%s %s", state.IsSaving() ? "Saving" : "Loading",
-		tbl_PluginInfo[pid].shortname );
-
 	freezeData fP = { 0, NULL };
 	if( !DoFreeze( pid, FREEZE_SIZE, &fP ) )
 		fP.size = 0;
 
 	int fsize = fP.size;
 	state.Freeze( fsize );
+
+	Console.Indent().WriteLn( "%s %s", state.IsSaving() ? "Saving" : "Loading",
+		tbl_PluginInfo[pid].shortname );
 
 	if( state.IsLoading() && (fsize == 0) )
 	{
@@ -1468,6 +1496,82 @@ void SysCorePlugins::Freeze( PluginsEnum_t pid, SaveStateBase& state )
 	state.CommitBlock( fP.size );
 }
 
+size_t SysCorePlugins::GetFreezeSize( PluginsEnum_t pid )
+{
+	freezeData fP = { 0, NULL };
+	if (!DoFreeze( pid, FREEZE_SIZE, &fP)) return 0;
+	return fP.size;
+}
+
+void SysCorePlugins::FreezeOut( PluginsEnum_t pid, void* dest )
+{
+	// No locking needed -- DoFreeze locks as needed, and this avoids MTGS deadlock.
+	//ScopedLock lock( m_mtx_PluginStatus );
+
+	freezeData fP = { 0, (s8*)dest };
+	if (!DoFreeze( pid, FREEZE_SIZE, &fP)) return;
+	if (!fP.size) return;
+
+	Console.Indent().WriteLn( "Saving %s", tbl_PluginInfo[pid].shortname );
+
+	if (!DoFreeze(pid, FREEZE_SAVE, &fP))
+		throw Exception::FreezePluginFailure( pid );
+}
+
+void SysCorePlugins::FreezeOut( PluginsEnum_t pid, pxOutputStream& outfp )
+{
+	// No locking needed -- DoFreeze locks as needed, and this avoids MTGS deadlock.
+	//ScopedLock lock( m_mtx_PluginStatus );
+
+	freezeData fP = { 0, NULL };
+	if (!DoFreeze( pid, FREEZE_SIZE, &fP)) return;
+	if (!fP.size) return;
+
+	Console.Indent().WriteLn( "Saving %s", tbl_PluginInfo[pid].shortname );
+
+	ScopedAlloc<s8> data( fP.size );
+	fP.data = data.GetPtr();
+
+	if (!DoFreeze(pid, FREEZE_SAVE, &fP))
+		throw Exception::FreezePluginFailure( pid );
+
+	outfp.Write( fP.data, fP.size );
+}
+
+void SysCorePlugins::FreezeIn( PluginsEnum_t pid, pxInputStream& infp )
+{
+	// No locking needed -- DoFreeze locks as needed, and this avoids MTGS deadlock.
+	//ScopedLock lock( m_mtx_PluginStatus );
+
+	freezeData fP = { 0, NULL };
+	if (!DoFreeze( pid, FREEZE_SIZE, &fP ))
+		fP.size = 0;
+
+	Console.Indent().WriteLn( "Loading %s", tbl_PluginInfo[pid].shortname );
+
+	if (!infp.IsOk() || !infp.Length())
+	{
+		// no state data to read, but the plugin expects some state data?
+		// Issue a warning to console...
+		if( fP.size != 0 )
+			Console.Indent().Warning( "Warning: No data for this plugin was found. Plugin status may be unpredictable." );
+
+		return;
+
+		// Note: Size mismatch check could also be done here on loading, but
+		// some plugins may have built-in version support for non-native formats or
+		// older versions of a different size... or could give different sizes depending
+		// on the status of the plugin when loading, so let's ignore it.
+	}
+
+	ScopedAlloc<s8> data( fP.size );
+	fP.data = data.GetPtr();
+
+	infp.Read( fP.data, fP.size );
+	if (!DoFreeze(pid, FREEZE_LOAD, &fP))
+		throw Exception::ThawPluginFailure( pid );
+}
+
 bool SysCorePlugins::KeyEvent( const keyEvent& evt )
 {
 	ScopedLock lock( m_mtx_PluginStatus );
@@ -1490,10 +1594,10 @@ void SysCorePlugins::SendSettingsFolder()
 	ScopedLock lock( m_mtx_PluginStatus );
 	if( m_SettingsFolder.IsEmpty() ) return;
 
-	pxToUTF8 utf8buffer( m_SettingsFolder );
+	wxCharBuffer buffer(m_SettingsFolder.mb_str(wxConvFile));
 
 	const PluginInfo* pi = tbl_PluginInfo; do {
-		if( m_info[pi->id] ) m_info[pi->id]->CommonBindings.SetSettingsDir( utf8buffer );
+		if( m_info[pi->id] ) m_info[pi->id]->CommonBindings.SetSettingsDir( buffer );
 	} while( ++pi, pi->shortname != NULL );
 }
 
@@ -1516,10 +1620,10 @@ void SysCorePlugins::SendLogFolder()
 	ScopedLock lock( m_mtx_PluginStatus );
 	if( m_LogFolder.IsEmpty() ) return;
 
-	pxToUTF8 utf8buffer( m_LogFolder );
+	wxCharBuffer buffer(m_LogFolder.mb_str(wxConvFile));
 
 	const PluginInfo* pi = tbl_PluginInfo; do {
-		if( m_info[pi->id] ) m_info[pi->id]->CommonBindings.SetLogDir( utf8buffer );
+		if( m_info[pi->id] ) m_info[pi->id]->CommonBindings.SetLogDir( buffer );
 	} while( ++pi, pi->shortname != NULL );
 }
 
@@ -1587,21 +1691,21 @@ bool SysCorePlugins::AreAnyInitialized() const
 
 bool SysCorePlugins::IsOpen( PluginsEnum_t pid ) const
 {
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	ScopedLock lock( m_mtx_PluginStatus );
 	return m_info[pid] && m_info[pid]->IsInitialized && m_info[pid]->IsOpened;
 }
 
 bool SysCorePlugins::IsInitialized( PluginsEnum_t pid ) const
 {
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	ScopedLock lock( m_mtx_PluginStatus );
 	return m_info[pid] && m_info[pid]->IsInitialized;
 }
 
 bool SysCorePlugins::IsLoaded( PluginsEnum_t pid ) const
 {
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	return !!m_info[pid];
 }
 
@@ -1666,13 +1770,13 @@ bool SysCorePlugins::NeedsClose() const
 const wxString SysCorePlugins::GetName( PluginsEnum_t pid ) const
 {
 	ScopedLock lock( m_mtx_PluginStatus );
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	return m_info[pid] ? m_info[pid]->Name : (wxString)_("Unloaded Plugin");
 }
 
 const wxString SysCorePlugins::GetVersion( PluginsEnum_t pid ) const
 {
 	ScopedLock lock( m_mtx_PluginStatus );
-	pxAssume( (uint)pid < PluginId_Count );
+	pxAssert( (uint)pid < PluginId_Count );
 	return m_info[pid] ? m_info[pid]->Version : L"0.0";
 }

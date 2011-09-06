@@ -33,14 +33,12 @@ union regInfo {
 // needed by the xmm compare.
 union __aligned16 microRegInfo {
 	struct {
-		u32 vi15; // Constant Prop Info for vi15 (only valid if sign-bit set)
-
 		union {
 			struct {
 				u8 needExactMatch;	// If set, block needs an exact match of pipeline state
+				u8 flagInfo;		// xC * 2 | xM * 2 | xS * 2 | 0 * 1 | fullFlag Valid * 1
 				u8 q;
 				u8 p;
-				u8 flags;			// clip x2 :: status x2
 				u8 xgkick;
 				u8 viBackUp;		// VI reg number that was written to on branch-delay slot
 				u8 blockType;		// 0 = Normal; 1,2 = Compile one instruction (E-bit/Branch Ending)
@@ -48,6 +46,11 @@ union __aligned16 microRegInfo {
 			};
 			u32 quick32[2];
 		};
+
+		u32 fullFlags0; // clip * 6 | mac * 12 | status * 12
+		u8  fullFlags1; // clip * 6
+		u8  vi15v;		// 'vi15' constant is valid
+		u16 vi15;		// Constant Prop Info for vi15
 
 		struct {
 			u8 VI[16];
@@ -62,10 +65,18 @@ union __aligned16 microRegInfo {
 
 C_ASSERT(sizeof(microRegInfo) == 160);
 
+struct microProgram;
+struct microJumpCache {
+	microJumpCache() : prog(NULL), x86ptrStart(NULL) {}
+	microProgram* prog;	// Program to which the entry point below is part of
+	void* x86ptrStart;	// Start of code (Entry point for block)
+};
+
 struct __aligned16 microBlock {
-	microRegInfo pState;	// Detailed State of Pipeline
-	microRegInfo pStateEnd; // Detailed State of Pipeline at End of Block (needed by JR/JALR opcodes)
-	u8* x86ptrStart;		// Start of code
+	microRegInfo	pState;		 // Detailed State of Pipeline
+	microRegInfo	pStateEnd;	 // Detailed State of Pipeline at End of Block (needed by JR/JALR opcodes)
+	u8*				x86ptrStart; // Start of code (Entry point for block)
+	microJumpCache* jumpCache;	 // Will point to an array of entry points of size [16k/8] if block ends in JR/JALR
 };
 
 struct microTempRegInfo {
@@ -111,7 +122,7 @@ struct microLowerOp {
 	microVIreg VI_write;	  // VI reg written to by this instruction
 	microVIreg VI_read[2];	  // VI regs read by this instruction
 	microConstInfo constJump; // Constant Reg Info for JR/JARL instructions
-	u32  branch;	// Branch Type (0 = Not a Branch, 1 = B. 2 = BAL, 3~8 = Conditional Branches, 9 = JALR, 10 = JR)
+	u32  branch;	// Branch Type (0 = Not a Branch, 1 = B. 2 = BAL, 3~8 = Conditional Branches, 9 = JR, 10 = JALR)
 	bool badBranch; // This instruction is a Branch who has another branch in its Delay Slot
 	bool evilBranch;// This instruction is a Branch in a Branch Delay Slot (Instruction after badBranch)
 	bool isNOP;		// This instruction is a NOP
@@ -219,7 +230,7 @@ protected:
 			}
 		}
 		int x = findFreeRegRec(0);
-		pxAssumeDev( x >= 0, "microVU register allocation failure!" );
+		pxAssertDev( x >= 0, "microVU register allocation failure!" );
 		return x;
 	}
 

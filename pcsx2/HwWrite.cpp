@@ -17,6 +17,7 @@
 #include "PrecompiledHeader.h"
 #include "Common.h"
 #include "Hardware.h"
+#include "Gif_Unit.h"
 
 #include "ps2/HwInternal.h"
 #include "ps2/eeHwTraceLog.inl"
@@ -88,16 +89,14 @@ void __fastcall _hwWrite32( u32 mem, u32 value )
 			{
 				icase(GIF_CTRL)
 				{
-					psHu32(mem) = value & 0x8;
-
-					if (value & 0x1)
-						gsGIFReset();
-
-					if (value & 8)
-						gifRegs.stat.PSE = true;
-					else
-						gifRegs.stat.PSE = false;
-
+					// Not exactly sure what RST needs to do
+					gifRegs.ctrl.write(value & 9);
+					if (gifRegs.ctrl.RST) {
+						GUNIT_LOG("GIF CTRL - Reset");
+						gifUnit.Reset(true); // Should it reset gsSIGNAL?
+						//gifUnit.ResetRegs();
+					}
+					gifRegs.stat.PSE = gifRegs.ctrl.PSE;
 					return;
 				}
 
@@ -105,12 +104,8 @@ void __fastcall _hwWrite32( u32 mem, u32 value )
 				{
 					// need to set GIF_MODE (hamster ball)
 					gifRegs.mode.write(value);
-
-					// set/clear bits 0 and 2 as per the GIF_MODE value.
-					const u32 bitmask = GIF_MODE_M3R | GIF_MODE_IMT;
-					psHu32(GIF_STAT) &= ~bitmask;
-					psHu32(GIF_STAT) |= (u32)value & bitmask;
-
+					gifRegs.stat.M3R = gifRegs.mode.M3R;
+					gifRegs.stat.IMT = gifRegs.mode.IMT;
 					return;
 				}
 			}
@@ -245,6 +240,17 @@ void __fastcall _hwWrite8(u32 mem, u8 value)
 		return;
 	}
 
+	switch(mem & ~3)
+	{
+		case DMAC_STAT:
+		case INTC_STAT:
+		case INTC_MASK:
+		case DMAC_FAKESTAT:
+			DevCon.Warning ( "8bit write mem = %x value %x", mem, value );
+			_hwWrite32<page>(mem & ~3, (u32)value << (mem & 3) * 8);
+			return;
+	}
+
 	u32 merged = _hwRead32<page,false>(mem & ~0x03);
 	((u8*)&merged)[mem & 0x3] = value;
 
@@ -262,6 +268,17 @@ template< uint page >
 void __fastcall _hwWrite16(u32 mem, u16 value)
 {
 	pxAssume( (mem & 0x01) == 0 );
+
+	switch(mem & ~3)
+	{
+		case DMAC_STAT:
+		case INTC_STAT:
+		case INTC_MASK:
+		case DMAC_FAKESTAT:
+			DevCon.Warning ( "16bit write mem = %x value %x", mem, value );
+			_hwWrite32<page>(mem & ~3, (u32)value << (mem & 3) * 8);
+			return;
+	}
 
 	u32 merged = _hwRead32<page,false>(mem & ~0x03);
 	((u16*)&merged)[(mem>>1) & 0x1] = value;

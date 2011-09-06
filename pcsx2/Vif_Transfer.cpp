@@ -25,7 +25,7 @@
 // Doesn't stall if the next vifCode is the Mark command
 _vifT bool runMark(u32* &data) {
 	if (((vifXRegs.code >> 24) & 0x7f) == 0x7) {
-		DevCon.WriteLn("Vif%d: Running Mark with I-bit", idx);
+		//DevCon.WriteLn("Vif%d: Running Mark with I-bit", idx);
 		return 1; // No Stall?
 	}
 	return 1; // Stall
@@ -63,7 +63,8 @@ _vifT bool analyzeIbit(u32* &data, int iBit) {
 		// ... the VIF should not stall and raise the interrupt until after the NOP is processed.
 		// So the final value for MARK as the game sees it will be 0x333. --air
 		
-		return runMark<idx>(data);
+		if(CHECK_VIF1STALLHACK) return 0;
+		else return 1;
 	}
 	return 0;
 }
@@ -74,21 +75,20 @@ _vifT void vifTransferLoop(u32* &data) {
 
 	u32& pSize = vifX.vifpacketsize;
 	int  iBit  = vifX.cmd >> 7;
-
+	
 	vifXRegs.stat.VPS |= VPS_TRANSFERRING;
 	vifXRegs.stat.ER1  = false;
 
 	while (pSize > 0 && !vifX.vifstalled) {
 
 		if(!vifX.cmd) { // Get new VifCode
-			vifX.lastcmd = (vifXRegs.code >> 24) & 0x7f;
+			
 			vifXRegs.code = data[0];
-			vifX.cmd	   = data[0] >> 24;
-			iBit		   = data[0] >> 31;
+			vifX.cmd	  = data[0] >> 24;
+			iBit		  = data[0] >> 31;
 
 			//VIF_LOG("New VifCMD %x tagsize %x", vifX.cmd, vifX.tag.size);
-			if (IsDevBuild && SysTrace.EE.VIFcode.IsActive())
-			{
+			if (IsDevBuild && SysTrace.EE.VIFcode.IsActive()) {
 				// Pass 2 means "log it"
 				vifCmdHandler[idx][vifX.cmd & 0x7f](2, data);
 			}
@@ -105,14 +105,14 @@ _vifT void vifTransferLoop(u32* &data) {
 		if (analyzeIbit<idx>(data, iBit)) break;
 	}
 
-	if (pSize)	  vifX.vifstalled	 = true;
+	if (pSize) vifX.vifstalled = true;
 }
 
 _vifT static __fi bool vifTransfer(u32 *data, int size, bool TTE) {
 	vifStruct& vifX = GetVifX;
 
 	// irqoffset necessary to add up the right qws, or else will spin (spiderman)
-	int transferred = vifX.vifstalled ? vifX.irqoffset : 0;
+	int transferred = vifX.irqoffset;
 
 	vifX.irqoffset  = 0;
 	vifX.vifstalled = false;
@@ -121,44 +121,41 @@ _vifT static __fi bool vifTransfer(u32 *data, int size, bool TTE) {
 	g_packetsizeonvu = size;
 	vifTransferLoop<idx>(data);
 
+	transferred += size - vifX.vifpacketsize;
+	g_vifCycles +=((transferred * BIAS) >> 2) ; /* guessing */
 
-	transferred   += size - vifX.vifpacketsize;
-
-	g_vifCycles   +=((transferred * BIAS) >> 2) ; /* guessing */
-
-	if(!idx && g_vu0Cycles > 0)
-	{
-		if(g_vifCycles < g_vu0Cycles) g_vu0Cycles -= g_vifCycles;
-		else if(g_vifCycles >= g_vu0Cycles)g_vu0Cycles = 0;
+	if(!idx && g_vu0Cycles > 0) {
+		if  (g_vifCycles <  g_vu0Cycles) g_vu0Cycles -= g_vifCycles;
+		elif(g_vifCycles >= g_vu0Cycles) g_vu0Cycles  = 0;
 	}
-	else if(idx && g_vu1Cycles > 0)
-	{
-		if(g_vifCycles < g_vu1Cycles) g_vu1Cycles -= g_vifCycles;
-		else if(g_vifCycles >= g_vu1Cycles)g_vu1Cycles = 0;
+	if (idx && g_vu1Cycles > 0) {
+		if  (g_vifCycles <  g_vu1Cycles) g_vu1Cycles -= g_vifCycles;
+		elif(g_vifCycles >= g_vu1Cycles) g_vu1Cycles  = 0;
 	}
 
 	vifX.irqoffset = transferred % 4; // cannot lose the offset
 
-	if (TTE) return !vifX.vifstalled;
-
-	transferred   = transferred >> 2;
-
-	vifXch.madr +=(transferred << 4);
-	vifXch.qwc  -= transferred;
-
-	if (!vifXch.qwc && !vifX.irqoffset) vifX.inprogress &= ~0x1;
+	if (!TTE) {// *WARNING* - Tags CAN have interrupts! so lets just ignore the dma modifying stuffs (GT4)
+		transferred  = transferred >> 2;
+		vifXch.madr +=(transferred << 4);
+		vifXch.qwc  -= transferred;
+		if (vifXch.chcr.STR) hwDmacSrcTadrInc(vifXch);
+		if(!vifXch.qwc) {
+			vifX.inprogress &= ~0x1;
+			vifX.vifstalled = false;
+		}
+	}
+	else {
+		if (!vifX.irqoffset) vifX.vifstalled = false;
+	}
 
 	if (vifX.irq && vifX.cmd == 0) {
 		//DevCon.WriteLn("Vif IRQ!");
-		if(((vifXRegs.code >> 24) & 0x7f) != 0x7)
-		{
-			vifX.vifstalled    = true;
+		if(((vifXRegs.code >> 24) & 0x7f) != 0x7) {
 			vifXRegs.stat.VIS = true; // Note: commenting this out fixes WALL-E?
-		}
-
-		if (!vifXch.qwc && !vifX.irqoffset) vifX.inprogress &= ~1;
-		return false;
-	}
+			vifX.vifstalled = true;
+		}		
+	}	
 
 	return !vifX.vifstalled;
 }

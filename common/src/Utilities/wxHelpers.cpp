@@ -19,7 +19,17 @@
 #include "Threading.h"
 #include "IniInterface.h"
 
+#ifdef __LINUX__
+// I do not know if it is a GCC issue or a bug in wxwidget !
+// Anyway the code isn't used (m_hasContextHelp always false) so I remove
+// it for linux. The 'vtable' issue appears with the include of 
+// <wx/cshelp.h> -- Gregory
+#define GCC_4_6_LTO_COMPILATION_ISSUE
+#endif
+
+#ifndef GCC_4_6_LTO_COMPILATION_ISSUE
 #include <wx/cshelp.h>
+#endif
 #include <wx/tooltip.h>
 #include <wx/spinctrl.h>
 
@@ -146,8 +156,10 @@ void wxDialogWithHelpers::Init( const pxDialogCreationFlags& cflags )
 
 	m_extraButtonSizer	= NULL;
 
+#ifndef GCC_4_6_LTO_COMPILATION_ISSUE
 	if( m_hasContextHelp )
 		delete wxHelpProvider::Set( new wxSimpleHelpProvider() );
+#endif
 
 	// GTK/Linux Note: currently the Close (X) button doesn't appear to work in dialogs.  Docs
 	// indicate that it should, so I presume the problem is in wxWidgets and that (hopefully!)
@@ -274,13 +286,13 @@ pxStaticText& wxDialogWithHelpers::Heading( const wxString& label )
 	return *new pxStaticHeading( this, label );
 }
 
-void wxDialogWithHelpers::OnCloseWindow( wxCloseEvent& evt )
+bool wxDialogWithHelpers::Destroy()
 {
 	// Save the dialog position if the dialog is named...
 	// FIXME : This doesn't get called if the app is exited by alt-f4'ing the main app window.
 	//   ... not sure how to fix that yet.  I could register a list of open windows into wxAppWithHelpers
 	//   that systematically get closed.  Seems like work, maybe later.  --air
-	
+
 	if( wxConfigBase* cfg = IsIconized() ? NULL : wxConfigBase::Get( false ) )
 	{
 		const wxString dlgName( GetDialogName() );
@@ -300,6 +312,11 @@ void wxDialogWithHelpers::OnCloseWindow( wxCloseEvent& evt )
 		}
 	}
 
+	return _parent::Destroy();
+}
+
+void wxDialogWithHelpers::OnCloseWindow( wxCloseEvent& evt )
+{
 	if( !IsModal() ) Destroy();
 	evt.Skip();
 }
@@ -322,6 +339,7 @@ void wxDialogWithHelpers::AddOkCancel( wxSizer &sizer, bool hasApply )
 
 	m_extraButtonSizer = new wxBoxSizer( wxHORIZONTAL );
 
+#ifndef GCC_4_6_LTO_COMPILATION_ISSUE
 	// Add the context-sensitive help button on the caption for the platforms
 	// which support it (currently MSW only)
 	if( m_hasContextHelp )
@@ -331,6 +349,7 @@ void wxDialogWithHelpers::AddOkCancel( wxSizer &sizer, bool hasApply )
 		*m_extraButtonSizer += new wxContextHelpButton(this) | StdButton();
 #endif
 	}
+#endif
 
 	// create a sizer to hold the help and ok/cancel buttons, for platforms
 	// that need a custom help icon.  [fixme: help icon prolly better off somewhere else]
@@ -349,7 +368,7 @@ void wxDialogWithHelpers::AddOkCancel( wxSizer &sizer, bool hasApply )
 void wxDialogWithHelpers::AddOkCancel( wxSizer *sizer, bool hasApply )
 {
 	if( sizer == NULL ) sizer = GetSizer();
-	pxAssume( sizer );
+	pxAssert( sizer );
 	AddOkCancel( *sizer, hasApply );
 }
 
@@ -455,7 +474,13 @@ int pxGetCharHeight( const wxWindow* wind, int rows )
 	if( !wind ) return 0;
 	wxClientDC dc(wx_const_cast(wxWindow*, wind));
 	dc.SetFont( wind->GetFont() );
+#ifdef __LINUX__
+	// It seems there is a bad detection of the size of the font (non standard dpi ???). Font are cut in top or bottom.
+	// Add a correction factor to leave enough room. Visualy 1.7 seems fine but feel free to tune it -- Gregory
+	return (dc.GetCharHeight() * 1.7 + 1 ) * rows;
+#else
 	return (dc.GetCharHeight() + 1 ) * rows;
+#endif
 }
 
 int pxGetCharHeight( const wxWindow& wind, int rows )

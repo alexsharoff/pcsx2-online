@@ -31,8 +31,6 @@ class x86capabilities
 {
 public:
 	bool isIdentified;
-	u32 LogicalCoresPerPhysicalCPU;
-	u32 PhysicalCoresPerPhysicalCPU;
 
 public:
 	x86VendorType VendorID;
@@ -89,6 +87,8 @@ public:
 	u32 hasSupplementalStreamingSIMD3Extensions		:1;
 	u32 hasStreamingSIMD4Extensions					:1;
 	u32 hasStreamingSIMD4Extensions2				:1;
+	u32 hasAVX										:1;
+	u32 hasFMA										:1;
 
 	// AMD-specific CPU Features
 	u32 hasMultimediaExtensionsExt					:1;
@@ -106,8 +106,6 @@ public:
 	{
 		isIdentified = false;
 		VendorID = x86Vendor_Unknown;
-		LogicalCoresPerPhysicalCPU = 1;
-		PhysicalCoresPerPhysicalCPU = 1;
 	}
 
 	void Identify();

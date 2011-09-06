@@ -33,7 +33,7 @@ ConsoleLogSource_App::ConsoleLogSource_App()
 	static const TraceLogDescriptor myDesc =
 	{
 		L"AppEvents",		L"App Events",
-		wxLt("Includes idle event processing and some other uncommon event usages.")
+		pxLt("Includes idle event processing and some other uncommon event usages.")
 	};
 	
 	m_Descriptor = &myDesc;
@@ -44,7 +44,7 @@ ConsoleLogSource_App pxConLog_App;
 void BaseDeletableObject::DoDeletion()
 {
 	wxAppWithHelpers* app = wxDynamicCast( wxApp::GetInstance(), wxAppWithHelpers );
-	pxAssume( app != NULL );
+	pxAssert( app != NULL );
 	app->DeleteObject( *this );
 }
 
@@ -675,7 +675,7 @@ void wxAppWithHelpers::OnDeleteThread( wxCommandEvent& evt )
 		return;
 	}
 
-	pxThreadLog.Write(thr->GetName(), (wxString)L"Thread object deleted successfully" + (thr->HasPendingException() ? wxEmptyString : L"[exception pending!]"));
+	pxThreadLog.Write(thr->GetName(), (wxString)L"Thread object deleted successfully" + (thr->HasPendingException() ? L" [exception pending!]" : wxEmptyString));
 	thr->RethrowException();
 }
 

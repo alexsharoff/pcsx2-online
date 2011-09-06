@@ -169,7 +169,7 @@ ElfObject::ElfObject( const wxString& srcfile, uint hdrsize )
 
 void ElfObject::initElfHeaders()
 {
-	Console.WriteLn( L"Initializing Elf: %d bytes", data.GetSizeInBytes());
+	DevCon.WriteLn( L"Initializing Elf: %d bytes", data.GetSizeInBytes());
 
 	if ( header.e_phnum > 0 )
 		proghead = (ELF_PHR*)&data[header.e_phoff];
@@ -260,16 +260,26 @@ void ElfObject::readFile()
 	if (rsize < data.GetSizeInBytes()) throw Exception::EndOfStream(filename);
 }
 
+static wxString GetMsg_InvalidELF()
+{
+	return
+		_("Cannot load ELF binary image.  The file may be corrupt or incomplete.") + 
+		wxString(L"\n\n") +
+		_("If loading from an ISO image, this error may be caused by an unsupported ISO image type or a bug in PCSX2 ISO image support.");
+}
+
+
 void ElfObject::checkElfSize(s64 elfsize)
 {
-	if (elfsize > 0xfffffff)
-		throw Exception::BadStream(filename).SetBothMsgs(wxLt("Illegal ELF file size over 2GB!"));
+	const wxChar* diagMsg = NULL;
+	if		(elfsize > 0xfffffff)	diagMsg = L"Illegal ELF file size over 2GB!";
+	else if	(elfsize == -1)			diagMsg = L"ELF file does not exist!";
+	else if	(elfsize == 0)			diagMsg = L"Unexpected end of ELF file.";
 
-	if (elfsize == -1)
-		throw Exception::BadStream(filename).SetBothMsgs(wxLt("ELF file does not exist!"));
-
-	if (elfsize == 0)
-		throw Exception::BadStream(filename).SetBothMsgs(wxLt("Unexpected end of ELF file."));
+	if (diagMsg)
+		throw Exception::BadStream(filename)
+			.SetDiagMsg(diagMsg)
+			.SetUserMsg(GetMsg_InvalidELF());
 }
 
 u32 ElfObject::getCRC()
@@ -472,15 +482,15 @@ int GetPS2ElfName( wxString& name )
 			return 0;
 		}
 	}
-	catch (Exception::BadStream& ex)
-	{
-		Console.Error(ex.FormatDiagnosticMessage());
-		return 0;		// ISO error
-	}
 	catch( Exception::FileNotFound& )
 	{
 		//Console.Warning(ex.FormatDiagnosticMessage());
 		return 0;		// no SYSTEM.CNF, not a PS1/PS2 disc.
+	}
+	catch (Exception::BadStream& ex)
+	{
+		Console.Error(ex.FormatDiagnosticMessage());
+		return 0;		// ISO error
 	}
 
 #ifdef PCSX2_DEVBUILD

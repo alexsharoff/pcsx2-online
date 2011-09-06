@@ -42,21 +42,6 @@ void SaveStateBase::ipuDmaFreeze()
 	Freeze(IPU1Status);
 }
 
-static __fi bool ipuDmacPartialChain(tDMA_TAG tag)
-{
-	switch (tag.ID)
-	{
-		case TAG_REFE:  // refe
-			ipu1dma.tadr += 16;
-			return true;
-
-		case TAG_END: // end
-			ipu1dma.tadr = ipu1dma.madr;
-			return true;
-	}
-	return false;
-}
-
 static __fi void ipuDmacSrcChain()
 {
 	switch (IPU1Status.ChainMode)
@@ -82,35 +67,10 @@ static __fi void ipuDmacSrcChain()
 			break;
 
 		case TAG_END: // end
-			ipu1dma.tadr = ipu1dma.madr;
+			//ipu1dma.tadr = ipu1dma.madr;
 			IPU1Status.DMAFinished = true;
 			break;
 	}
-}
-
-static __fi bool WaitGSPaths()
-{
-	if(CHECK_IPUWAITHACK)
-	{
-		if(GSTransferStatus.PTH3 < STOPPED_MODE && GSTransferStatus.PTH3 != IDLE_MODE)
-		{
-			//GIF_LOG("Flushing gif chcr %x tadr %x madr %x qwc %x", gif->chcr._u32, gif->tadr, gif->madr, gif->qwc);
-			//DevCon.WriteLn("Waiting for GIF");
-			return false;
-		}
-
-		if(GSTransferStatus.PTH2 != STOPPED_MODE)
-		{
-			//DevCon.WriteLn("Waiting for VIF");
-			return false;
-		}
-		if(GSTransferStatus.PTH1 != STOPPED_MODE)
-		{
-			//DevCon.WriteLn("Waiting for VU");
-			return false;
-		}
-	}
-	return true;
 }
 
 static __fi int IPU1chain() {
@@ -136,33 +96,15 @@ static __fi int IPU1chain() {
 		ipu1dma.qwc -= qwc;
 		totalqwc += qwc;
 	}
+
+	//Update TADR etc
+	if(IPU1Status.DMAMode == DMA_MODE_CHAIN) ipuDmacSrcChain();
+
 	if( ipu1dma.qwc == 0)
-	{
-		//Update TADR etc
-		if(IPU1Status.DMAMode == DMA_MODE_CHAIN) ipuDmacSrcChain();
-		//If the transfer has finished or we have room in the FIFO, schedule to the interrupt code.
-		
-		//No data left
 		IPU1Status.InProgress = false;
-	} //If we still have data the commands should pull this across when need be.
 
 	return totalqwc;
 }
-
-//static __fi bool WaitGSPaths()
-//{
-//	//Wait for all GS paths to be clear
-//	if (GSTransferStatus._u32 != 0x2a)
-//	{
-//		if(GSTransferStatus.PTH3 != STOPPED_MODE && vif1Regs.mskpath3) return true;
-//		IPU_LOG("Waiting for GS transfers to finish %x", GSTransferStatus._u32);
-//		IPU_INT_TO(4);
-//		return false;
-//	}
-//	return true;
-//}
-
-
 
 int IPU1dma()
 {
@@ -170,7 +112,6 @@ int IPU1dma()
 	int totalqwc = 0;
 
 	//We need to make sure GIF has flushed before sending IPU data, it seems to REALLY screw FFX videos
-    //if(!WaitGSPaths()) return totalqwc;
 
 	if(ipu1dma.chcr.STR == false || IPU1Status.DMAMode == 2)
 	{
@@ -187,11 +128,6 @@ int IPU1dma()
 	{
 		case DMA_MODE_NORMAL:
 			{
-				if(!WaitGSPaths())
-				{ // legacy WaitGSPaths() for now
-					IPU_INT_TO(32); //Give it a short wait.
-					return totalqwc;
-				}
 				IPU_LOG("Processing Normal QWC left %x Finished %d In Progress %d", ipu1dma.qwc, IPU1Status.DMAFinished, IPU1Status.InProgress);
 				if(IPU1Status.InProgress == true) totalqwc += IPU1chain();
 			}
@@ -201,11 +137,6 @@ int IPU1dma()
 			{
 				if(IPU1Status.InProgress == true) //No transfer is ready to go so we need to set one up
 				{
-					if(!WaitGSPaths())
-					{ // legacy WaitGSPaths() for now
-						IPU_INT_TO(32); //Give it a short wait.
-						return totalqwc;
-					}
 					IPU_LOG("Processing Chain QWC left %x Finished %d In Progress %d", ipu1dma.qwc, IPU1Status.DMAFinished, IPU1Status.InProgress);
 					totalqwc += IPU1chain();
 					//Set the TADR forward
@@ -238,7 +169,8 @@ int IPU1dma()
 							break;
 
 						case TAG_CNT: // cnt
-							ipu1dma.madr = ipu1dma.tadr + 16;
+							ipu1dma.tadr += 16;
+							ipu1dma.madr = ipu1dma.tadr;
 							IPU_LOG("Tag should end on %x", ipu1dma.madr + ipu1dma.qwc * 16);
 							//ipu1dma.tadr = ipu1dma.madr + (ipu1dma.qwc * 16);
 							// Set the taddr to the next tag
@@ -262,7 +194,7 @@ int IPU1dma()
 						case TAG_END: // end
 							// do not change tadr
 							ipu1dma.madr = ipu1dma.tadr + 16;
-							ipu1dma.tadr += 16;
+							//ipu1dma.tadr += 16;
 							IPU_LOG("Tag should end on %x", ipu1dma.madr + ipu1dma.qwc * 16);
 
 							break;
@@ -280,12 +212,6 @@ int IPU1dma()
 					if (ipu1dma.chcr.TIE && ptag->IRQ) //Tag Interrupt is set, so schedule the end/interrupt
 						IPU1Status.DMAFinished = true;
 
-
-					if(!WaitGSPaths() && ipu1dma.qwc > 0)
-					{ // legacy WaitGSPaths() for now
-						IPU_INT_TO(32); //Give it a short wait.
-						return totalqwc;
-					}
 					IPU_LOG("Processing Start Chain QWC left %x Finished %d In Progress %d", ipu1dma.qwc, IPU1Status.DMAFinished, IPU1Status.InProgress);
 					totalqwc += IPU1chain();
 					//Set the TADR forward
@@ -310,15 +236,23 @@ int IPU1dma()
 	return totalqwc;
 }
 
-int IPU0dma()
+void IPU0dma()
 {
-	if(!ipuRegs.ctrl.OFC) return 0;
+	if(!ipuRegs.ctrl.OFC) 
+	{
+		IPU_INT_FROM( 64 );
+		IPUProcessInterrupt();
+		return;
+	}
 
 	int readsize;
 	tDMA_TAG* pMem;
 
 	if ((!(ipu0dma.chcr.STR) || (cpuRegs.interrupt & (1 << DMAC_FROM_IPU))) || (ipu0dma.qwc == 0))
-		return 0;
+	{
+		DevCon.Warning("How??");
+		return;
+	}
 
 	pxAssert(!(ipu0dma.chcr.TTE));
 
@@ -362,10 +296,11 @@ int IPU0dma()
 		//This was IPU_INT_FROM(readsize*BIAS );
 		//This broke vids in Digital Devil Saga
 		//Note that interrupting based on totalsize is just guessing..
-		IPU_INT_FROM( readsize * BIAS );
 	}
+	IPU_INT_FROM( readsize * BIAS );
+	if(ipuRegs.ctrl.IFC > 0) IPUProcessInterrupt();
 
-	return readsize;
+	//return readsize;
 }
 
 __fi void dmaIPU0() // fromIPU
@@ -381,7 +316,10 @@ __fi void dmaIPU0() // fromIPU
 		hwDmacIrq(DMAC_FROM_IPU);
 	}
 
-	IPUProcessInterrupt();
+	IPU_INT_FROM( 64 );
+
+
+	
 }
 
 __fi void dmaIPU1() // toIPU
@@ -450,6 +388,11 @@ void ipu0Interrupt()
 {
 	IPU_LOG("ipu0Interrupt: %x", cpuRegs.cycle);
 
+	if(ipu0dma.qwc > 0)
+	{
+		IPU0dma();
+		return;
+	}
 	if (g_nDMATransfer.FIREINT0)
 	{
 		g_nDMATransfer.FIREINT0 = false;
@@ -490,6 +433,7 @@ void ipu0Interrupt()
 
 	ipu0dma.chcr.STR = false;
 	hwDmacIrq(DMAC_FROM_IPU);
+	DMA_LOG("IPU0 DMA End");
 }
 
 IPU_FORCEINLINE void ipu1Interrupt()
@@ -502,7 +446,7 @@ IPU_FORCEINLINE void ipu1Interrupt()
 		return;
 	}
 
-	IPU_LOG("ipu1 finish %x:", cpuRegs.cycle);
+	DMA_LOG("IPU1 DMA End");
 	ipu1dma.chcr.STR = false;
 	IPU1Status.DMAMode = 2;
 	hwDmacIrq(DMAC_TO_IPU);

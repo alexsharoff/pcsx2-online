@@ -350,7 +350,7 @@ static __fi void _reloadElfInfo(wxString elfpath)
 
 	ElfCRC = elfptr->getCRC();
 	ElfEntry = elfptr->header.e_entry;
-	Console.WriteLn(L"ELF (%s) CRC=0x%08X, EntryPoint=0x%08X", elfpath.c_str(), ElfCRC, ElfEntry);
+	Console.WriteLn( Color_StrongBlue, L"ELF (%s) Game CRC = 0x%08X, EntryPoint = 0x%08X", elfpath.c_str(), ElfCRC, ElfEntry);
 
 	// Note: Do not load game database info here.  This code is generic and called from
 	// BIOS key encryption as well as eeloadReplaceOSDSYS.  The first is actually still executing
@@ -382,7 +382,7 @@ void cdvdReloadElfInfo(wxString elfoverride)
 			if (!ENABLE_LOADING_PS1_GAMES)
 				Cpu->ThrowException( Exception::RuntimeError()
 					.SetDiagMsg(L"PSX game discs are not supported by PCSX2.")
-					.SetUserMsg(pxE( "Error:PsxDisc",
+					.SetUserMsg(pxE( "!Notice:PsxDisc",
 						L"Playstation game discs are not supported by PCSX2.  If you want to emulate PSX games "
 						L"then you'll have to download a PSX-specific emulator, such as ePSXe or PCSX.")
 					)
@@ -492,22 +492,20 @@ s32 cdvdReadSubQ(s32 lsn, cdvdSubQ* subq)
 
 s32 cdvdCtrlTrayOpen()
 {
-	Console.Warning("Open virtual disk tray");
+	DevCon.WriteLn( Color_Green, L"Open virtual disk tray");
 	DiscSwapTimerSeconds = cdvd.RTC.second; // remember the PS2 time when this happened
 	cdvd.Status = CDVD_STATUS_TRAY_OPEN;
 	cdvd.Ready = CDVD_NOTREADY;
-	trayState = 1;
 
 	return 0; // needs to be 0 for success according to homebrew test "CDVD"
 }
 
 s32 cdvdCtrlTrayClose()
 {
-	Console.Warning("Close virtual disk tray");
+	DevCon.WriteLn( Color_Green, L"Close virtual disk tray");
 	cdvd.Status = CDVD_STATUS_PAUSE;
 	cdvd.Ready = CDVD_READY1;
-	trayState = 0;
-
+	cdvd.TrayTimeout = 0; // Reset so it can't get closed twice by cdvdVsync()
 	return 0; // needs to be 0 for success according to homebrew test "CDVD"
 }
 
@@ -833,23 +831,26 @@ __fi void cdvdReadInterrupt()
 
 		// Any other value besides 0 should be considered invalid here (wtf is that wacky
 		// plugin trying to do?)
-		pxAssume( cdvd.RErr == 0 );
+		pxAssert( cdvd.RErr == 0 );
 	}
 
-	if (cdvdReadSector() == -1)
+	if (cdvd.nSectors > 0)
 	{
-		// This means that the BCR/DMA hasn't finished yet, and rather than fire off the
-		// sector-finished notice too early (which might overwrite game data) we delay a
-		// bit and try to read the sector again later.
-		// An arbitrary delay of some number of cycles probably makes more sense here,
-		// but for now it's based on the cdvd.ReadTime value. -- air
+		if (cdvdReadSector() == -1)
+		{
+			// This means that the BCR/DMA hasn't finished yet, and rather than fire off the
+			// sector-finished notice too early (which might overwrite game data) we delay a
+			// bit and try to read the sector again later.
+			// An arbitrary delay of some number of cycles probably makes more sense here,
+			// but for now it's based on the cdvd.ReadTime value. -- air
 
-		pxAssume((int)cdvd.ReadTime > 0 );
-		CDVDREAD_INT(cdvd.ReadTime/4);
-		return;
+			pxAssert((int)cdvd.ReadTime > 0 );
+			CDVDREAD_INT(cdvd.ReadTime/4);
+			return;
+		}
+
+		cdvd.Sector++;
 	}
-
-	cdvd.Sector++;
 
 	if (--cdvd.nSectors <= 0)
 	{
@@ -940,11 +941,13 @@ void cdvdVsync() {
 	cdvd.RTCcount = 0;
 
 	if ( cdvd.Status == CDVD_STATUS_TRAY_OPEN )
-	{	
-		if ( cdvd.RTC.second != DiscSwapTimerSeconds)
-		{
-			cdvdCtrlTrayClose();
-		}
+	{
+		cdvd.TrayTimeout++;
+	}
+	if (cdvd.TrayTimeout > 3)
+	{
+		cdvdCtrlTrayClose();
+		cdvd.TrayTimeout = 0;
 	}
 
 	cdvd.RTC.second++;
@@ -1023,8 +1026,11 @@ u8 cdvdRead(u8 key)
 
 		case 0x0B: // TRAY-STATE (if tray has been opened)
 		{
-			CDVD_LOG("cdvdRead0B(Tray) %x", trayState);
-			return /*tray*/ trayState;
+			CDVD_LOG("cdvdRead0B(Tray) (1 open, 0 closed): %x", cdvd.Status);
+			if (cdvd.Status == CDVD_STATUS_TRAY_OPEN)
+				return 1;
+			else
+				return 0;
 			break;
 		}
 		case 0x0C: // CRT MINUTE
@@ -1125,7 +1131,6 @@ u8 cdvdRead(u8 key)
 		case 0x3A: 	// DEC_SET
 			CDVD_LOG("cdvdRead3A(DecSet) %x", cdvd.decSet);
 
-			Console.WriteLn("DecSet Read: %02X", cdvd.decSet);
 			return cdvd.decSet;
 			break;
 
@@ -1197,7 +1202,7 @@ static void cdvdWrite04(u8 rt) { // NCOMMAND
 				cdvd.Sector, cdvd.nSectors, cdvd.RetryCnt, cdvd.Speed, cdvd.Param[9], cdvd.ReadMode, cdvd.Param[10], psxHu32(0x1074));
 
 			if( EmuConfig.CdvdVerboseReads )
-				Console.WriteLn("CdRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
+				Console.WriteLn( Color_Gray, L"CdRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
 					cdvd.Sector, cdvd.nSectors,cdvd.BlockSize,cdvd.Speed);
 
 			cdvd.ReadTime = cdvdBlockReadTime( MODE_CDROM );
@@ -1245,7 +1250,7 @@ static void cdvdWrite04(u8 rt) { // NCOMMAND
 				cdvd.Sector, cdvd.nSectors, cdvd.RetryCnt, cdvd.Speed, cdvd.Param[9], cdvd.ReadMode, cdvd.Param[10], psxHu32(0x1074));
 
 			if( EmuConfig.CdvdVerboseReads )
-				Console.WriteLn("CdAudioRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
+				Console.WriteLn( Color_Gray, L"CdAudioRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
 					cdvd.Sector, cdvd.nSectors,cdvd.BlockSize,cdvd.Speed);
 
 			cdvd.ReadTime = cdvdBlockReadTime( MODE_CDROM );
@@ -1281,7 +1286,7 @@ static void cdvdWrite04(u8 rt) { // NCOMMAND
 				cdvd.Sector, cdvd.nSectors, cdvd.RetryCnt, cdvd.Speed, cdvd.Param[9], cdvd.ReadMode, cdvd.Param[10], psxHu32(0x1074));
 
 			if( EmuConfig.CdvdVerboseReads )
-				Console.WriteLn("DvdRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
+				Console.WriteLn( Color_Gray, L"DvdRead: Reading Sector %d(%d Blocks of Size %d) at Speed=%dx",
 					cdvd.Sector, cdvd.nSectors,cdvd.BlockSize,cdvd.Speed);
 
 			cdvd.ReadTime = cdvdBlockReadTime( MODE_DVDROM );
@@ -1324,7 +1329,7 @@ static void cdvdWrite04(u8 rt) { // NCOMMAND
 		break;
 
 		case N_CD_CHG_SPDL_CTRL: // CdChgSpdlCtrl
-			Console.Warning("sceCdChgSpdlCtrl(%d)", cdvd.Param[0]);
+			Console.WriteLn("sceCdChgSpdlCtrl(%d)", cdvd.Param[0]);
 			cdvdSetIrq();
 		break;
 
@@ -1414,7 +1419,6 @@ static void cdvdWrite16(u8 rt)		 // SCOMMAND
 //	cdvdTN	diskInfo;
 //	cdvdTD	trackInfo;
 //	int i, lbn, type, min, sec, frm, address;
-	static bool oldTrayState = 0;
 	int address;
 	u8 tmp;
 
@@ -1465,25 +1469,37 @@ static void cdvdWrite16(u8 rt)		 // SCOMMAND
 				default:
 					SetResultSize(1);
 					cdvd.Result[0] = 0x80;
-					Console.WriteLn("*Unknown Mecacon Command param[0]=%02X", cdvd.Param[0]);
+					Console.Warning("*Unknown Mecacon Command param[0]=%02X", cdvd.Param[0]);
 					break;
 			}
 			break;
 
 		case 0x05: // CdTrayReqState  (0:1) - resets the tray open detection
 			
-			//Console.Warning("CdTrayReqState. trayState = %d oldTrayState = %d",trayState, oldTrayState);
+			// Fixme: This function is believed to change some status flag
+			// when the Tray state (stored as "1" in cdvd.Status) is different between 2 successive calls.
+			// Cdvd.Status can be different than 1 here, yet we may still have to report an open status.
+			// Gonna have to investigate further. (rama)
+			
+			//Console.Warning("CdTrayReqState. cdvd.Status = %d", cdvd.Status);
 			SetResultSize(1);
-			if (trayState != oldTrayState)
-				cdvd.Result[0] = 1;
-			else
-				cdvd.Result[0] = 0; // old behaviour was always this
 
-			oldTrayState = trayState;
+			if (cdvd.Status == CDVD_STATUS_TRAY_OPEN)
+			{
+				//Console.Warning( "reporting Open status" );
+				cdvd.Result[0] = 1;
+			}
+			else
+			{
+				//Console.Warning( "reporting Close status" );
+				cdvd.Result[0] = 0; // old behaviour was always this
+			}
+
 			break;
 
 		case 0x06: // CdTrayCtrl  (1:1)
 			SetResultSize(1);
+			//Console.Warning( "CdTrayCtrl, param = %d", cdvd.Param[0]);
 			if(cdvd.Param[0] == 0)
 				cdvd.Result[0] = cdvdCtrlTrayOpen();
 			else
@@ -1721,7 +1737,7 @@ static void cdvdWrite16(u8 rt)		 // SCOMMAND
 
 			cdvdGetMechaVer(&cdvd.Result[1]);
 			cdvdReadRegionParams(&cdvd.Result[3]);//size==8
-			Console.WriteLn("REGION PARAMS = %s %s", mg_zones[cdvd.Result[1]], &cdvd.Result[3]);
+			DevCon.WriteLn("REGION PARAMS = %s %s", mg_zones[cdvd.Result[1]], &cdvd.Result[3]);
 			cdvd.Result[1] = 1 << cdvd.Result[1];	//encryption zone; see offset 0x1C in encrypted headers
 			//////////////////////////////////////////
 			cdvd.Result[2] = 0;						//??
@@ -2033,7 +2049,6 @@ static __fi void cdvdWrite18(u8 rt) { // SDATAOUT
 static __fi void cdvdWrite3A(u8 rt) { // DEC-SET
 	CDVD_LOG("cdvdWrite3A(DecSet) %x", rt);
 	cdvd.decSet = rt;
-	Console.WriteLn("DecSet Write: %02X", cdvd.decSet);
 }
 
 void cdvdWrite(u8 key, u8 rt)

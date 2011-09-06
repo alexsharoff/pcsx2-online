@@ -17,6 +17,7 @@
 #include "PrecompiledHeader.h"
 #include "Common.h"
 #include "Hardware.h"
+#include "MTVU.h"
 
 #include "IPU/IPUdma.h"
 #include "ps2/HwInternal.h"
@@ -91,7 +92,7 @@ __fi void setDmacStat(u32 num)
 }
 
 // Note: Dma addresses are guaranteed to be aligned to 16 bytes (128 bits)
-__fi tDMA_TAG *SPRdmaGetAddr(u32 addr, bool write)
+__fi tDMA_TAG* SPRdmaGetAddr(u32 addr, bool write)
 {
 	// if (addr & 0xf) { DMA_LOG("*PCSX2*: DMA address not 128bit aligned: %8.8x", addr); }
 
@@ -104,7 +105,7 @@ __fi tDMA_TAG *SPRdmaGetAddr(u32 addr, bool write)
 	// FIXME: Why??? DMA uses physical addresses
 	addr &= 0x1ffffff0;
 
-	if (addr < Ps2MemSize::Base)
+	if (addr < Ps2MemSize::MainRam)
 	{
 		return (tDMA_TAG*)&eeMem->Main[addr];
 	}
@@ -114,6 +115,10 @@ __fi tDMA_TAG *SPRdmaGetAddr(u32 addr, bool write)
 	}
 	else if ((addr >= 0x11004000) && (addr < 0x11010000))
 	{
+		if (THREAD_VU1) {
+			DevCon.Error("MTVU: SPRdmaGetAddr Accessing VU Memory!");
+			vu1Thread.WaitVU();
+		}
 		//Access for VU Memory
 		return (tDMA_TAG*)vtlb_GetPhyPtr(addr & 0x1FFFFFF0);
 	}
@@ -133,7 +138,7 @@ __ri tDMA_TAG *dmaGetAddr(u32 addr, bool write)
 	// FIXME: Why??? DMA uses physical addresses
 	addr &= 0x1ffffff0;
 
-	if (addr < Ps2MemSize::Base)
+	if (addr < Ps2MemSize::MainRam)
 	{
 		return (tDMA_TAG*)&eeMem->Main[addr];
 	}
@@ -292,125 +297,152 @@ template< uint page >
 __fi bool dmacWrite32( u32 mem, mem32_t& value )
 {
 	iswitch(mem) {
-	icase(D0_CHCR) // dma0 - vif0
-	{
-		DMA_LOG("VIF0dma EXECUTE, value=0x%x", value);
-		DmaExec(dmaVIF0, mem, value);
-		return false;
-	}
-
-	icase(D1_CHCR) // dma1 - vif1 - chcr
-	{
-		DMA_LOG("VIF1dma EXECUTE, value=0x%x", value);
-		DmaExec(dmaVIF1, mem, value);
-		return false;
-	}
-
-	icase(D2_CHCR) // dma2 - gif
-	{
-		DMA_LOG("GIFdma EXECUTE, value=0x%x", value);
-		DmaExec(dmaGIF, mem, value);
-		return false;
-	}
-
-	icase(D3_CHCR) // dma3 - fromIPU
-	{
-		DMA_LOG("IPU0dma EXECUTE, value=0x%x\n", value);
-		DmaExec(dmaIPU0, mem, value);
-		return false;
-	}
-
-	icase(D4_CHCR) // dma4 - toIPU
-	{
-		DMA_LOG("IPU1dma EXECUTE, value=0x%x\n", value);
-		DmaExec(dmaIPU1, mem, value);
-		return false;
-	}
-
-	icase(D5_CHCR) // dma5 - sif0
-	{
-		DMA_LOG("SIF0dma EXECUTE, value=0x%x", value);
-		DmaExec(dmaSIF0, mem, value);
-		return false;
-	}
-
-	icase(D6_CHCR) // dma6 - sif1
-	{
-		DMA_LOG("SIF1dma EXECUTE, value=0x%x", value);
-		DmaExec(dmaSIF1, mem, value);
-		return false;
-	}
-
-	icase(D7_CHCR) // dma7 - sif2
-	{
-		DMA_LOG("SIF2dma EXECUTE, value=0x%x", value);
-		DmaExec(dmaSIF2, mem, value);
-		return false;
-	}
-
-	icase(D8_CHCR) // dma8 - fromSPR
-	{
-		DMA_LOG("SPR0dma EXECUTE (fromSPR), value=0x%x", value);
-		DmaExec(dmaSPR0, mem, value);
-		return false;
-	}
-
-	icase(D9_CHCR) // dma9 - toSPR
-	{
-		DMA_LOG("SPR1dma EXECUTE (toSPR), value=0x%x", value);
-		DmaExec(dmaSPR1, mem, value);
-		return false;
-	}
-		
-	icase(DMAC_CTRL)
-	{
-		u32 oldvalue = psHu32(mem);
-
-		HW_LOG("DMAC_CTRL Write 32bit %x", value);
-
-		psHu32(mem) = value;
-		//Check for DMAS that were started while the DMAC was disabled
-		if (((oldvalue & 0x1) == 0) && ((value & 0x1) == 1))
+		icase(D0_CHCR) // dma0 - vif0
 		{
-			if (!QueuedDMA.empty()) StartQueuedDMA();
+			DMA_LOG("VIF0dma EXECUTE, value=0x%x", value);
+			DmaExec(dmaVIF0, mem, value);
+			return false;
 		}
-		if ((oldvalue & 0x30) != (value & 0x30))
+
+		icase(D1_CHCR) // dma1 - vif1 - chcr
 		{
-			DevCon.Warning("32bit Stall Source Changed to %x", (value & 0x30) >> 4);
+			DMA_LOG("VIF1dma EXECUTE, value=0x%x", value);
+			DmaExec(dmaVIF1, mem, value);
+			return false;
 		}
-		if ((oldvalue & 0xC0) != (value & 0xC0))
+
+		icase(D2_CHCR) // dma2 - gif
 		{
-			DevCon.Warning("32bit Stall Destination Changed to %x", (value & 0xC0) >> 4);
+			DMA_LOG("GIFdma EXECUTE, value=0x%x", value);
+			DmaExec(dmaGIF, mem, value);
+			return false;
 		}
-		return false;
+
+		icase(D3_CHCR) // dma3 - fromIPU
+		{
+			DMA_LOG("IPU0dma EXECUTE, value=0x%x\n", value);
+			DmaExec(dmaIPU0, mem, value);
+			return false;
+		}
+
+		icase(D4_CHCR) // dma4 - toIPU
+		{
+			DMA_LOG("IPU1dma EXECUTE, value=0x%x\n", value);
+			DmaExec(dmaIPU1, mem, value);
+			return false;
+		}
+
+		icase(D5_CHCR) // dma5 - sif0
+		{
+			DMA_LOG("SIF0dma EXECUTE, value=0x%x", value);
+			DmaExec(dmaSIF0, mem, value);
+			return false;
+		}
+
+		icase(D6_CHCR) // dma6 - sif1
+		{
+			DMA_LOG("SIF1dma EXECUTE, value=0x%x", value);
+			DmaExec(dmaSIF1, mem, value);
+			return false;
+		}
+
+		icase(D7_CHCR) // dma7 - sif2
+		{
+			DMA_LOG("SIF2dma EXECUTE, value=0x%x", value);
+			DmaExec(dmaSIF2, mem, value);
+			return false;
+		}
+
+		icase(D8_CHCR) // dma8 - fromSPR
+		{
+			DMA_LOG("SPR0dma EXECUTE (fromSPR), value=0x%x", value);
+			DmaExec(dmaSPR0, mem, value);
+			return false;
+		}
+
+		icase(D9_CHCR) // dma9 - toSPR
+		{
+			DMA_LOG("SPR1dma EXECUTE (toSPR), value=0x%x", value);
+			DmaExec(dmaSPR1, mem, value);
+			return false;
+		}
+			
+		icase(DMAC_CTRL)
+		{
+			u32 oldvalue = psHu32(mem);
+
+			HW_LOG("DMAC_CTRL Write 32bit %x", value);
+
+			psHu32(mem) = value;
+			//Check for DMAS that were started while the DMAC was disabled
+			if (((oldvalue & 0x1) == 0) && ((value & 0x1) == 1))
+			{
+				if (!QueuedDMA.empty()) StartQueuedDMA();
+			}
+			if ((oldvalue & 0x30) != (value & 0x30))
+			{
+				DevCon.Warning("32bit Stall Source Changed to %x", (value & 0x30) >> 4);
+			}
+			if ((oldvalue & 0xC0) != (value & 0xC0))
+			{
+				DevCon.Warning("32bit Stall Destination Changed to %x", (value & 0xC0) >> 4);
+			}
+			return false;
+		}
+
+		//Midway are a bunch of idiots, writing to E100 (reserved) instead of E010
+		//Which causes a CPCOND0 to fail.
+		icase(DMAC_FAKESTAT)
+		{
+			//DevCon.Warning("Midway fixup addr=%x writing %x for DMA_STAT", mem, value);
+			HW_LOG("Midways own DMAC_STAT Write 32bit %x", value);
+
+			// lower 16 bits: clear on 1
+			// upper 16 bits: reverse on 1
+
+			psHu16(0xe010) &= ~(value & 0xffff);
+			psHu16(0xe012) ^= (u16)(value >> 16);
+
+			cpuTestDMACInts();
+			return false;
+		}
+		icase(DMAC_STAT)
+		{
+			HW_LOG("DMAC_STAT Write 32bit %x", value);
+
+			// lower 16 bits: clear on 1
+			// upper 16 bits: reverse on 1
+
+			psHu16(0xe010) &= ~(value & 0xffff);
+			psHu16(0xe012) ^= (u16)(value >> 16);
+
+			cpuTestDMACInts();
+			return false;
+		}
+
+		icase(DMAC_ENABLEW)
+		{
+			HW_LOG("DMAC_ENABLEW Write 32bit %lx", value);
+			oldvalue = psHu8(DMAC_ENABLEW + 2);
+			psHu32(DMAC_ENABLEW) = value;
+			psHu32(DMAC_ENABLER) = value;
+			if (((oldvalue & 0x1) == 1) && (((value >> 16) & 0x1) == 0))
+			{
+				if (!QueuedDMA.empty()) StartQueuedDMA();
+			}
+			return false;
+		}
 	}
 
-	icase(DMAC_STAT)
-	{
-		HW_LOG("DMAC_STAT Write 32bit %x", value);
-
-		// lower 16 bits: clear on 1
-		// upper 16 bits: reverse on 1
-
-		psHu16(0xe010) &= ~(value & 0xffff);
-		psHu16(0xe012) ^= (u16)(value >> 16);
-
-		cpuTestDMACInts();
-		return false;
-	}
-
-	icase(DMAC_ENABLEW)
-	{
-		HW_LOG("DMAC_ENABLEW Write 32bit %lx", value);
-		oldvalue = psHu8(DMAC_ENABLEW + 2);
-		psHu32(DMAC_ENABLEW) = value;
-		psHu32(DMAC_ENABLER) = value;
-		if (((oldvalue & 0x1) == 1) && (((value >> 16) & 0x1) == 0))
+	// DMA Writes are invalid to everything except the STR on CHCR when it is busy
+	// There's timing problems with many games. Gamefix time!
+	if( CHECK_DMABUSYHACK && (mem & 0xf0) )
+	{	
+		if((psHu32(mem & ~0xff) & 0x100) && dmacRegs.ctrl.DMAE && !psHu8(DMAC_ENABLER+2)) 
 		{
-			if (!QueuedDMA.empty()) StartQueuedDMA();
+			DevCon.Warning("Gamefix: Write to DMA addr %x while STR is busy! Ignoring", mem);
+			return false;
 		}
-		return false;
-	}
 	}
 
 	// fall-through: use the default writeback provided by caller.

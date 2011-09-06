@@ -106,6 +106,7 @@ union tVIF_STAT {
 	};
 	u32 _u32;
 
+	tVIF_STAT() {}
 	tVIF_STAT(u32 val)			{ _u32 = val; }
 	bool test(u32 flags) const	{ return !!(_u32 & flags); }
 	void set_flags	(u32 flags)	{ _u32 |=  flags; }
@@ -145,6 +146,7 @@ union tVIF_ERR {
 	};
 	u32 _u32;
 
+	tVIF_ERR() {}
 	tVIF_ERR  (u32 val)					{ _u32 = val; }
 	void write(u32 val)					{ _u32 = val; }
 	bool test		(u32 flags) const	{ return !!(_u32 & flags); }
@@ -221,10 +223,12 @@ static VIFregisters& vif1Regs = (VIFregisters&)eeHw[0x3C00];
 #define  vifXch		(idx ? (vif1ch)   : (vif0ch))
 #define  vifXRegs	(idx ? (vif1Regs) : (vif0Regs))
 
+#define  MTVU_VifX     (idx ? ((THREAD_VU1) ? vu1Thread.vif     : vif1)     : (vif0))
+#define  MTVU_VifXRegs (idx ? ((THREAD_VU1) ? vu1Thread.vifRegs : vif1Regs) : (vif0Regs))
+
 extern void dmaVIF0();
 extern void dmaVIF1();
 extern void mfifoVIF1transfer(int qwc);
 extern bool VIF0transfer(u32 *data, int size, bool TTE=0);
 extern bool VIF1transfer(u32 *data, int size, bool TTE=0);
 extern void vifMFIFOInterrupt();
-extern bool CheckPath2GIF(EE_EventType channel);

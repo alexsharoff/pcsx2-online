@@ -30,6 +30,7 @@
 
 #ifdef _MSC_VER
 #	include <intrin.h>
+extern "C" unsigned __int64 __xgetbv(int);
 #else
 #	include <intrin_x86.h>
 #endif
@@ -193,6 +194,7 @@ static const int __pagesize	= PCSX2_PAGESIZE;
 
 #	define __aligned(alig)	__declspec(align(alig))
 #	define __aligned16		__declspec(align(16))
+#	define __aligned32		__declspec(align(32))
 #	define __pagealigned	__declspec(align(PCSX2_PAGESIZE))
 
 	// Deprecated; use __align instead.
@@ -223,6 +225,7 @@ static const int __pagesize	= PCSX2_PAGESIZE;
 
 #	define __aligned(alig)	__attribute__((aligned(alig)))
 #	define __aligned16		__attribute__((aligned(16)))
+#	define __aligned32		__attribute__((aligned(32)))
 #	define __pagealigned	__attribute__((aligned(PCSX2_PAGESIZE)))
 	// Deprecated; use __align instead.
 #	define PCSX2_ALIGNED(alig,x) x __attribute((aligned(alig)))
@@ -305,6 +308,8 @@ static const int __pagesize	= PCSX2_PAGESIZE;
 
 #define __ri	__releaseinline
 #define __fi	__forceinline
+#define __fc	__fastcall
+#define elif	else if
 
 
 #endif

@@ -80,14 +80,15 @@ void wxDirName::Rmdir()
 
 bool wxDirName::Mkdir()
 {
+	// wxWidgets recurses directory creation for us.
+
+	// only exist in wx2.9 and above
+#ifndef wxS_DIR_DEFAULT
+#define wxS_DIR_DEFAULT 0777
+#endif
+
 	if( Exists() ) return true;
-
-	// Recursively create child directories as needed:
-	wxDirName recurse( *this );
-	recurse.RemoveLastDir();
-	if( !recurse.Mkdir() ) return false;
-
-	return wxFileName::Mkdir();
+	return wxFileName::Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
 }
 
 
@@ -143,7 +144,7 @@ wxString Path::Combine( const wxDirName& srcPath, const wxFileName& srcFile )
 
 wxString Path::Combine( const wxString& srcPath, const wxDirName& srcFile )
 {
-	return ((wxDirName)srcPath + srcFile).ToString();
+	return (wxDirName( srcPath ) + srcFile).ToString();
 }
 
 // Replaces the extension of the file with the one given.

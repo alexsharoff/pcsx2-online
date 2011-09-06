@@ -1,17 +1,17 @@
 /*  PCSX2 - PS2 Emulator for PCs
-*  Copyright (C) 2002-2010  PCSX2 Dev Team
-*
-*  PCSX2 is free software: you can redistribute it and/or modify it under the terms
-*  of the GNU Lesser General Public License as published by the Free Software Found-
-*  ation, either version 3 of the License, or (at your option) any later version.
-*
-*  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-*  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-*  PURPOSE.  See the GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License along with PCSX2.
-*  If not, see <http://www.gnu.org/licenses/>.
-*/
+ *  Copyright (C) 2002-2010  PCSX2 Dev Team
+ *
+ *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
+ *  of the GNU Lesser General Public License as published by the Free Software Found-
+ *  ation, either version 3 of the License, or (at your option) any later version.
+ *
+ *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ *  PURPOSE.  See the GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along with PCSX2.
+ *  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #pragma once
 
@@ -51,6 +51,10 @@ enum GamefixId
 	Fix_EETiming,
 	Fix_SkipMpeg,
 	Fix_OPHFlag,
+	Fix_DMABusy,
+	Fix_VIFFIFO,
+	Fix_VIF1Stall,
+	Fix_GIFReverse,
 
 	GamefixId_COUNT
 };
@@ -67,14 +71,14 @@ ImplementEnumOperators( GamefixId );
 struct TraceFiltersEE
 {
 	BITFIELD32()
-		bool
-m_EnableAll		:1,		// Master Enable switch (if false, no logs at all)
-m_EnableDisasm	:1,
-m_EnableRegisters:1,
-m_EnableEvents	:1;		// Enables logging of event-driven activity -- counters, DMAs, etc.
+	bool
+		m_EnableAll		:1,		// Master Enable switch (if false, no logs at all)
+		m_EnableDisasm	:1,
+		m_EnableRegisters:1,
+		m_EnableEvents	:1;		// Enables logging of event-driven activity -- counters, DMAs, etc.
 	BITFIELD_END
 
-		TraceFiltersEE()
+	TraceFiltersEE()
 	{
 		bitset = 0;
 	}
@@ -96,14 +100,14 @@ m_EnableEvents	:1;		// Enables logging of event-driven activity -- counters, DMA
 struct TraceFiltersIOP
 {
 	BITFIELD32()
-		bool
-m_EnableAll		:1,		// Master Enable switch (if false, no logs at all)
-m_EnableDisasm	:1,
-m_EnableRegisters:1,
-m_EnableEvents	:1;		// Enables logging of event-driven activity -- counters, DMAs, etc.
+	bool
+		m_EnableAll		:1,		// Master Enable switch (if false, no logs at all)
+		m_EnableDisasm	:1,
+		m_EnableRegisters:1,
+		m_EnableEvents	:1;		// Enables logging of event-driven activity -- counters, DMAs, etc.
 	BITFIELD_END
 
-		TraceFiltersIOP()
+	TraceFiltersIOP()
 	{
 		bitset = 0;
 	}
@@ -172,15 +176,15 @@ struct Pcsx2Config
 	{
 		BITFIELD32()
 			bool
-Enabled:1,			// universal toggle for the profiler.
-RecBlocks_EE:1,		// Enables per-block profiling for the EE recompiler [unimplemented]
-RecBlocks_IOP:1,	// Enables per-block profiling for the IOP recompiler [unimplemented]
-RecBlocks_VU0:1,	// Enables per-block profiling for the VU0 recompiler [unimplemented]
-RecBlocks_VU1:1;	// Enables per-block profiling for the VU1 recompiler [unimplemented]
+				Enabled:1,			// universal toggle for the profiler.
+				RecBlocks_EE:1,		// Enables per-block profiling for the EE recompiler [unimplemented]
+				RecBlocks_IOP:1,	// Enables per-block profiling for the IOP recompiler [unimplemented]
+				RecBlocks_VU0:1,	// Enables per-block profiling for the VU0 recompiler [unimplemented]
+				RecBlocks_VU1:1;	// Enables per-block profiling for the VU1 recompiler [unimplemented]
 		BITFIELD_END
 
-			// Default is Disabled, with all recs enabled underneath.
-			ProfilerOptions() : bitset( 0xfffffffe ) {}
+		// Default is Disabled, with all recs enabled underneath.
+		ProfilerOptions() : bitset( 0xfffffffe ) {}
 		void LoadSave( IniInterface& conf );
 
 		bool operator ==( const ProfilerOptions& right ) const
@@ -199,33 +203,35 @@ RecBlocks_VU1:1;	// Enables per-block profiling for the VU1 recompiler [unimplem
 	{
 		BITFIELD32()
 			bool
-EnableEE		:1,
-EnableIOP		:1,
-EnableVU0		:1,
-EnableVU1		:1;
+				EnableEE		:1,
+				EnableIOP		:1,
+				EnableVU0		:1,
+				EnableVU1		:1;
 
-		bool
-UseMicroVU0		:1,
-UseMicroVU1		:1;
+			bool
+				UseMicroVU0		:1,
+				UseMicroVU1		:1;
 
-		bool
-vuOverflow		:1,
-vuExtraOverflow	:1,
-vuSignOverflow	:1,
-vuUnderflow		:1;
+			bool
+				vuOverflow		:1,
+				vuExtraOverflow	:1,
+				vuSignOverflow	:1,
+				vuUnderflow		:1;
 
-		bool
-fpuOverflow		:1,
-fpuExtraOverflow:1,
-fpuFullMode		:1;
+			bool
+				fpuOverflow		:1,
+				fpuExtraOverflow:1,
+				fpuFullMode		:1;
 
-		bool
-StackFrameChecks:1,
-PreBlockCheckEE	:1,
-PreBlockCheckIOP:1;
+			bool
+				StackFrameChecks:1,
+				PreBlockCheckEE	:1,
+				PreBlockCheckIOP:1;
+			bool
+				EnableEECache   :1;
 		BITFIELD_END
 
-			RecompilerOptions();
+		RecompilerOptions();
 		void ApplySanityCheck();
 
 		void LoadSave( IniInterface& conf );
@@ -277,6 +283,7 @@ PreBlockCheckIOP:1;
 		bool	FrameLimitEnable;
 		bool	FrameSkipEnable;
 		bool	VsyncEnable;
+		bool	ManagedVsync;
 
 		// The region mode controls the default Maximum/Minimum FPS settings and also
 		// regulates the vsync rates (which in turn control the IOP's SPU2 tick sync and ensure
@@ -299,10 +306,11 @@ PreBlockCheckIOP:1;
 				OpEqu( SynchronousMTGS )		&&
 				OpEqu( DisableOutput )			&&
 				OpEqu( VsyncQueueSize )			&&
-
+				
 				OpEqu( FrameSkipEnable )		&&
 				OpEqu( FrameLimitEnable )		&&
 				OpEqu( VsyncEnable )			&&
+				OpEqu( ManagedVsync )			&&
 
 				OpEqu( LimitScalar )			&&
 				OpEqu( FramerateNTSC )			&&
@@ -326,19 +334,23 @@ PreBlockCheckIOP:1;
 	{
 		BITFIELD32()
 			bool
-VuAddSubHack	:1,		// Tri-ace games, they use an encryption algorithm that requires VU ADDI opcode to be bit-accurate.
-VuClipFlagHack	:1,		// Persona games, maybe others. It's to do with the VU clip flag (again).
-FpuCompareHack	:1,		// Digimon Rumble Arena 2, fixes spinning/hanging on intro-menu.
-FpuMulHack		:1,		// Tales of Destiny hangs.
-FpuNegDivHack	:1,		// Gundam games messed up camera-view.
-XgKickHack		:1,		// Erementar Gerad, adds more delay to VU XGkick instructions. Corrects the color of some graphics, but breaks Tri-ace games and others.
-IPUWaitHack     :1,		// FFX FMV, makes GIF flush before doing IPU work. Fixes bad graphics overlay.
-EETimingHack	:1,		// General purpose timing hack.
-SkipMPEGHack	:1,		// Skips MPEG videos (Katamari and other games need this)
-OPHFlagHack		:1;		// Skips MPEG videos (Katamari and other games need this)
+				VuAddSubHack	:1,		// Tri-ace games, they use an encryption algorithm that requires VU ADDI opcode to be bit-accurate.
+				VuClipFlagHack	:1,		// Persona games, maybe others. It's to do with the VU clip flag (again).
+				FpuCompareHack	:1,		// Digimon Rumble Arena 2, fixes spinning/hanging on intro-menu.
+				FpuMulHack		:1,		// Tales of Destiny hangs.
+				FpuNegDivHack	:1,		// Gundam games messed up camera-view.
+				XgKickHack		:1,		// Erementar Gerad, adds more delay to VU XGkick instructions. Corrects the color of some graphics, but breaks Tri-ace games and others.
+				IPUWaitHack     :1,		// FFX FMV, makes GIF flush before doing IPU work. Fixes bad graphics overlay.
+				EETimingHack	:1,		// General purpose timing hack.
+				SkipMPEGHack	:1,		// Skips MPEG videos (Katamari and other games need this)
+				OPHFlagHack		:1,		// Bleach Blade Battlers
+				DMABusyHack		:1,		// Denies writes to the DMAC when it's busy. This is correct behaviour but bad timing can cause problems.
+				VIFFIFOHack		:1,     // Pretends to fill the non-existant VIF FIFO Buffer.
+				VIF1StallHack   :1,     // Like above, processes FIFO data before the stall is allowed (to make sure data goes over).
+				GIFReverseHack  :1;		// Allows PATH3 to continue even if the FIFO is reversed.
 		BITFIELD_END
 
-			GamefixOptions();
+		GamefixOptions();
 		void LoadSave( IniInterface& conf );
 		GamefixOptions& DisableAll();
 
@@ -365,15 +377,15 @@ OPHFlagHack		:1;		// Skips MPEG videos (Katamari and other games need this)
 	{
 		BITFIELD32()
 			bool
-fastCDVD		:1,		// enables fast CDVD access
-IntcStat		:1,		// tells Pcsx2 to fast-forward through intc_stat waits.
-WaitLoop		:1,		// enables constant loop detection and fast-forwarding
-vuFlagHack		:1,		// microVU specific flag hack
-vuBlockHack		:1,		// microVU specific block flag no-propagation hack
-vuMinMax		:1;		// microVU specific MinMax hack
+				fastCDVD		:1,		// enables fast CDVD access
+				IntcStat		:1,		// tells Pcsx2 to fast-forward through intc_stat waits.
+				WaitLoop		:1,		// enables constant loop detection and fast-forwarding
+				vuFlagHack		:1,		// microVU specific flag hack
+				vuBlockHack		:1,		// microVU specific block flag no-propagation hack
+				vuThread        :1;		// Enable Threaded VU1
 		BITFIELD_END
 
-			u8	EECycleRate;		// EE cycle rate selector (1.0, 1.5, 2.0)
+		u8	EECycleRate;		// EE cycle rate selector (1.0, 1.5, 2.0)
 		u8	VUCycleSteal;		// VU Cycle Stealer factor (0, 1, 2, or 3)
 
 		SpeedhackOptions();
@@ -393,25 +405,25 @@ vuMinMax		:1;		// microVU specific MinMax hack
 
 	BITFIELD32()
 		bool
-CdvdVerboseReads	:1,		// enables cdvd read activity verbosely dumped to the console
-CdvdDumpBlocks		:1,		// enables cdvd block dumping
-EnablePatches		:1,		// enables patch detection and application
-EnableCheats		:1,		// enables cheat detection and application
+			CdvdVerboseReads	:1,		// enables cdvd read activity verbosely dumped to the console
+			CdvdDumpBlocks		:1,		// enables cdvd block dumping
+			EnablePatches		:1,		// enables patch detection and application
+			EnableCheats		:1,		// enables cheat detection and application
 
-					 // when enabled uses BOOT2 injection, skipping sony bios splashes
-UseBOOT2Injection	:1,
+		// when enabled uses BOOT2 injection, skipping sony bios splashes
+			UseBOOT2Injection	:1,
+			BackupSavestate		:1,
+		// enables simulated ejection of memory cards when loading savestates
+			McdEnableEjection	:1,
 
-					 // enables simulated ejection of memory cards when loading savestates
-McdEnableEjection	:1,
+			MultitapPort0_Enabled:1,
+			MultitapPort1_Enabled:1,
 
-MultitapPort0_Enabled:1,
-MultitapPort1_Enabled:1,
-
-ConsoleToStdio		:1,
-HostFs				:1;
+			ConsoleToStdio		:1,
+			HostFs				:1;
 	BITFIELD_END
 
-		CpuOptions			Cpu;
+	CpuOptions			Cpu;
 	GSOptions			GS;
 	SpeedhackOptions	Speedhacks;
 	GamefixOptions		Gamefixes;
@@ -464,9 +476,11 @@ TraceLogFilters&				SetTraceConfig();
 
 // ------------ CPU / Recompiler Options ---------------
 
+#define THREAD_VU1					(EmuConfig.Cpu.Recompiler.UseMicroVU1 && EmuConfig.Speedhacks.vuThread)
 #define CHECK_MICROVU0				(EmuConfig.Cpu.Recompiler.UseMicroVU0)
 #define CHECK_MICROVU1				(EmuConfig.Cpu.Recompiler.UseMicroVU1)
 #define CHECK_EEREC					(EmuConfig.Cpu.Recompiler.EnableEE && GetCpuProviders().IsRecAvailable_EE())
+#define CHECK_CACHE					(EmuConfig.Cpu.Recompiler.EnableEECache)
 #define CHECK_IOPREC				(EmuConfig.Cpu.Recompiler.EnableIOP && GetCpuProviders().IsRecAvailable_IOP())
 
 //------------ SPECIAL GAME FIXES!!! ---------------
@@ -479,8 +493,11 @@ TraceLogFilters&				SetTraceConfig();
 #define CHECK_IPUWAITHACK			(EmuConfig.Gamefixes.IPUWaitHack)	 // Special Fix For FFX
 #define CHECK_EETIMINGHACK			(EmuConfig.Gamefixes.EETimingHack)	 // Fix all scheduled events to happen in 1 cycle.
 #define CHECK_SKIPMPEGHACK			(EmuConfig.Gamefixes.SkipMPEGHack)	 // Finds sceMpegIsEnd pattern to tell the game the mpeg is finished (Katamari and a lot of games need this)
-#define CHECK_OPHFLAGHACK			(EmuConfig.Gamefixes.OPHFlagHack)
-
+#define CHECK_OPHFLAGHACK			(EmuConfig.Gamefixes.OPHFlagHack)	 // Bleach Blade Battlers
+#define CHECK_DMABUSYHACK			(EmuConfig.Gamefixes.DMABusyHack)    // Denies writes to the DMAC when it's busy. This is correct behaviour but bad timing can cause problems.
+#define CHECK_VIFFIFOHACK			(EmuConfig.Gamefixes.VIFFIFOHack)    // Pretends to fill the non-existant VIF FIFO Buffer.
+#define CHECK_VIF1STALLHACK			(EmuConfig.Gamefixes.VIF1StallHack)  // Like above, processes FIFO data before the stall is allowed (to make sure data goes over).
+#define CHECK_GIFREVERSEHACK		(EmuConfig.Gamefixes.GIFReverseHack) // Allows PATH3 to continue even if the FIFO is reversed.
 //------------ Advanced Options!!! ---------------
 #define CHECK_VU_OVERFLOW			(EmuConfig.Cpu.Recompiler.vuOverflow)
 #define CHECK_VU_EXTRA_OVERFLOW		(EmuConfig.Cpu.Recompiler.vuExtraOverflow) // If enabled, Operands are clamped before being used in the VU recs

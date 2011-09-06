@@ -20,9 +20,7 @@
     #include "wx/msw/wince/wince.rc"
 #endif
 
-//There's no such file, looks like its safe to comment it out for now.
-//#include "wx/msw/rcdefs.h"
-
+#include "wx/msw/rcdefs.h"
 
 //////////////////////////////////////////////////////////////////////////////
 //

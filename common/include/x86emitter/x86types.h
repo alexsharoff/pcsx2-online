@@ -35,10 +35,12 @@ enum XMMSSEType
 // as a project option.  The multithreaded emitter relies on native compiler support for
 // TLS -- Macs are crap out of luck there (for now).
 
+#include "Utilities/Threading.h"
+
 #ifndef x86EMIT_MULTITHREADED
-#	define x86EMIT_MULTITHREADED	0
-#else
-#	if !PCSX2_THREAD_LOCAL
+#	if PCSX2_THREAD_LOCAL
+#		define x86EMIT_MULTITHREADED	1
+#	else
 		// No TLS support?  Force-clear the MT flag:
 #		pragma message("x86emitter: TLS not available, multithreaded emitter disabled.")
 #		undef x86EMIT_MULTITHREADED
@@ -501,7 +503,7 @@ template< typename T > void xWrite( T val );
 			&xmm6, &xmm7
 		};
 
-		pxAssume(id < iREGCNT_XMM);
+		pxAssert(id < iREGCNT_XMM);
 		return *m_tbl_xmmRegs[id];
 	}
 

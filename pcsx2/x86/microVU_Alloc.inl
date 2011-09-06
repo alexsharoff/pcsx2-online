@@ -25,9 +25,9 @@
 
 __fi static const x32& getFlagReg(uint fInst)
 {
-	static const x32* const gprF_crap[4] = { &gprF0, &gprF1, &gprF2, &gprF3 };
-	pxAssume(fInst < 4);
-	return *gprF_crap[fInst];
+	static const x32* const gprFlags[4] = { &gprF0, &gprF1, &gprF2, &gprF3 };
+	pxAssert(fInst < 4);
+	return *gprFlags[fInst];
 }
 
 __fi void setBitSFLAG(const x32& reg, const x32& regT, int bitTest, int bitSet)
@@ -103,26 +103,26 @@ __ri void mVUallocSFLAGd(u32* memAddr, bool setAllflags) {
 
 __fi void mVUallocMFLAGa(mV, const x32& reg, int fInstance)
 {
-	xMOVZX(reg, ptr16[&mVU->macFlag[fInstance]]);
+	xMOVZX(reg, ptr16[&mVU.macFlag[fInstance]]);
 }
 
 __fi void mVUallocMFLAGb(mV, const x32& reg, int fInstance)
 {
 	//xAND(reg, 0xffff);
-	if (fInstance < 4) xMOV(ptr32[&mVU->macFlag[fInstance]], reg);			// microVU
-	else			   xMOV(ptr32[&mVU->regs().VI[REG_MAC_FLAG].UL], reg);	// macroVU
+	if (fInstance < 4) xMOV(ptr32[&mVU.macFlag[fInstance]], reg);			// microVU
+	else			   xMOV(ptr32[&mVU.regs().VI[REG_MAC_FLAG].UL], reg);	// macroVU
 }
 
 __fi void mVUallocCFLAGa(mV, const x32& reg, int fInstance)
 {
-	if (fInstance < 4) xMOV(reg, ptr32[&mVU->clipFlag[fInstance]]);			// microVU
-	else			   xMOV(reg, ptr32[&mVU->regs().VI[REG_CLIP_FLAG].UL]);	// macroVU
+	if (fInstance < 4) xMOV(reg, ptr32[&mVU.clipFlag[fInstance]]);			// microVU
+	else			   xMOV(reg, ptr32[&mVU.regs().VI[REG_CLIP_FLAG].UL]);	// macroVU
 }
 
 __fi void mVUallocCFLAGb(mV, const x32& reg, int fInstance)
 {
-	if (fInstance < 4) xMOV(ptr32[&mVU->clipFlag[fInstance]], reg);			// microVU
-	else			   xMOV(ptr32[&mVU->regs().VI[REG_CLIP_FLAG].UL], reg);	// macroVU
+	if (fInstance < 4) xMOV(ptr32[&mVU.clipFlag[fInstance]], reg);			// microVU
+	else			   xMOV(ptr32[&mVU.regs().VI[REG_CLIP_FLAG].UL], reg);	// macroVU
 }
 
 //------------------------------------------------------------------
@@ -131,23 +131,19 @@ __fi void mVUallocCFLAGb(mV, const x32& reg, int fInstance)
 
 __ri void mVUallocVIa(mV, const x32& GPRreg, int _reg_, bool signext = false)
 {
-	if (!_reg_)
-		xXOR(GPRreg, GPRreg);
-	else
-		if (signext)
-			xMOVSX(GPRreg, ptr16[&mVU->regs().VI[_reg_].SL]);
-		else
-			xMOVZX(GPRreg, ptr16[&mVU->regs().VI[_reg_].UL]);
+	if  (!_reg_)  xXOR  (GPRreg, GPRreg);
+	elif(signext) xMOVSX(GPRreg, ptr16[&mVU.regs().VI[_reg_].SL]);
+	else          xMOVZX(GPRreg, ptr16[&mVU.regs().VI[_reg_].UL]);
 }
 
 __ri void mVUallocVIb(mV, const x32& GPRreg, int _reg_)
 {
 	if (mVUlow.backupVI) { // Backs up reg to memory (used when VI is modified b4 a branch)
-		xMOVZX(gprT3, ptr16[&mVU->regs().VI[_reg_].UL]);
-		xMOV  (ptr32[&mVU->VIbackup], gprT3);
+		xMOVZX(gprT3, ptr16[&mVU.regs().VI[_reg_].UL]);
+		xMOV  (ptr32[&mVU.VIbackup], gprT3);
 	}
-	if		(_reg_ == 0) { return; }
-	else if (_reg_ < 16) { xMOV(ptr16[&mVU->regs().VI[_reg_].UL], xRegister16(GPRreg.Id)); }
+	if   (_reg_ == 0) { return; }
+	elif (_reg_ < 16) { xMOV(ptr16[&mVU.regs().VI[_reg_].UL], xRegister16(GPRreg.Id)); }
 }
 
 //------------------------------------------------------------------

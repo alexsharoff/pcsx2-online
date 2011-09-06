@@ -29,7 +29,39 @@ static const mc_command_0x26_tag mc_sizeinfo_8mb= {'+', 512, 16, 0x4000, 0x52, 0
 
 // Ejection timeout management belongs in the MemoryCardFile plugin, except the plugin
 // interface is not yet complete.
-static int m_ForceEjectionTimeout[2];
+
+//Reinsert the card after auto-eject: after max tries or after min tries + XXX milliseconds, whichever comes first.
+//E.g. if the game polls the card 100 times/sec and max tries=100, then after 1 second it will see the card as inserted (ms timeout not reached).
+//E.g. if the game polls the card 1 time/sec, then it will see the card ejected 4 times, and on the 5th it will see it as inserted (4 secs from the initial access).
+//(A 'try' in this context is the game accessing SIO)
+static const int   FORCED_MCD_EJECTION_MIN_TRIES =2;
+static const int   FORCED_MCD_EJECTION_MAX_TRIES =128;
+static const float FORCED_MCD_EJECTION_MAX_MS_AFTER_MIN_TRIES =2800; 
+
+static const int FORCED_MCD_EJECTION_NUM_SLOTS =2;
+static int			m_ForceEjectionTimeout[FORCED_MCD_EJECTION_NUM_SLOTS];
+static wxDateTime	m_ForceEjection_minTriesTimestamp[FORCED_MCD_EJECTION_NUM_SLOTS];
+
+wxString GetTimeMsStr(){
+	wxDateTime unow=wxDateTime::UNow();
+	wxString res;
+	res.Printf(L"%s.%03d", unow.Format(L"%H:%M:%S").c_str(), (int)unow.GetMillisecond() );
+	return res;
+}
+void _SetForceMcdEjectTimeoutNow(int port, int slot, int mcdEjectTimeoutInSioAccesses)
+{
+	m_ForceEjectionTimeout[port]=mcdEjectTimeoutInSioAccesses;
+}
+
+//allow timeout also for the mcd manager panel
+void SetForceMcdEjectTimeoutNow()
+{
+	const int slot=0;
+	int port=0;
+	for (port=0; port<2; port++)
+		_SetForceMcdEjectTimeoutNow(port, slot, FORCED_MCD_EJECTION_MAX_TRIES);
+}
+
 
 // SIO Inline'd IRQs : Calls the SIO interrupt handlers directly instead of
 // feeding them through the IOP's branch test. (see SIO.H for details)
@@ -244,7 +276,7 @@ void SIO_CommandWrite(u8 value,int way) {
 				info.McdSizeInSectors	= cmd.mcdSizeInSectors;
 				
 				SysPlugins.McdGetSizeInfo( port, slot, info );
-				pxAssumeDev( cmd.mcdSizeInSectors >= mc_sizeinfo_8mb.mcdSizeInSectors,
+				pxAssertDev( cmd.mcdSizeInSectors >= mc_sizeinfo_8mb.mcdSizeInSectors,
 					"Mcd plugin returned an invalid memorycard size: Cards smaller than 8MB are not supported." );
 				
 				cmd.sectorSize			= info.SectorSize;
@@ -670,10 +702,32 @@ void InitializeSIO(u8 value)
 			//  (ejection is only supported for the default non-multitap cards at this time)
 
 			bool forceEject = false;
-			if( slot == 0 && m_ForceEjectionTimeout[port] )
+			if( slot == 0 && m_ForceEjectionTimeout[port]>0 )
 			{
+				if( m_ForceEjectionTimeout[port] == FORCED_MCD_EJECTION_MAX_TRIES && SysPlugins.McdIsPresent( port, slot ) )
+					Console.WriteLn( Color_Green,  L"[%s] Auto-ejecting memcard [port:%d, slot:%d]", GetTimeMsStr().c_str(), port, slot );
+
 				--m_ForceEjectionTimeout[port];
 				forceEject = true;
+
+				int numTimesAccessed = FORCED_MCD_EJECTION_MAX_TRIES - m_ForceEjectionTimeout[port];
+				if ( numTimesAccessed == FORCED_MCD_EJECTION_MIN_TRIES )
+				{//minimum tries reached. start counting millisec timeout.
+					m_ForceEjection_minTriesTimestamp[port] = wxDateTime::UNow();
+				}
+
+				if ( numTimesAccessed > FORCED_MCD_EJECTION_MIN_TRIES )
+				{
+					wxTimeSpan delta = wxDateTime::UNow().Subtract( m_ForceEjection_minTriesTimestamp[port] );
+					if ( delta.GetMilliseconds() >= FORCED_MCD_EJECTION_MAX_MS_AFTER_MIN_TRIES )
+					{
+						DevCon.Warning( L"[%s] Auto-eject: Timeout reached after mcd was accessed %d times [port:%d, slot:%d]", GetTimeMsStr().c_str(), numTimesAccessed, port, slot);
+						m_ForceEjectionTimeout[port] = 0;	//Done. on next sio access the card will be seen as inserted.
+					}
+				}
+
+				if( m_ForceEjectionTimeout[port] == 0 && SysPlugins.McdIsPresent( port, slot ))
+					Console.WriteLn( Color_Green,  L"[%s] Re-inserting auto-ejected memcard [port:%d, slot:%d]", GetTimeMsStr().c_str(), port, slot);
 			}
 			
 			if( !forceEject && SysPlugins.McdIsPresent( port, slot ) )
@@ -771,7 +825,8 @@ void SaveStateBase::sioFreeze()
 			if( newCRC != m_mcdCRCs[port][slot] )
 			{
 				//m_mcdCRCs[port][slot] = newCRC;
-				m_ForceEjectionTimeout[port] = 128;
+				//m_ForceEjectionTimeout[port] = 128;
+				_SetForceMcdEjectTimeoutNow(port, slot, FORCED_MCD_EJECTION_MAX_TRIES); 
 			}
 		}
 	}

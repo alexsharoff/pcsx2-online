@@ -17,30 +17,37 @@
 
 enum FoldersEnum_t
 {
+	// FIXME : Plugins, Settings, and Themes folders are no longer part of the user-local
+	// ini storage.  They have been moved to an app-local ini storage class (which is currently
+	// handled lazily via global variables)
 	FolderId_Plugins = 0,
 	FolderId_Settings,
+	FolderId_Themes,
+	
 	FolderId_Bios,
 	FolderId_Snapshots,
 	FolderId_Savestates,
 	FolderId_MemoryCards,
 	FolderId_Logs,
+	FolderId_Langs,
 
 	FolderId_Documents,
 
 	FolderId_COUNT
 };
 
-//////////////////////////////////////////////////////////////////////////////////////////
-// PathDefs Namespace -- contains default values for various pcsx2 path names and locations.
+// --------------------------------------------------------------------------------------
+//  PathDefs  (namespace)
+// --------------------------------------------------------------------------------------
+// Contains default values for various pcsx2 path names and locations.
 //
 // Note: The members of this namespace are intended for default value initialization only.
-// Most of the time you should use the path folder assignments in g_Conf instead, since those
+// Everything else should use the path folder assignments in g_Conf instead, since those
 // are user-configurable.
 //
 namespace PathDefs
 {
-	// complete pathnames are returned by these functions
-	// For 99% of all code, you should use these.
+	// complete pathnames are returned by these functions (may or may not be absolute)
 
 	extern wxDirName GetSnapshots();
 	extern wxDirName GetBios();
@@ -50,6 +57,7 @@ namespace PathDefs
 	extern wxDirName GetMemoryCards();
 	extern wxDirName GetSettings();
 	extern wxDirName GetLogs();
+	extern wxDirName GetLangs();
 
 	extern wxDirName Get( FoldersEnum_t folderidx );
 
@@ -63,12 +71,16 @@ namespace PathDefs
 		extern const wxDirName& Settings();
 		extern const wxDirName& Plugins();
 		extern const wxDirName& Themes();
+		extern const wxDirName& Logs();
+		extern const wxDirName& Dumps();
+		extern const wxDirName& Langs();
 	}
 }
 
 namespace FilenameDefs
 {
-	extern wxFileName GetConfig();
+	extern wxFileName GetUiConfig();
+	extern wxFileName GetVmConfig();
 	extern wxFileName GetUsermodeConfig();
 	extern const wxFileName& Memcard( uint port, uint slot );
 };

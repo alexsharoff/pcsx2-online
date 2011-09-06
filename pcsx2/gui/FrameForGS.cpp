@@ -17,11 +17,14 @@
 #include "App.h"
 #include "GSFrame.h"
 #include "AppAccelerators.h"
+#include "AppSaveStates.h"
 
 #include "GS.h"
 #include "MSWstuff.h"
 
 #include <wx/utils.h>
+
+static const KeyAcceleratorCode FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL=KeyAcceleratorCode( WXK_RETURN ).Alt();
 
 void GSPanel::InitDefaultAccelerators()
 {
@@ -34,13 +37,30 @@ void GSPanel::InitDefaultAccelerators()
 
 	m_Accels->Map( AAC( WXK_F1 ),				"States_FreezeCurrentSlot" );
 	m_Accels->Map( AAC( WXK_F3 ),				"States_DefrostCurrentSlot");
+	m_Accels->Map( AAC( WXK_F3 ).Shift(),		"States_DefrostCurrentSlotBackup");
 	m_Accels->Map( AAC( WXK_F2 ),				"States_CycleSlotForward" );
 	m_Accels->Map( AAC( WXK_F2 ).Shift(),		"States_CycleSlotBackward" );
 
 	m_Accels->Map( AAC( WXK_F4 ),				"Framelimiter_MasterToggle");
 	m_Accels->Map( AAC( WXK_F4 ).Shift(),		"Frameskip_Toggle");
 	m_Accels->Map( AAC( WXK_TAB ),				"Framelimiter_TurboToggle" );
-	m_Accels->Map( AAC( WXK_TAB ).Shift(),		"Framelimiter_MasterToggle" );
+	m_Accels->Map( AAC( WXK_TAB ).Shift(),		"Framelimiter_SlomoToggle" );
+
+	m_Accels->Map( AAC( WXK_F6 ),				"GSwindow_CycleAspectRatio" );
+
+	m_Accels->Map( AAC( WXK_NUMPAD_ADD ).Cmd(),			"GSwindow_ZoomIn" );	//CTRL on Windows/linux, CMD on OSX
+	m_Accels->Map( AAC( WXK_NUMPAD_SUBTRACT ).Cmd(),	"GSwindow_ZoomOut" );
+	m_Accels->Map( AAC( WXK_NUMPAD_MULTIPLY ).Cmd(),	"GSwindow_ZoomToggle" );
+
+	m_Accels->Map( AAC( WXK_NUMPAD_ADD ).Cmd().Alt(),			"GSwindow_ZoomInY" );	//CTRL on Windows/linux, CMD on OSX
+	m_Accels->Map( AAC( WXK_NUMPAD_SUBTRACT ).Cmd().Alt(),	"GSwindow_ZoomOutY" );
+	m_Accels->Map( AAC( WXK_NUMPAD_MULTIPLY ).Cmd().Alt(),	"GSwindow_ZoomResetY" );
+
+	m_Accels->Map( AAC( WXK_UP ).Cmd().Alt(),	"GSwindow_OffsetYminus" );
+	m_Accels->Map( AAC( WXK_DOWN ).Cmd().Alt(),	"GSwindow_OffsetYplus" );
+	m_Accels->Map( AAC( WXK_LEFT ).Cmd().Alt(),	"GSwindow_OffsetXminus" );
+	m_Accels->Map( AAC( WXK_RIGHT ).Cmd().Alt(),	"GSwindow_OffsetXplus" );
+	m_Accels->Map( AAC( WXK_NUMPAD_DIVIDE ).Cmd().Alt(),	"GSwindow_OffsetReset" );
 
 	m_Accels->Map( AAC( WXK_ESCAPE ),			"Sys_Suspend" );
 	m_Accels->Map( AAC( WXK_F8 ),				"Sys_TakeSnapshot" );
@@ -48,11 +68,11 @@ void GSPanel::InitDefaultAccelerators()
 	m_Accels->Map( AAC( WXK_F8 ).Shift().Cmd(),	"Sys_TakeSnapshot");
 	m_Accels->Map( AAC( WXK_F9 ),				"Sys_RenderswitchToggle");
 
-	//m_Accels->Map( AAC( WXK_F10 ),				"Sys_LoggingToggle" );
+	m_Accels->Map( AAC( WXK_F10 ),				"Sys_LoggingToggle" );
 	m_Accels->Map( AAC( WXK_F11 ),				"Sys_FreezeGS" );
 	m_Accels->Map( AAC( WXK_F12 ),				"Sys_RecordingToggle" );
 
-	m_Accels->Map( AAC( WXK_RETURN ).Alt(),		"FullscreenToggle" );
+	m_Accels->Map( FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL,		"FullscreenToggle" );
 }
 
 GSPanel::GSPanel( wxWindow* parent )
@@ -63,7 +83,7 @@ GSPanel::GSPanel( wxWindow* parent )
 	m_HasFocus		= false;
 
 	if ( !wxWindow::Create(parent, wxID_ANY) )
-		throw Exception::RuntimeError().SetDiagMsg( L"GSPanel constructor esplode!!" );
+		throw Exception::RuntimeError().SetDiagMsg( L"GSPanel constructor explode!!" );
 
 	SetName( L"GSPanel" );
 
@@ -77,6 +97,7 @@ GSPanel::GSPanel( wxWindow* parent )
 
 	Connect(wxEVT_CLOSE_WINDOW,		wxCloseEventHandler	(GSPanel::OnCloseWindow));
 	Connect(wxEVT_SIZE,				wxSizeEventHandler	(GSPanel::OnResize));
+	Connect(wxEVT_KEY_UP,			wxKeyEventHandler	(GSPanel::OnKeyDown));
 	Connect(wxEVT_KEY_DOWN,			wxKeyEventHandler	(GSPanel::OnKeyDown));
 
 	Connect(wxEVT_SET_FOCUS,		wxFocusEventHandler	(GSPanel::OnFocus));
@@ -87,15 +108,18 @@ GSPanel::GSPanel( wxWindow* parent )
 	// Any and all events which should result in the mouse cursor being made visible
 	// are connected here.  If I missed one, feel free to add it in! --air
 
-	Connect(wxEVT_MIDDLE_DOWN,		wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_MIDDLE_UP,		wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_RIGHT_DOWN,		wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_RIGHT_UP,			wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_MOTION,			wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_LEFT_DCLICK,		wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_MIDDLE_DCLICK,	wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_RIGHT_DCLICK,		wxMouseEventHandler	(GSPanel::OnShowMouse));
-	Connect(wxEVT_MOUSEWHEEL,		wxMouseEventHandler	(GSPanel::OnShowMouse));
+	Connect(wxEVT_LEFT_DOWN,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_LEFT_UP,			wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_MIDDLE_DOWN,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_MIDDLE_UP,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_RIGHT_DOWN,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_RIGHT_UP,			wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_MOTION,			wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_LEFT_DCLICK,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_LEFT_DCLICK,		wxMouseEventHandler	(GSPanel::OnLeftDclick));
+	Connect(wxEVT_MIDDLE_DCLICK,	wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_RIGHT_DCLICK,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
+	Connect(wxEVT_MOUSEWHEEL,		wxMouseEventHandler	(GSPanel::OnMouseEvent));
 }
 
 GSPanel::~GSPanel() throw()
@@ -121,33 +145,36 @@ void GSPanel::DoResize()
 	wxSize client = GetParent()->GetClientSize();
 	wxSize viewport = client;
 
-	switch( g_Conf->GSWindow.AspectRatio )
-	{
-		case AspectRatio_Stretch:
-			// Default to matching client size.
-			// Add a few pixels here, so the outermost pixels of the GS plugin output are "hidden".
-			// This avoids issues with flashing pixels on the edges, especially when Anti Aliasing is used.
-			viewport.x+=4;
-			viewport.y+=4;
-		break;
+	if ( !client.GetHeight() || !client.GetWidth() )
+		return;
 
-		case AspectRatio_4_3:
-			if( client.x/4 <= client.y/3 )
-				viewport.y = (int)(client.x * (3.0/4.0));
-			else
-				viewport.x = (int)(client.y * (4.0/3.0));
-		break;
+	double clientAr = (double)client.GetWidth()/(double)client.GetHeight();
 
-		case AspectRatio_16_9:
-			if( client.x/16 <= client.y/9 )
-				viewport.y = (int)(client.x * (9.0/16.0));
-			else
-				viewport.x = (int)(client.y * (16.0/9.0));
-		break;
-	}
+	double targetAr = clientAr;
+	if( g_Conf->GSWindow.AspectRatio == AspectRatio_4_3 )
+		targetAr = 4.0/3.0;
+	else if( g_Conf->GSWindow.AspectRatio == AspectRatio_16_9 )
+		targetAr = 16.0/9.0;
 
+	double arr = targetAr / clientAr;
+
+	if( arr < 1 )
+		viewport.x = (int)( (double)viewport.x*arr + 0.5);
+	else if( arr > 1 )
+		viewport.y = (int)( (double)viewport.y/arr + 0.5);
+
+	float zoom = g_Conf->GSWindow.Zoom.ToFloat()/100.0;
+	if( zoom == 0 )//auto zoom in untill black-bars are gone (while keeping the aspect ratio).
+		zoom = max( (float)arr, (float)(1.0/arr) );
+
+	viewport.Scale(zoom, zoom*g_Conf->GSWindow.StretchY.ToFloat()/100.0 );
 	SetSize( viewport );
 	CenterOnParent();
+	
+	int cx, cy;
+	GetPosition(&cx, &cy);
+	float unit = .01*(float)min(viewport.x, viewport.y);
+	SetPosition( wxPoint( cx + unit*g_Conf->GSWindow.OffsetX.ToFloat(), cy + unit*g_Conf->GSWindow.OffsetY.ToFloat() ) );
 }
 
 void GSPanel::OnResize(wxSizeEvent& event)
@@ -164,11 +191,60 @@ void GSPanel::OnCloseWindow(wxCloseEvent& evt)
 	evt.Skip();		// and close it.
 }
 
-void GSPanel::OnShowMouse( wxMouseEvent& evt )
+void GSPanel::OnMouseEvent( wxMouseEvent& evt )
 {
 	if( IsBeingDeleted() ) return;
-	evt.Skip();
-	DoShowMouse();
+
+	// Do nothing for left-button event
+	if (!evt.Button(1)) {
+		evt.Skip();
+		DoShowMouse();
+	}
+
+#ifdef __LINUX__
+	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad plugin. Wx deletes
+	// the event before the pad see it. So you send key event directly to the pad.
+	if( (PADWriteEvent != NULL) && (GSopen2 != NULL) ) {
+		keyEvent event;
+		// FIXME how to handle double click ???
+		if (evt.ButtonDown()) {
+			event.evt = 4; // X equivalent of ButtonPress
+			event.key = evt.GetButton();
+		} else if (evt.ButtonUp()) {
+			event.evt = 5; // X equivalent of ButtonRelease
+			event.key = evt.GetButton();
+		} else if (evt.Moving() || evt.Dragging()) {
+			event.evt = 6; // X equivalent of MotionNotify
+			long x,y;
+			evt.GetPosition(&x, &y);
+
+			wxCoord w, h;
+			wxWindowDC dc( this );
+			dc.GetSize(&w, &h);
+
+			// Special case to allow continuous mouvement near the border
+			if (x < 10)
+				x = 0;
+			else if (x > (w-10))
+				x = 0xFFFF;
+
+			if (y < 10)
+				y = 0;
+			else if (y > (w-10))
+				y = 0xFFFF;
+
+			// For compatibility purpose with the existing structure. I decide to reduce
+			// the position to 16 bits.
+			event.key = ((y & 0xFFFF) << 16) | (x & 0xFFFF);
+
+		} else {
+			event.key = 0;
+			event.evt = 0;
+		}
+
+		PADWriteEvent(event);
+	}
+#endif
 }
 
 void GSPanel::OnHideMouseTimeout( wxTimerEvent& evt )
@@ -182,23 +258,49 @@ void GSPanel::OnHideMouseTimeout( wxTimerEvent& evt )
 
 void GSPanel::OnKeyDown( wxKeyEvent& evt )
 {
+
 	// HACK: Legacy PAD plugins expect PCSX2 to ignore keyboard messages on the GS Window while
 	// the PAD plugin is open, so ignore here (PCSX2 will direct messages routed from PAD directly
 	// to the APP level message handler, which in turn routes them right back here -- yes it's
 	// silly, but oh well).
 
+#ifdef __LINUX__
+	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad plugin. Wx deletes
+	// the event before the pad see it. So you send key event directly to the pad.
+	if( (PADWriteEvent != NULL) && (GSopen2 != NULL) ) {
+		keyEvent event;
+		event.key = evt.GetRawKeyCode();
+		if (evt.GetEventType() == wxEVT_KEY_UP)
+			event.evt = 3; // X equivalent of KEYRELEASE;
+		else if (evt.GetEventType() == wxEVT_KEY_DOWN)
+			event.evt = 2; // X equivalent of KEYPRESS;
+		else
+			event.evt = 0;
+
+		PADWriteEvent(event);
+	}
+#endif
+
 	if( (PADopen != NULL) && CoreThread.IsOpen() ) return;
 	DirectKeyCommand( evt );
 }
 
-void GSPanel::DirectKeyCommand( wxKeyEvent& evt )
+void GSPanel::DirectKeyCommand( const KeyAcceleratorCode& kac )
 {
 	const GlobalCommandDescriptor* cmd = NULL;
-	m_Accels->TryGetValue( KeyAcceleratorCode( evt ).val32, cmd );
+	m_Accels->TryGetValue( kac.val32, cmd );
 	if( cmd == NULL ) return;
 
 	DbgCon.WriteLn( "(gsFrame) Invoking command: %s", cmd->Id );
 	cmd->Invoke();
+	
+	if( cmd->AlsoApplyToGui && !g_ConfigPanelChanged)
+		AppApplySettings();
+}
+
+void GSPanel::DirectKeyCommand( wxKeyEvent& evt )
+{
+	DirectKeyCommand(KeyAcceleratorCode( evt ));
 }
 
 void GSPanel::OnFocus( wxFocusEvent& evt )
@@ -214,6 +316,14 @@ void GSPanel::OnFocus( wxFocusEvent& evt )
 	else
 		DoShowMouse();
 
+#ifdef __LINUX__
+	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad plugin. Wx deletes
+	// the event before the pad see it. So you send key event directly to the pad.
+	if( (PADWriteEvent != NULL) && (GSopen2 != NULL) ) {
+		keyEvent event = {0, 9}; // X equivalent of FocusIn;
+		PADWriteEvent(event);
+	}
+#endif
 	//Console.Warning("GS frame > focus set");
 }
 
@@ -222,6 +332,14 @@ void GSPanel::OnFocusLost( wxFocusEvent& evt )
 	evt.Skip();
 	m_HasFocus = false;
 	DoShowMouse();
+#ifdef __LINUX__
+	// HACK2: In gsopen2 there is one event buffer read by both wx/gui and pad plugin. Wx deletes
+	// the event before the pad see it. So you send key event directly to the pad.
+	if( (PADWriteEvent != NULL) && (GSopen2 != NULL) ) {
+		keyEvent event = {0, 10}; // X equivalent of FocusOut
+		PADWriteEvent(event);
+	}
+#endif
 	//Console.Warning("GS frame > focus lost");
 }
 
@@ -233,11 +351,23 @@ void GSPanel::AppStatusEvent_OnSettingsApplied()
 	Show( !EmuConfig.GS.DisableOutput );
 }
 
+void GSPanel::OnLeftDclick(wxMouseEvent& evt)
+{
+	if( !g_Conf->GSWindow.IsToggleFullscreenOnDoubleClick )
+		return;
+
+	//Console.WriteLn("GSPanel::OnDoubleClick: Invoking Fullscreen-Toggle accelerator.");
+	DirectKeyCommand(FULLSCREEN_TOGGLE_ACCELERATOR_GSPANEL);
+}
+
+
+
 // --------------------------------------------------------------------------------------
 //  GSFrame Implementation
 // --------------------------------------------------------------------------------------
 
 static const uint TitleBarUpdateMs = 333;
+
 
 GSFrame::GSFrame(wxWindow* parent, const wxString& title)
 	: wxFrame(parent, wxID_ANY, title,
@@ -285,8 +415,8 @@ void GSFrame::OnCloseWindow(wxCloseEvent& evt)
 
 bool GSFrame::ShowFullScreen(bool show, long style)
 {
-	if( show != IsFullScreen() )
-		Console.WriteLn( Color_StrongMagenta, "(gsFrame) Switching to %s mode...", show ? "Fullscreen" : "Windowed" );
+	/*if( show != IsFullScreen() )
+		Console.WriteLn( Color_StrongMagenta, "(gsFrame) Switching to %s mode...", show ? "Fullscreen" : "Windowed" );*/
 
 	if( g_Conf->GSWindow.IsFullscreen != show )
 	{
@@ -304,6 +434,8 @@ bool GSFrame::ShowFullScreen(bool show, long style)
 	
 	return retval;
 }
+
+
 
 wxStaticText* GSFrame::GetLabel_OutputDisabled() const
 {
@@ -386,8 +518,7 @@ void GSFrame::OnUpdateTitle( wxTimerEvent& evt )
 	double fps = wxGetApp().FpsManager.GetFramerate();
 
 	char gsDest[128];
-	GSgetTitleInfo( gsDest );
-
+	GSgetTitleInfo2( gsDest, sizeof(gsDest) );
 
 	const wxChar* limiterStr = L"None";
 
@@ -401,20 +532,28 @@ void GSFrame::OnUpdateTitle( wxTimerEvent& evt )
 		}
 	}
 
-	wxString cpuUsage;
-	if( m_CpuUsage.IsImplemented() )
-	{
+	FastFormatUnicode cpuUsage;
+	if (m_CpuUsage.IsImplemented()) {
 		m_CpuUsage.UpdateStats();
-		cpuUsage = wxsFormat( L" | EE: %3d%% | GS: %3d%% | UI: %3d%%", m_CpuUsage.GetEEcorePct(), m_CpuUsage.GetGsPct(), m_CpuUsage.GetGuiPct() );
+		if (THREAD_VU1) { // Display VU thread's usage
+			cpuUsage.Write(L" | EE: %3d%% | GS: %3d%% | VU: %3d%% | UI: %3d%%",
+				m_CpuUsage.GetEEcorePct(),	m_CpuUsage.GetGsPct(),
+				m_CpuUsage.GetVUPct(),		m_CpuUsage.GetGuiPct());
+		}
+		else {
+			cpuUsage.Write(L" | EE: %3d%% | GS: %3d%% | UI: %3d%%",
+				m_CpuUsage.GetEEcorePct(),	m_CpuUsage.GetGsPct(),
+				m_CpuUsage.GetGuiPct());
+		}
 	}
 
 	const u64& smode2 = *(u64*)PS2GS_BASE(GS_SMODE2);
 
-	SetTitle( wxsFormat( L"%s | %s (%s) | Limiter: %s | fps: %6.02f%s",
+	SetTitle( pxsFmt( L"%s | %s (%s) | Limiter: %s | fps: %6.02f%s | State %d",
 		fromUTF8(gsDest).c_str(),
 		(smode2 & 1) ? L"Interlaced" : L"Progressive",
 		(smode2 & 2) ? L"frame" : L"field",
-		limiterStr, fps, cpuUsage.c_str() )
+		limiterStr, fps, cpuUsage.c_str(), States_GetCurrentSlot() )
 	);
 
 	//States_GetCurrentSlot()

@@ -292,6 +292,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\Utilities\VirtualMemory.cpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\Utilities\vssprintf.cpp"
 				>
 			</File>
@@ -418,6 +422,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\include\Utilities\MemsetFast.inl"
+				>
+			</File>
+			<File
+				RelativePath="..\..\include\Utilities\PageFaultSource.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\include\Utilities\Path.h"
 				>
 			</File>
@@ -431,6 +443,10 @@
 			</File>
 			<File
 				RelativePath="..\..\include\Utilities\pxEvents.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\include\Utilities\pxForwardDefs.h"
 				>
 			</File>
 			<File

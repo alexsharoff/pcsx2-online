@@ -38,7 +38,7 @@ static __fi bool WriteEEtoFifo()
 	// There's some data ready to transfer into the fifo..
 
 	SIF_LOG("Sif 1: Write EE to Fifo");
-	const int writeSize = min((s32)sif1dma.qwc, sif1.fifo.free() >> 2);
+	const int writeSize = min((s32)sif1dma.qwc, sif1.fifo.sif_free() >> 2);
 
 	tDMA_TAG *ptag;
 
@@ -52,6 +52,7 @@ static __fi bool WriteEEtoFifo()
 	sif1.fifo.write((u32*)ptag, writeSize << 2);
 
 	sif1dma.madr += writeSize << 4;
+	hwDmacSrcTadrInc(sif1dma);
 	sif1.ee.cycles += writeSize;		// fixme : BIAS is factored in above
 	sif1dma.qwc -= writeSize;
 
@@ -114,8 +115,8 @@ static __fi bool ProcessEETag()
 			break;
 
 		case TAG_CNT:
-			sif1dma.madr = sif1dma.tadr + 16;
-			sif1dma.tadr = sif1dma.madr + (sif1dma.qwc << 4);
+			sif1dma.tadr += 16;
+			sif1dma.madr = sif1dma.tadr;
 			break;
 
 		case TAG_NEXT:
@@ -125,6 +126,7 @@ static __fi bool ProcessEETag()
 
 		case TAG_REF:
 		case TAG_REFS:
+			if(ptag->ID == TAG_REFS && dmacRegs.ctrl.STD == STD_SIF1) DevCon.Warning("SIF1 Drain Stall Control not implemented");
 			sif1dma.madr = ptag[1]._u32;
 			sif1dma.tadr += 16;
 			break;
@@ -132,7 +134,7 @@ static __fi bool ProcessEETag()
 		case TAG_END:
 			sif1.ee.end = true;
 			sif1dma.madr = sif1dma.tadr + 16;
-			sif1dma.tadr = sif1dma.madr + (sif1dma.qwc << 4);
+			//sif1dma.tadr = sif1dma.madr + (sif1dma.qwc << 4);
 			break;
 
 		default:
@@ -205,7 +207,7 @@ static __fi void HandleEETransfer()
 {
 	if(sif1dma.chcr.STR == false)
 	{
-		DevCon.Warning("Replacement for irq prevention hack EE SIF1");
+		//DevCon.Warning("Replacement for irq prevention hack EE SIF1");
 		sif1.ee.end = false;
 		sif1.ee.busy = false;
 		return;
@@ -240,7 +242,7 @@ static __fi void HandleEETransfer()
 	}
 	else
 	{
-		if (sif1.fifo.free() > 0)
+		if (sif1.fifo.sif_free() > 0)
 		{
 			WriteEEtoFifo();
 		}
@@ -279,7 +281,7 @@ static __fi void Sif1End()
 	psHu32(SBUS_F240) &= ~0x40;
 	psHu32(SBUS_F240) &= ~0x4000;
 
-	SIF_LOG("SIF1 DMA end...");
+	DMA_LOG("SIF1 DMA End");
 }
 
 // Transfer EE to IOP, putting data in the fifo as an intermediate step.
@@ -295,7 +297,7 @@ __fi void SIF1Dma()
 
 		if (sif1.ee.busy)
 		{
-			if(sif1.fifo.free() > 0 || (sif1.ee.end == true && sif1dma.qwc == 0)) 
+			if(sif1.fifo.sif_free() > 0 || (sif1.ee.end == true && sif1dma.qwc == 0)) 
 			{
 				BusyCheck++;
 				HandleEETransfer();
@@ -349,8 +351,13 @@ __fi void dmaSIF1()
 	// These 2 games could be made playable again by increasing the time the EE or the IOP run,
 	// showing that this is very timing sensible.
 	// Doing this DMA unfortunately brings back an old warning in Legend of Legaia though, but it still works.
-	if (sif1.iop.busy)
-	{
-		SIF1Dma();
-	}
+	
+	//Updated 23/08/2011: The hangs are caused by the EE suspending SIF1 DMA and restarting it when in the middle 
+	//of processing a "REFE" tag, so the hangs can be solved by forcing the ee.end to be false
+	// (as it should always be at the beginning of a DMA).  using "if iop is busy" flags breaks Tom Clancy Rainbow Six.
+	// Legend of Legaia doesn't throw a warning either :)
+	sif1.ee.end = false;
+
+	SIF1Dma();
+
 }

@@ -24,23 +24,23 @@ const wxChar* Panels::SpeedHacksPanel::GetEEcycleSliderMsg( int val )
 	switch( val )
 	{
 		case 1:
-			return pxE( ".Panel:Speedhacks:EECycleX1",
+			return pxEt( "!Panel:Speedhacks:EECycleX1",
 				L"1 - Default cyclerate. This closely matches the actual speed of a real PS2 EmotionEngine."
 			);
 
 		case 2:
-			return pxE( ".Panel:Speedhacks:EECycleX2",
+			return pxEt( "!Panel:Speedhacks:EECycleX2",
 				L"2 - Reduces the EE's cyclerate by about 33%.  Mild speedup for most games with high compatibility."
 			);
 
 		case 3:
-			return pxE( ".Panel:Speedhacks:EECycleX3",
+			return pxEt( "!Panel:Speedhacks:EECycleX3",
 				L"3 - Reduces the EE's cyclerate by about 50%.  Moderate speedup, but *will* cause stuttering "
 				L"audio on many FMVs."
 			);
 
 		default:
-            break;
+			break;
 	}
 
 	return L"Unreachable Warning Suppressor!!";
@@ -51,28 +51,28 @@ const wxChar* Panels::SpeedHacksPanel::GetVUcycleSliderMsg( int val )
 	switch( val )
 	{
 		case 0:
-			return pxE( ".Panel:Speedhacks:VUCycleStealOff",
+			return pxEt( "!Panel:Speedhacks:VUCycleStealOff",
 				L"0 - Disables VU Cycle Stealing.  Most compatible setting!"
 			);
 
 		case 1:
-			return pxE( ".Panel:Speedhacks:VUCycleSteal1",
+			return pxEt( "!Panel:Speedhacks:VUCycleSteal1",
 				L"1 - Mild VU Cycle Stealing.  Lower compatibility, but some speedup for most games."
 			);
 
 		case 2:
-			return pxE( ".Panel:Speedhacks:VUCycleSteal2",
+			return pxEt( "!Panel:Speedhacks:VUCycleSteal2",
 				L"2 - Moderate VU Cycle Stealing.  Even lower compatibility, but significant speedups in some games."
 			);
 
 		case 3:
 			// TODO: Mention specific games that benefit from this setting here.
-			return pxE( ".Panel:Speedhacks:VUCycleSteal3",
+			return pxEt( "!Panel:Speedhacks:VUCycleSteal3",
 				L"3 - Maximum VU Cycle Stealing.  Usefulness is limited, as this will cause flickering "
 				L"visuals or slowdown in most games."
 			);
-        default:
-            break;
+		default:
+			break;
 	}
 
 	return L"Unreachable Warning Suppressor!!";
@@ -89,12 +89,12 @@ void Panels::SpeedHacksPanel::SetVUcycleSliderMsg()
 }
 
 Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
-	: BaseApplicableConfigPanel( parent )
+ : BaseApplicableConfigPanel_SpecificConfig( parent )
 {
 	const wxSizerFlags sliderFlags( wxSizerFlags().Border( wxLEFT | wxRIGHT, 8 ).Expand() );
 
 	m_check_Enable = new pxCheckBox( this, _("Enable speedhacks"),
-		pxE( ".Panel:Speedhacks:Overview",
+		pxE( "!Panel:Speedhacks:Overview",
 			L"Speedhacks usually improve emulation speed, but can cause glitches, broken audio, and "
 			L"false FPS readings.  When having emulation problems, disable this panel first."
 		)
@@ -126,7 +126,7 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	m_msg_eecycle->SetForegroundColour( wxColour( L"Red" ) );
 	m_msg_eecycle->SetHeight(3);
 
-	const wxChar* ee_tooltip = pxE( ".Tooltip:Speedhacks:EECycleRate Slider",
+	const wxChar* ee_tooltip = pxEt( "!ContextTip:Speedhacks:EECycleRate Slider",
 		L"Setting higher values on this slider effectively reduces the clock speed of the EmotionEngine's "
 		L"R5900 core cpu, and typically brings big speedups to games that fail to utilize "
 		L"the full potential of the real PS2 hardware."
@@ -147,7 +147,7 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	m_msg_vustealer->SetForegroundColour( wxColour( L"Red" ) );
 	m_msg_vustealer->SetHeight(3);
 
-	const wxChar* vu_tooltip = pxE( ".Tooltip:Speedhacks:VUCycleStealing Slider",
+	const wxChar* vu_tooltip = pxEt( "!ContextTip:Speedhacks:VUCycleStealing Slider",
 		L"This slider controls the amount of cycles the VU unit steals from the EmotionEngine.  Higher values increase the number of "
 		L"cycles stolen from the EE for each VU microprogram the game runs."
 	);
@@ -161,27 +161,28 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	wxPanelWithHelpers* vuHacksPanel = new wxPanelWithHelpers( right, wxVERTICAL, _("microVU Hacks") );
 
 	m_check_vuFlagHack = new pxCheckBox( vuHacksPanel, _("mVU Flag Hack"),
-		_("Good Speedup and High Compatibility; may cause garbage graphics, SPS, etc... [Recommended]") );
+		_("Good Speedup and High Compatibility; may cause bad graphics... [Recommended]" ) );
 
 	m_check_vuBlockHack = new pxCheckBox( vuHacksPanel, _("mVU Block Hack"),
-		_("Good Speedup and High Compatibility; may cause garbage graphics, SPS, etc...") );
+		_("Good Speedup and High Compatibility; may cause bad graphics, SPS, etc...") );
 
-	m_check_vuMinMax = new pxCheckBox( vuHacksPanel, _("mVU Min/Max Hack"),
-		_("Small Speedup; may cause black screens, garbage graphics, SPS, etc... [Not Recommended]") );
+	m_check_vuThread = new pxCheckBox( vuHacksPanel, _("MTVU (Multi-Threaded microVU1)"),
+		_("Good Speedup and High Compatibility; may cause hanging... [Recommended if 3+ cores]") );
 
-	m_check_vuFlagHack->SetToolTip( pxE( ".Tooltip:Speedhacks:vuFlagHack",
+	m_check_vuFlagHack->SetToolTip( pxEt( "!ContextTip:Speedhacks:vuFlagHack",
 		L"Updates Status Flags only on blocks which will read them, instead of all the time. "
 		L"This is safe most of the time, and Super VU does something similar by default."
 	) );
 
-	m_check_vuBlockHack->SetToolTip( pxE( ".Tooltip:Speedhacks:vuBlockHack",
+	m_check_vuBlockHack->SetToolTip( pxEt( "!ContextTip:Speedhacks:vuBlockHack",
 		L"Assumes that very far into future blocks will not need old flag instance data. "
 		L"This should be pretty safe. It is unknown if this breaks any game..."
 	) );
 
-	m_check_vuMinMax->SetToolTip( pxE( ".Tooltip:Speedhacks:vuMinMax",
-		L"Uses SSE's Min/Max Floating Point Operations instead of custom logical Min/Max routines. "
-		L"Known to break Gran Turismo 4, Tekken 5."
+	m_check_vuThread->SetToolTip( pxEt( "!ContextTip:Speedhacks:vuThread",
+		L"Runs VU1 on its own thread (microVU1-only). Generally a speedup on CPUs with 3 or more cores. "
+		L"This is safe for most games, but a few games are incompatible and may hang. "
+		L"In the case of GS limited games, it may be a slowdown (especially on dual core CPUs)."
 	) );
 
 	// ------------------------------------------------------------------------
@@ -199,19 +200,19 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 		_("Fast disc access, less loading times. [Not Recommended]") );
 
 
-	m_check_intc->SetToolTip( pxE( ".Tooltip:Speedhacks:INTC",
+	m_check_intc->SetToolTip( pxEt( "!ContextTip:Speedhacks:INTC",
 		L"This hack works best for games that use the INTC Status register to wait for vsyncs, which includes primarily non-3D "
 		L"RPG titles. Games that do not use this method of vsync will see little or no speedup from this hack."
 	) );
 
-	m_check_waitloop->SetToolTip( pxE( ".Tooltip:Speedhacks:BIFC0",
+	m_check_waitloop->SetToolTip( pxEt( "!ContextTip:Speedhacks:BIFC0",
 		L"Primarily targetting the EE idle loop at address 0x81FC0 in the kernel, this hack attempts to "
 		L"detect loops whose bodies are guaranteed to result in the same machine state for every iteration "
 		L"until a scheduled event triggers emulation of another unit.  After a single iteration of such loops, "
 		L"we advance to the time of the next event or the end of the processor's timeslice, whichever comes first."
 	) );
 
-	m_check_fastCDVD->SetToolTip( pxE( ".Tooltip:Speedhacks:fastCDVD",
+	m_check_fastCDVD->SetToolTip( pxEt( "!ContextTip:Speedhacks:fastCDVD",
 		L"Check HDLoader compatibility lists for known games that have issues with this. (Often marked as needing 'mode 1' or 'slow DVD'"
 	) );
 
@@ -234,7 +235,8 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 
 	*vuHacksPanel	+= m_check_vuFlagHack;
 	*vuHacksPanel	+= m_check_vuBlockHack;
-	*vuHacksPanel	+= m_check_vuMinMax;
+	*vuHacksPanel	+= m_check_vuThread;
+	//*vuHacksPanel	+= 57; // Aligns left and right boxes in default language and font size
 
 	*miscHacksPanel	+= m_check_intc;
 	*miscHacksPanel	+= m_check_waitloop;
@@ -274,8 +276,11 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	Connect( wxID_DEFAULT,					wxEVT_COMMAND_BUTTON_CLICKED,	wxCommandEventHandler( SpeedHacksPanel::Defaults_Click ) );
 }
 
-void Panels::SpeedHacksPanel::EnableStuff()
+void Panels::SpeedHacksPanel::EnableStuff( AppConfig* configToUse )
 {
+	//Console.WriteLn("SpeedHacksPanel::EnableStuff: Using %s", configToUse?"Object":"NULL");
+	if( !configToUse ) configToUse = g_Conf;
+	//Console.WriteLn("SpeedHacksPanel::EnableStuff: EnabledPresets: %s", configToUse->EnablePresets?"true":"false");
 	wxSizerItemList& items( s_table->GetChildren() );
 
 	wxSizerItemList::iterator it	= items.begin();
@@ -283,19 +288,21 @@ void Panels::SpeedHacksPanel::EnableStuff()
 
 	while( it != end )
 	{
-		(*it)->GetWindow()->Enable( m_check_Enable->GetValue() );
+		(*it)->GetWindow()->Enable( m_check_Enable->GetValue() && !configToUse->EnablePresets);
 		++it;
 	}
 }
 
 void Panels::SpeedHacksPanel::AppStatusEvent_OnSettingsApplied()
 {
-	AppStatusEvent_OnSettingsApplied( g_Conf->EmuOptions.Speedhacks );
+	//Console.WriteLn("SpeedHacksPanel::AppStatusEvent_OnSettingsApplied()");
+	ApplyConfigToGui( *g_Conf );
 }
 
-void Panels::SpeedHacksPanel::AppStatusEvent_OnSettingsApplied( const Pcsx2Config::SpeedhackOptions& opts )
+void Panels::SpeedHacksPanel::ApplyConfigToGui( AppConfig& configToApply, int flags )
 {
-	const bool enabled = g_Conf->EnableSpeedHacks;
+	const bool enabled = configToApply.EnableSpeedHacks;
+	Pcsx2Config::SpeedhackOptions& opts=configToApply.EmuOptions.Speedhacks;
 
 	m_check_Enable		->SetValue( !!enabled );
 
@@ -307,16 +314,21 @@ void Panels::SpeedHacksPanel::AppStatusEvent_OnSettingsApplied( const Pcsx2Confi
 
 	m_check_vuFlagHack	->SetValue(opts.vuFlagHack);
 	m_check_vuBlockHack	->SetValue(opts.vuBlockHack);
-	m_check_vuMinMax	->SetValue(opts.vuMinMax);
+	m_check_vuThread	->SetValue(opts.vuThread);
 	m_check_intc		->SetValue(opts.IntcStat);
 	m_check_waitloop	->SetValue(opts.WaitLoop);
 	m_check_fastCDVD	->SetValue(opts.fastCDVD);
 
-	EnableStuff();
+	EnableStuff( &configToApply );
 
 	// Layout necessary to ensure changed slider text gets re-aligned properly
 	Layout();
+
+	//Console.WriteLn("SpeedHacksPanel::ApplyConfigToGui: EnabledPresets: %s", configToApply.EnablePresets?"true":"false");
+
+	this->Enable(!configToApply.EnablePresets);
 }
+
 
 void Panels::SpeedHacksPanel::Apply()
 {
@@ -332,7 +344,7 @@ void Panels::SpeedHacksPanel::Apply()
 	opts.IntcStat			= m_check_intc->GetValue();
 	opts.vuFlagHack			= m_check_vuFlagHack->GetValue();
 	opts.vuBlockHack		= m_check_vuBlockHack->GetValue();
-	opts.vuMinMax			= m_check_vuMinMax->GetValue();
+	opts.vuThread			= m_check_vuThread->GetValue();
 
 	// If the user has a command line override specified, we need to disable it
 	// so that their changes take effect
@@ -341,13 +353,20 @@ void Panels::SpeedHacksPanel::Apply()
 
 void Panels::SpeedHacksPanel::OnEnable_Toggled( wxCommandEvent& evt )
 {
-	EnableStuff();
+	AppConfig tmp=*g_Conf;
+	tmp.EnablePresets=false; //if clicked, button was enabled, so not using a preset --> let EnableStuff work
+
+	EnableStuff( &tmp );
 	evt.Skip();
 }
 
 void Panels::SpeedHacksPanel::Defaults_Click( wxCommandEvent& evt )
 {
-	AppStatusEvent_OnSettingsApplied( Pcsx2Config::SpeedhackOptions() );
+	//Can only get here presets are disabled at the GUI (= the 'Defaults' button is enabled).
+	AppConfig currentConfigWithHacksReset = *g_Conf;
+	currentConfigWithHacksReset.EmuOptions.Speedhacks = Pcsx2Config::SpeedhackOptions();
+	currentConfigWithHacksReset.EnablePresets=false;//speed hacks gui depends on preset, apply it as if presets are disabled
+	ApplyConfigToGui( currentConfigWithHacksReset );
 	evt.Skip();
 }
 
@@ -377,12 +396,12 @@ void Panels::SpeedHacksPanel::Slider_Click(wxScrollEvent &event) {
 
 void Panels::SpeedHacksPanel::EECycleRate_Scroll(wxScrollEvent &event)
 {
-    SetEEcycleSliderMsg();
+	SetEEcycleSliderMsg();
 	event.Skip();
 }
 
 void Panels::SpeedHacksPanel::VUCycleRate_Scroll(wxScrollEvent &event)
 {
-    SetVUcycleSliderMsg();
+	SetVUcycleSliderMsg();
 	event.Skip();
 }

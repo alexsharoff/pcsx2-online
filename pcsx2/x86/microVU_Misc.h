@@ -37,7 +37,39 @@ struct mVU_Globals {
 	float	ITOF_4[4], ITOF_12[4], ITOF_15[4];
 };
 
-extern const __aligned(32) mVU_Globals mVUglob;
+#define __four(val)	{ val, val, val, val }
+static const __aligned(32) mVU_Globals mVUglob = {
+	__four(0x7fffffff),		  // absclip
+	__four(0x80000000),		  // signbit
+	__four(0xff7fffff),		  // minvals
+	__four(0x7f7fffff),		  // maxvals
+	__four(0x3f800000),		  // ONE!
+	__four(0x3f490fdb),		  // PI4!
+	__four(0x3f7ffff5),		  // T1
+	__four(0xbeaaa61c),		  // T5
+	__four(0x3e4c40a6),		  // T2
+	__four(0xbe0e6c63),		  // T3
+	__four(0x3dc577df),		  // T4
+	__four(0xbd6501c4),		  // T6
+	__four(0x3cb31652),		  // T7
+	__four(0xbb84d7e7),		  // T8
+	__four(0xbe2aaaa4),		  // S2
+	__four(0x3c08873e),		  // S3
+	__four(0xb94fb21f),		  // S4
+	__four(0x362e9c14),		  // S5
+	__four(0x3e7fffa8),		  // E1
+	__four(0x3d0007f4),		  // E2
+	__four(0x3b29d3ff),		  // E3
+	__four(0x3933e553),		  // E4
+	__four(0x36b63510),		  // E5
+	__four(0x353961ac),		  // E6
+	__four(16.0),			  // FTOI_4
+	__four(4096.0),			  // FTOI_12
+	__four(32768.0),		  // FTOI_15
+	__four(0.0625f),		  // ITOF_4
+	__four(0.000244140625),	  // ITOF_12
+	__four(0.000030517578125) // ITOF_15
+};
 
 static const uint _Ibit_ = 1 << 31;
 static const uint _Ebit_ = 1 << 30;
@@ -49,47 +81,54 @@ static const uint _DTbit_ = 0; //( _Dbit_ | _Tbit_ ) // ToDo: Implement this stu
 static const uint divI = 0x1040000;
 static const uint divD = 0x2080000;
 
+static const char branchSTR[16][8] = {
+	"None",  "B",     "BAL",   "IBEQ",
+	"IBGEZ", "IBGTZ", "IBLEZ", "IBLTZ",
+	"IBNE",  "JR",    "JALR",  "N/A",
+	"N/A",   "N/A",   "N/A",   "N/A"
+};
+
 //------------------------------------------------------------------
 // Helper Macros
 //------------------------------------------------------------------
 
-#define _Ft_ ((mVU->code >> 16) & 0x1F)  // The ft part of the instruction register
-#define _Fs_ ((mVU->code >> 11) & 0x1F)  // The fs part of the instruction register
-#define _Fd_ ((mVU->code >>  6) & 0x1F)  // The fd part of the instruction register
+#define _Ft_ ((mVU.code >> 16) & 0x1F)  // The ft part of the instruction register
+#define _Fs_ ((mVU.code >> 11) & 0x1F)  // The fs part of the instruction register
+#define _Fd_ ((mVU.code >>  6) & 0x1F)  // The fd part of the instruction register
 
-#define _It_ ((mVU->code >> 16) & 0xF)   // The it part of the instruction register
-#define _Is_ ((mVU->code >> 11) & 0xF)   // The is part of the instruction register
-#define _Id_ ((mVU->code >>  6) & 0xF)   // The id part of the instruction register
+#define _It_ ((mVU.code >> 16) & 0xF)   // The it part of the instruction register
+#define _Is_ ((mVU.code >> 11) & 0xF)   // The is part of the instruction register
+#define _Id_ ((mVU.code >>  6) & 0xF)   // The id part of the instruction register
 
-#define _X	 ((mVU->code>>24) & 0x1)
-#define _Y	 ((mVU->code>>23) & 0x1)
-#define _Z	 ((mVU->code>>22) & 0x1)
-#define _W	 ((mVU->code>>21) & 0x1)
+#define _X	 ((mVU.code>>24) & 0x1)
+#define _Y	 ((mVU.code>>23) & 0x1)
+#define _Z	 ((mVU.code>>22) & 0x1)
+#define _W	 ((mVU.code>>21) & 0x1)
 
-#define _X_Y_Z_W	(((mVU->code >> 21 ) & 0xF))
+#define _X_Y_Z_W	(((mVU.code >> 21 ) & 0xF))
 #define _XYZW_SS	(_X+_Y+_Z+_W==1)
 #define _XYZW_SS2	(_XYZW_SS && (_X_Y_Z_W != 8))
 #define _XYZW_PS	(_X_Y_Z_W == 0xf)
 #define _XYZWss(x)	((x==8) || (x==4) || (x==2) || (x==1))
 
-#define _bc_	 (mVU->code & 0x3)
-#define _bc_x	((mVU->code & 0x3) == 0)
-#define _bc_y	((mVU->code & 0x3) == 1)
-#define _bc_z	((mVU->code & 0x3) == 2)
-#define _bc_w	((mVU->code & 0x3) == 3)
+#define _bc_	 (mVU.code & 0x3)
+#define _bc_x	((mVU.code & 0x3) == 0)
+#define _bc_y	((mVU.code & 0x3) == 1)
+#define _bc_z	((mVU.code & 0x3) == 2)
+#define _bc_w	((mVU.code & 0x3) == 3)
 
-#define _Fsf_	((mVU->code >> 21) & 0x03)
-#define _Ftf_	((mVU->code >> 23) & 0x03)
+#define _Fsf_	((mVU.code >> 21) & 0x03)
+#define _Ftf_	((mVU.code >> 23) & 0x03)
 
-#define _Imm5_	(mVU->Imm5())
-#define _Imm11_	(mVU->Imm11())
-#define _Imm12_	(mVU->Imm12())
-#define _Imm15_	(mVU->Imm15())
-#define _Imm24_	(mVU->Imm24())
+#define _Imm5_	((s16) (((mVU.code & 0x400) ? 0xfff0 : 0) | ((mVU.code >> 6) & 0xf)))
+#define _Imm11_	((s32)  ((mVU.code & 0x400) ? (0xfffffc00 |  (mVU.code & 0x3ff)) : (mVU.code & 0x3ff)))
+#define _Imm12_	((u32)((((mVU.code >> 21) & 0x1) << 11)   |  (mVU.code & 0x7ff)))
+#define _Imm15_	((u32) (((mVU.code >> 10) & 0x7800)       |  (mVU.code & 0x7ff)))
+#define _Imm24_	((u32)   (mVU.code & 0xffffff))
 
-#define isCOP2		(mVU->cop2  != 0)
-#define isVU1		(mVU->index != 0)
-#define isVU0		(mVU->index == 0)
+#define isCOP2		(mVU.cop2  != 0)
+#define isVU1		(mVU.index != 0)
+#define isVU0		(mVU.index == 0)
 #define getIndex	(isVU1 ? 1 : 0)
 #define getVUmem(x)	(((isVU1) ? (x & 0x3ff) : ((x >= 0x400) ? (x & 0x43f) : (x & 0xff))) * 16)
 #define offsetSS	((_X) ? (0) : ((_Y) ? (4) : ((_Z) ? 8: 12)))
@@ -117,26 +156,18 @@ static const uint divD = 0x2080000;
 #define gprF3  edi // Status Flag 3
 
 // Function Params
-#define mP microVU* mVU, int recPass
-#define mV microVU* mVU
+#define mP microVU& mVU, int recPass
+#define mV microVU& mVU
 #define mF int recPass
 #define mX mVU, recPass
 
-typedef void __fastcall Fntype_mVUrecInst( microVU* mVU, int recPass );
+typedef void __fastcall Fntype_mVUrecInst(microVU& mVU, int recPass);
 typedef Fntype_mVUrecInst* Fnptr_mVUrecInst;
 
-// Recursive Inline
-#ifndef __LINUX__
-#define __recInline __ri
-#else
-#define __recInline inline
-#endif
-
 // Function/Template Stuff
-#define  mVUx (vuIndex ? &microVU1 : &microVU0)
+#define  mVUx (vuIndex ? microVU1 : microVU0)
 #define  mVUop(opName)	static void __fastcall opName (mP)
 #define _mVUt template<int vuIndex>
-#define _r	  static __recInline
 
 // Define Passes
 #define pass1 if (recPass == 0)
@@ -168,22 +199,21 @@ typedef u32 (__fastcall *mVUCall)(void*, void*);
 //------------------------------------------------------------------
 
 // Misc Macros...
-#define __four(val)	{ val, val, val, val }
-#define mVUcurProg   mVU->prog.cur[0]
-#define mVUblocks	 mVU->prog.cur->block
-#define mVUir		 mVU->prog.IRinfo
-#define mVUbranch	 mVU->prog.IRinfo.branch
-#define mVUcycles	 mVU->prog.IRinfo.cycles
-#define mVUcount	 mVU->prog.IRinfo.count
-#define mVUpBlock	 mVU->prog.IRinfo.pBlock
-#define mVUblock	 mVU->prog.IRinfo.block
-#define mVUregs		 mVU->prog.IRinfo.block.pState
-#define mVUregsTemp	 mVU->prog.IRinfo.regsTemp
-#define iPC			 mVU->prog.IRinfo.curPC
-#define mVUsFlagHack mVU->prog.IRinfo.sFlagHack
-#define mVUconstReg	 mVU->prog.IRinfo.constReg
-#define mVUstartPC	 mVU->prog.IRinfo.startPC
-#define mVUinfo		 mVU->prog.IRinfo.info[iPC / 2]
+#define mVUcurProg   mVU.prog.cur[0]
+#define mVUblocks	 mVU.prog.cur->block
+#define mVUir		 mVU.prog.IRinfo
+#define mVUbranch	 mVU.prog.IRinfo.branch
+#define mVUcycles	 mVU.prog.IRinfo.cycles
+#define mVUcount	 mVU.prog.IRinfo.count
+#define mVUpBlock	 mVU.prog.IRinfo.pBlock
+#define mVUblock	 mVU.prog.IRinfo.block
+#define mVUregs		 mVU.prog.IRinfo.block.pState
+#define mVUregsTemp	 mVU.prog.IRinfo.regsTemp
+#define iPC			 mVU.prog.IRinfo.curPC
+#define mVUsFlagHack mVU.prog.IRinfo.sFlagHack
+#define mVUconstReg	 mVU.prog.IRinfo.constReg
+#define mVUstartPC	 mVU.prog.IRinfo.startPC
+#define mVUinfo		 mVU.prog.IRinfo.info[iPC / 2]
 #define mVUstall	 mVUinfo.stall
 #define mVUup		 mVUinfo.uOp
 #define mVUlow		 mVUinfo.lOp
@@ -194,22 +224,35 @@ typedef u32 (__fastcall *mVUCall)(void*, void*);
 #define isEvilBlock	 (mVUpBlock->pState.blockType == 2)
 #define isBadOrEvil  (mVUlow.badBranch || mVUlow.evilBranch)
 #define xPC			 ((iPC / 2) * 8)
-#define curI		 ((u32*)mVU->regs().Micro)[iPC] //mVUcurProg.data[iPC]
-#define setCode()	 { mVU->code = curI; }
-
-#define incPC(x)	 (mVU->advancePC(x))
-#define branchAddr	 mVU->getBranchAddr()
-#define branchAddrN	 mVU->getBranchAddrN()
-
-#define incPC2(x)	 { iPC = ((iPC + (x)) & mVU->progMemMask); }
-#define bSaveAddr	 (((xPC + 16) & (mVU->microMemSize-8)) / 8)
-#define shufflePQ	 (((mVU->p) ? 0xb0 : 0xe0) | ((mVU->q) ? 0x01 : 0x04))
+#define curI		 ((u32*)mVU.regs().Micro)[iPC] //mVUcurProg.data[iPC]
+#define setCode()	 { mVU.code = curI; }
+#define bSaveAddr	 (((xPC + 16) & (mVU.microMemSize-8)) / 8)
+#define shufflePQ	 (((mVU.p) ? 0xb0 : 0xe0) | ((mVU.q) ? 0x01 : 0x04))
 #define cmpOffset(x) ((u8*)&(((u8*)x)[it[0].start]))
-#define Rmem		 &mVU->regs().VI[REG_R].UL
+#define Rmem		 &mVU.regs().VI[REG_R].UL
 #define aWrap(x, m)	 ((x > m) ? 0 : x)
 #define shuffleSS(x) ((x==1)?(0x27):((x==2)?(0xc6):((x==4)?(0xe1):(0xe4))))
 #define clampE       CHECK_VU_EXTRA_OVERFLOW
 #define elif		 else if
+#define varPrint(x)  DevCon.WriteLn(#x " = %d", (int)x)
+
+#define blockCreate(addr) {												\
+	if  (!mVUblocks[addr]) mVUblocks[addr] = new microBlockManager();	\
+}
+
+#define branchAddr (																	\
+	pxAssertDev((iPC & 1) == 0, "microVU: Expected Lower Op for valid branch addr."),	\
+	((((iPC + 2)  + (_Imm11_ * 2)) & mVU.progMemMask) * 4)								\
+)
+#define branchAddrN (																	\
+	pxAssertDev((iPC & 1) == 0, "microVU: Expected Lower Op for valid branch addr."),	\
+	((((iPC + 4)  + (_Imm11_ * 2)) & mVU.progMemMask) * 4)								\
+)
+
+// Fetches the PC and instruction opcode relative to the current PC.  Used to rewind and
+// fast-forward the IR state while calculating VU pipeline conditions (branches, writebacks, etc)
+#define incPC(x)	 { iPC = ((iPC + (x)) & mVU.progMemMask); mVU.code = curI; }
+#define incPC2(x)	 { iPC = ((iPC + (x)) & mVU.progMemMask); }
 
 // Flag Info (Set if next-block's first 4 ops will read current-block's flags)
 #define __Status	 (mVUregs.needExactMatch & 1)
@@ -234,14 +277,14 @@ typedef u32 (__fastcall *mVUCall)(void*, void*);
 // Program Logging...
 #ifdef mVUlogProg
 #define mVUlog		((isVU1) ? __mVULog<1> : __mVULog<0>)
-#define mVUdumpProg __mVUdumpProgram<vuIndex>
+#define mVUdumpProg __mVUdumpProgram
 #else
 #define mVUlog(...)		 if (0) {}
 #define mVUdumpProg(...) if (0) {}
 #endif
 
 //------------------------------------------------------------------
-// Optimization Options
+// Optimization / Debug Options
 //------------------------------------------------------------------
 
 // Reg Alloc
@@ -259,18 +302,60 @@ static const bool noFlagOpts = 0; // Set to 1 to disable all flag setting optimi
 // an Upper Instruction updates them. It also always transfers the 4 possible
 // flag instances between blocks...
 
+// Multiple Flag Instances
+static const bool doSFlagInsts = 1; // Set to 1 to enable multiple status flag instances
+static const bool doMFlagInsts = 1; // Set to 1 to enable multiple mac    flag instances
+static const bool doCFlagInsts = 1; // Set to 1 to enable multiple clip   flag instances
+// This is the correct behavior of the VU's. Due to the pipeline of the VU's
+// there can be up to 4 different instances of values to keep track of
+// for the 3 different types of flags: Status, Mac, Clip flags.
+// Setting one of these to 0 acts as if there is only 1 instance of the
+// corresponding flag, which may be useful when debugging flag pipeline bugs.
+
+static const int doFullFlagOpt = 0; // Set above 0 to enable full flag optimization
+// This attempts to eliminate some flag shuffling at the end of blocks, but
+// can end up creating more recompiled code. The max amount of times this optimization
+// is performed per block can be set by changing the doFullFlagOpt value to be that limit.
+// i.e. setting doFullFlagOpt to 2 will recompile the current block at-most 2 times with
+// the full flag optimization.
+// Note: This optimization doesn't really seem to be benefitial and is buggy...
+
+// Branch in Branch Delay Slots
+static const bool doBranchInDelaySlot = 1; // Set to 1 to enable evil-branches
+// This attempts to emulate the correct behavior for branches in branch delay
+// slots. It is evil that games do this, and handling the different possible
+// cases is tricky and bug prone. If this option is disabled then the second
+// branch is treated as a NOP and effectively ignored.
+
 // Constant Propagation
 static const bool doConstProp = 0; // Set to 1 to turn on vi15 const propagation
 // Enables Constant Propagation for Jumps based on vi15 'link-register'
 // allowing us to know many indirect jump target addresses.
 // Makes GoW a lot slower due to extra recompilation time and extra code-gen!
 
+// Indirect Jump Caching
+static const bool doJumpCaching = 1; // Set to 1 to enable jump caching
+// Indirect jumps (JR/JALR) will remember the entry points to their previously
+// jumped-to addresses. This allows us to skip the microBlockManager::search()
+// routine that is performed every indirect jump in order to find a block within a
+// program that matches the correct pipeline state.
+
+// Indirect Jumps are part of same cached microProgram
+static const bool doJumpAsSameProgram = 0; // Set to 1 to treat jumps as same program
+// Enabling this treats indirect jumps (JR/JALR) as part of the same microProgram
+// when determining the valid ranges for the microProgram cache. Disabling this
+// counts indirect jumps as separate cached microPrograms which generally leads
+// to more microPrograms being cached, but the programs created are smaller and
+// the overall cache usage ends up being more optimal; it can also help prevent
+// constant recompilation problems in certain games.
+// Note: You MUST disable doJumpCaching if you enable this option.
+
 //------------------------------------------------------------------
 // Speed Hacks (can cause infinite loops, SPS, Black Screens, etc...)
 //------------------------------------------------------------------
 
 // Status Flag Speed Hack
-#define CHECK_VU_FLAGHACK	(EmuConfig.Speedhacks.vuFlagHack)
+#define CHECK_VU_FLAGHACK  (EmuConfig.Speedhacks.vuFlagHack)
 // This hack only updates the Status Flag on blocks that will read it.
 // Most blocks do not read status flags, so this is a big speedup.
 
@@ -282,7 +367,7 @@ static const bool doConstProp = 0; // Set to 1 to turn on vi15 const propagation
 // of end-of-block flag instance shuffling, causing nice speedups.
 
 // Min/Max Speed Hack
-#define CHECK_VU_MINMAXHACK	(EmuConfig.Speedhacks.vuMinMax)
+#define CHECK_VU_MINMAXHACK	0 //(EmuConfig.Speedhacks.vuMinMax)
 // This hack uses SSE min/max instructions instead of emulated "logical min/max"
 // The PS2 does not consider denormals as zero on the mini/max opcodes.
 // This speedup is minor, but on AMD X2 CPUs it can be a 1~3% speedup
@@ -297,15 +382,6 @@ static const bool doConstProp = 0; // Set to 1 to turn on vi15 const propagation
 // so give it a value that makes games happy :) (SO3 is fine at 1 cycle delay)
 
 //------------------------------------------------------------------
-
-// Cache Limit Check
-#define mVUcacheCheck(ptr, start, limit) {														  \
-	uptr diff = ptr - start;																	  \
-	if (diff >= limit) {																		  \
-		DevCon.WriteLn("microVU%d: Program cache limit reached. Size = 0x%x", mVU->index, diff); \
-		mVUresizeCache(mVU, mVU->cacheSize + mVUcacheGrowBy);									  \
-	}																							  \
-}
 
 extern void mVUmergeRegs(const xmm& dest, const xmm& src,  int xyzw, bool modXYZW=false);
 extern void mVUsaveReg(const xmm& reg, xAddressVoid ptr, int xyzw, bool modXYZW);

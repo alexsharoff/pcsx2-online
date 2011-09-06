@@ -20,7 +20,6 @@
 #include "MSWstuff.h"
 
 #include "Utilities/IniInterface.h"
-#include "Utilities/HashMap.h"
 #include "DebugTools/Debug.h"
 #include "Dialogs/ModalPopups.h"
 
@@ -41,7 +40,7 @@ static void CpuCheckSSE2()
 
 	wxDialogWithHelpers exconf( NULL, _("PCSX2 - SSE2 Recommended") );
 
-	exconf += exconf.Heading( pxE( ".Popup:Startup:NoSSE2",
+	exconf += exconf.Heading( pxE( "!Notice:Startup:NoSSE2",
 		L"Warning: Your computer does not support SSE2, which is required by many PCSX2 recompilers and plugins. "
 		L"Your options will be limited and emulation will be *very* slow." )
 	);
@@ -53,132 +52,6 @@ static void CpuCheckSSE2()
 	g_Conf->EmuOptions.Cpu.Recompiler.EnableEE	= false;
 	g_Conf->EmuOptions.Cpu.Recompiler.EnableVU0	= false;
 	g_Conf->EmuOptions.Cpu.Recompiler.EnableVU1	= false;
-}
-
-void Pcsx2App::WipeUserModeSettings()
-{
-	wxDirName usrlocaldir = PathDefs::GetUserLocalDataDir();
-	if( !usrlocaldir.Exists() ) return;
-
-	wxString cwd( Path::Normalize( wxGetCwd() ) );
-#ifdef __WXMSW__
-	cwd.MakeLower();
-#endif
-	u32 hashres = HashTools::Hash( (char*)cwd.c_str(), cwd.Length()*sizeof(wxChar) );
-
-	wxFileName usermodefile( FilenameDefs::GetUsermodeConfig() );
-	usermodefile.SetPath( usrlocaldir.ToString() );
-	ScopedPtr<wxFileConfig> conf_usermode( OpenFileConfig( usermodefile.GetFullPath() ) );
-
-	wxString groupname( wxsFormat( L"CWD.%08x", hashres ) );
-	Console.WriteLn( "(UserModeSettings) Removing entry:" );
-	Console.Indent().WriteLn( L"Path: %s\nHash:%s", cwd.c_str(), groupname.c_str() );
-	conf_usermode->DeleteGroup( groupname );
-}
-
-// User mode settings can't be stored in the CWD for two reasons:
-//   (a) the user may not have permission to do so (most obvious)
-//   (b) it would result in sloppy usermode.ini found all over a hard drive if people runs the
-//       exe from many locations (ugh).
-//
-// So better to use the registry on Win32 and a "default ini location" config file under Linux,
-// and store the usermode settings for the CWD based on the CWD's hash.
-//
-void Pcsx2App::ReadUserModeSettings()
-{
-	wxDirName usrlocaldir = PathDefs::GetUserLocalDataDir();
-	if( !usrlocaldir.Exists() )
-	{
-		Console.WriteLn( L"Creating UserLocalData folder: " + usrlocaldir.ToString() );
-		usrlocaldir.Mkdir();
-	}
-
-	wxString cwd( Path::Normalize( wxGetCwd() ) );
-#ifdef __WXMSW__
-	cwd.MakeLower();
-#endif
-
-	u32 hashres = HashTools::Hash( (char*)cwd.c_str(), cwd.Length()*sizeof(wxChar) );
-
-	wxFileName usermodefile( FilenameDefs::GetUsermodeConfig() );
-	usermodefile.SetPath( usrlocaldir.ToString() );
-	ScopedPtr<wxFileConfig> conf_usermode( OpenFileConfig( usermodefile.GetFullPath() ) );
-
-	wxString groupname( wxsFormat( L"CWD.%08x", hashres ) );
-
-	bool hasGroup = conf_usermode->HasGroup( groupname );
-	bool forceWiz = Startup.ForceWizard || !hasGroup;
-	
-	if( !forceWiz )
-	{
-		conf_usermode->SetPath( groupname );
-		forceWiz = !conf_usermode->HasEntry( L"DocumentsFolderMode" );
-		conf_usermode->SetPath( L".." );
-	}
-
-	if( forceWiz )
-	{
-		// Beta Warning!
-		#if 0
-		if( !hasGroup )
-		{
-			wxDialogWithHelpers beta( NULL, _fmt("Welcome to %s %u.%u.%u (r%u)", pxGetAppName().c_str(), PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo, SVN_REV ));
-			beta.SetMinWidth(480);
-
-			beta += beta.Heading(
-				L"PCSX2 0.9.7 is a work-in-progress.  We are in the middle of major rewrites of the user interface, and some parts "
-				L"of the program have *NOT* been re-implemented yet.  Options will be missing or disabled.  Horrible crashes might be present.  Enjoy!"
-			);
-			beta += StdPadding*2;
-			beta += new wxButton( &beta, wxID_OK ) | StdCenter();
-			beta.ShowModal();
-		}
-		#endif
-	
-		// first time startup, so give the user the choice of user mode:
-		FirstTimeWizard wiz( NULL );
-		if( !wiz.RunWizard( wiz.GetUsermodePage() ) )
-			throw Exception::StartupAborted( L"User canceled FirstTime Wizard." );
-
-		// Save user's new settings
-		IniSaver saver( *conf_usermode );
-		g_Conf->LoadSaveUserMode( saver, groupname );
-		AppConfig_OnChangedSettingsFolder( true );
-		AppSaveSettings();
-	}
-	else
-	{
-		// usermode.ini exists and is populated with valid data -- assume User Documents mode,
-		// unless the ini explicitly specifies otherwise.
-
-		DocsFolderMode = DocsFolder_User;
-
-		IniLoader loader( *conf_usermode );
-		g_Conf->LoadSaveUserMode( loader, groupname );
-
-		if( !wxFile::Exists( GetSettingsFilename() ) )
-		{
-			// user wiped their pcsx2.ini -- needs a reconfiguration via wizard!
-			// (we skip the first page since it's a usermode.ini thing)
-			
-			// Fixme : Skipping the first page is a bad idea, as it does a lot of file / directory checks on hitting Apply.
-			// If anything is missing, the first page prompts to fix it.
-			// If we skip this check, it's very likely that actions like creating Memory Cards will fail.
-			FirstTimeWizard wiz( NULL );
-			if( !wiz.RunWizard( /*wiz.GetPostUsermodePage()*/ wiz.GetUsermodePage() ) )
-				throw Exception::StartupAborted( L"User canceled Configuration Wizard." );
-
-			// Save user's new settings
-			IniSaver saver( *conf_usermode );
-			g_Conf->LoadSaveUserMode( saver, groupname );
-			AppConfig_OnChangedSettingsFolder( true );
-			AppSaveSettings();
-		}
-	}
-	
-	// force unload plugins loaded by the wizard.  If we don't do this the recompilers might
-	// fail to allocate the memory they need to function.
-	UnloadPlugins();
 }
 
 void Pcsx2App::DetectCpuAndUserMode()
@@ -198,8 +71,12 @@ void Pcsx2App::DetectCpuAndUserMode()
 			.SetUserMsg(_("SSE extensions are not available.  PCSX2 requires a cpu that supports the SSE instruction set."));
 	}
 
-	ReadUserModeSettings();
-	AppConfig_OnChangedSettingsFolder();
+	EstablishAppUserMode();
+
+	// force unload plugins loaded by the wizard.  If we don't do this the recompilers might
+	// fail to allocate the memory they need to function.
+	ShutdownPlugins();
+	UnloadPlugins();
 }
 
 void Pcsx2App::OpenMainFrame()
@@ -222,7 +99,7 @@ void Pcsx2App::OpenProgramLog()
 {
 	if( AppRpc_TryInvokeAsync( &Pcsx2App::OpenProgramLog ) ) return;
 
-	if( ConsoleLogFrame* frame = GetProgramLog() )
+	if( /*ConsoleLogFrame* frame =*/ GetProgramLog() )
 	{
 		//pxAssume( );
 		return;
@@ -236,12 +113,19 @@ void Pcsx2App::OpenProgramLog()
 	EnableAllLogging();
 
 	if( m_current_focus ) m_current_focus->SetFocus();
-}
-
-void Pcsx2App::AllocateVM()
-{
-	if (m_VmAllocs) return;
-	m_VmAllocs = new SysAllocVM();
+	
+	// This is test code for printing out all supported languages and their canonical names in wiki-fied
+	// format.  I might use it again soon, so I'm leaving it in for now... --air
+	/*
+	for( int li=wxLANGUAGE_UNKNOWN+1; li<wxLANGUAGE_USER_DEFINED; ++li )
+	{
+		if (const wxLanguageInfo* info = wxLocale::GetLanguageInfo( li ))
+		{			
+			if (i18n_IsLegacyLanguageId((wxLanguage)info->Language)) continue;			
+			Console.WriteLn( L"|| %-30s || %-8s ||", info->Description.c_str(), info->CanonicalName.c_str() );
+		}
+	}
+	*/
 }
 
 void Pcsx2App::AllocateCoreStuffs()
@@ -251,6 +135,8 @@ void Pcsx2App::AllocateCoreStuffs()
 	CpuCheckSSE2();
 	SysLogMachineCaps();
 	AppApplySettings();
+
+	GetVmReserve().ReserveAll();
 
 	if( !m_CpuProviders )
 	{
@@ -267,14 +153,14 @@ void Pcsx2App::AllocateCoreStuffs()
 			
 			wxDialogWithHelpers exconf( NULL, _("PCSX2 Recompiler Error(s)") );
 
-			exconf += 12;
-			exconf += exconf.Heading( pxE( ".Popup:RecompilerInit:Header",
-				L"Warning: Some of the configured PS2 recompilers failed to initialize and have been disabled:" )
-			);
-
 			wxTextCtrl* scrollableTextArea = new wxTextCtrl(
 				&exconf, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
 				wxTE_READONLY | wxTE_MULTILINE | wxTE_WORDWRAP
+			);
+
+			exconf += 12;
+			exconf += exconf.Heading( pxE( "!Notice:RecompilerInit:Header",
+				L"Warning: Some of the configured PS2 recompilers failed to initialize and have been disabled:" )
 			);
 
 			exconf += 6;
@@ -284,45 +170,45 @@ void Pcsx2App::AllocateCoreStuffs()
 			
 			if( BaseException* ex = m_CpuProviders->GetException_EE() )
 			{
-				scrollableTextArea->AppendText( L"* R5900 (EE)\n\t" + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* R5900 (EE)\n\t" + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.EnableEE		= false;
 			}
 
 			if( BaseException* ex = m_CpuProviders->GetException_IOP() )
 			{
-				scrollableTextArea->AppendText( L"* R3000A (IOP)\n\t"  + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* R3000A (IOP)\n\t"  + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.EnableIOP	= false;
 			}
 
 			if( BaseException* ex = m_CpuProviders->GetException_MicroVU0() )
 			{
-				scrollableTextArea->AppendText( L"* microVU0\n\t" + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* microVU0\n\t" + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.UseMicroVU0	= false;
 				recOps.EnableVU0	= recOps.EnableVU0 && m_CpuProviders->IsRecAvailable_SuperVU0();
 			}
 
 			if( BaseException* ex = m_CpuProviders->GetException_MicroVU1() )
 			{
-				scrollableTextArea->AppendText( L"* microVU1\n\t" + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* microVU1\n\t" + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.UseMicroVU1	= false;
 				recOps.EnableVU1	= recOps.EnableVU1 && m_CpuProviders->IsRecAvailable_SuperVU1();
 			}
 
 			if( BaseException* ex = m_CpuProviders->GetException_SuperVU0() )
 			{
-				scrollableTextArea->AppendText( L"* SuperVU0\n\t" + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* SuperVU0\n\t" + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.UseMicroVU0	= m_CpuProviders->IsRecAvailable_MicroVU0();
 				recOps.EnableVU0	= recOps.EnableVU0 && recOps.UseMicroVU0;
 			}
 
 			if( BaseException* ex = m_CpuProviders->GetException_SuperVU1() )
 			{
-				scrollableTextArea->AppendText( L"* SuperVU1\n\t" + ex->FormatDiagnosticMessage() + L"\n\n" );
+				scrollableTextArea->AppendText( L"* SuperVU1\n\t" + ex->FormatDisplayMessage() + L"\n\n" );
 				recOps.UseMicroVU1	= m_CpuProviders->IsRecAvailable_MicroVU1();
 				recOps.EnableVU1	= recOps.EnableVU1 && recOps.UseMicroVU1;
 			}
 
-			exconf += exconf.Heading( pxE(".Popup:RecompilerInit:Footer",
+			exconf += exconf.Heading( pxE("!Notice:RecompilerInit:Footer",
 				L"Note: Recompilers are not necessary for PCSX2 to run, however they typically improve emulation speed substantially. "
 				L"You may have to manually re-enable the recompilers listed above, if you resolve the errors." )
 			);
@@ -366,10 +252,11 @@ void Pcsx2App::OnInitCmdLine( wxCmdLineParser& parser )
 	parser.AddOption( wxEmptyString,L"cfgpath",		_("changes the configuration file path"), wxCMD_LINE_VAL_STRING );
 	parser.AddOption( wxEmptyString,L"cfg",			_("specifies the PCSX2 configuration file to use"), wxCMD_LINE_VAL_STRING );
 	parser.AddSwitch( wxEmptyString,L"forcewiz",	AddAppName(_("forces %s to start the First-time Wizard")) );
+	parser.AddSwitch( wxEmptyString,L"portable",	_("enables portable mode operation (requires admin/root access)") );
 
 	const PluginInfo* pi = tbl_PluginInfo; do {
 		parser.AddOption( wxEmptyString, pi->GetShortname().Lower(),
-			wxsFormat( _("specify the file to use as the %s plugin"), pi->GetShortname().c_str() )
+			pxsFmt( _("specify the file to use as the %s plugin"), pi->GetShortname().c_str() )
 		);
 	} while( ++pi, pi->shortname != NULL );
 
@@ -395,7 +282,7 @@ bool Pcsx2App::ParseOverrides( wxCmdLineParser& parser )
 	if (parser.Found( L"cfg", &dest ) && !dest.IsEmpty())
 	{
 		Console.Warning( L"Config file override: " + dest );
-		Overrides.SettingsFile = dest;
+		Overrides.VmSettingsFile = dest;
 	}
 
 	Overrides.DisableSpeedhacks = parser.Found(L"nohacks");
@@ -458,6 +345,7 @@ bool Pcsx2App::OnCmdLineParsed( wxCmdLineParser& parser )
 
 	Startup.NoFastBoot		= parser.Found(L"fullboot");
 	Startup.ForceWizard		= parser.Found(L"forcewiz");
+	Startup.PortableMode	= parser.Found(L"portable");
 
 	if( parser.GetParamCount() >= 1 )
 	{
@@ -484,9 +372,6 @@ class GameDatabaseLoaderThread : public pxThread
 	, EventListener_AppStatus
 {
 	typedef pxThread _parent;
-
-protected:
-	gzFile		m_gzfp;
 
 public:
 	GameDatabaseLoaderThread()
@@ -525,14 +410,20 @@ bool Pcsx2App::OnInit()
 
 	InitCPUTicks();
 
-	pxDoAssert = AppDoAssert;
+	pxDoAssert		= AppDoAssert;
+	pxDoOutOfMemory	= SysOutOfMemory_EmergencyResponse;
+
 	g_Conf = new AppConfig();
     wxInitAllImageHandlers();
 
-	Console.WriteLn("Begin parsing commandline...");
-	if( !_parent::OnInit() ) return false;
+	Console.WriteLn("Applying operating system default language...");
+	i18n_SetLanguage( wxLANGUAGE_DEFAULT );
 
-	wxLocale::AddCatalogLookupPathPrefix( wxGetCwd() );
+	Console.WriteLn("Command line parsing...");
+	if( !_parent::OnInit() ) return false;
+	Console.WriteLn("Command line parsed!");
+
+	i18n_SetLanguagePath();
 
 #define pxAppMethodEventHandler(func) \
 	(wxObjectEventFunction)(wxEventFunction)wxStaticCastEvent(pxInvokeAppMethodEventFunction, &func )
@@ -556,8 +447,6 @@ bool Pcsx2App::OnInit()
 		InitDefaultGlobalAccelerators();
 		delete wxLog::SetActiveTarget( new pxLogConsole() );
 
-		m_RecentIsoList = new RecentIsoList();
-
 #ifdef __WXMSW__
 		pxDwm_Load();
 #endif
@@ -580,6 +469,7 @@ bool Pcsx2App::OnInit()
 		OpenProgramLog();
 		AllocateCoreStuffs();
 		if( m_UseGUI ) OpenMainFrame();
+
 		
 		(new GameDatabaseLoaderThread())->Start();
 
@@ -603,7 +493,7 @@ bool Pcsx2App::OnInit()
 	}
 	catch( Exception::HardwareDeficiency& ex )
 	{
-		Msgbox::Alert( ex.FormatDisplayMessage() + AddAppName(_("\n\nPress OK to close %s.")), _("PCSX2 Error: Hardware Deficiency") );
+		Msgbox::Alert( ex.FormatDisplayMessage() + L"\n\n" + AddAppName(_("Press OK to close %s.")), _("PCSX2 Error: Hardware Deficiency") );
 		CleanupOnExit();
 		return false;
 	}
@@ -615,7 +505,7 @@ bool Pcsx2App::OnInit()
 	catch( Exception::RuntimeError& ex )
 	{
 		Console.Error( ex.FormatDiagnosticMessage() );
-		Msgbox::Alert( ex.FormatDisplayMessage() + AddAppName(_("\n\nPress OK to close %s.")),
+		Msgbox::Alert( ex.FormatDisplayMessage() + L"\n\n" + AddAppName(_("Press OK to close %s.")),
 			AddAppName(_("%s Critical Error")), wxICON_ERROR );
 		CleanupOnExit();
 		return false;
@@ -724,7 +614,7 @@ void Pcsx2App::CleanupOnExit()
 void Pcsx2App::CleanupResources()
 {
 	ScopedBusyCursor cursor( Cursor_ReallyBusy );
-	delete wxConfigBase::Set( NULL );
+	//delete wxConfigBase::Set( NULL );
 
 	while( wxGetLocale() != NULL )
 		delete wxGetLocale();
@@ -761,7 +651,7 @@ void Pcsx2App::OnDestroyWindow( wxWindowDestroyEvent& evt )
 // --------------------------------------------------------------------------------------
 //  SysEventHandler
 // --------------------------------------------------------------------------------------
-class SysEvtHandler : public pxEvtHandler
+class SysEvtHandler : public pxEvtQueue
 {
 public:
 	wxString GetEvtHandlerName() const { return L"SysExecutor"; }
@@ -779,6 +669,34 @@ protected:
 Pcsx2App::Pcsx2App() 
 	: SysExecutorThread( new SysEvtHandler() )
 {
+	// Warning: Do not delete this comment block! Gettext will parse it to allow
+	// the translation of some wxWidget internal strings. -- greg
+	#if 0
+	{
+		// Some common labels provided by wxWidgets.  wxWidgets translation files are chucked full
+		// of worthless crap, and tally more than 200k each.  We only need these couple.
+
+		_("OK");
+		_("&OK");
+		_("Cancel");
+		_("&Cancel");
+		_("&Apply");
+		_("&Next >");
+		_("< &Back");
+		_("&Back");
+		_("&Finish");
+		_("&Yes");
+		_("&No");
+		_("Browse");
+		_("&Save");
+		_("Save &As...");
+		_("&Help");
+		_("&Home");
+
+		_("Show about dialog")
+	}
+	#endif
+
 	m_PendingSaves			= 0;
 	m_ScheduledTermination	= false;
 
@@ -815,12 +733,12 @@ void Pcsx2App::CleanUp()
 
 __fi wxString AddAppName( const wxChar* fmt )
 {
-	return wxsFormat( fmt, pxGetAppName().c_str() );
+	return pxsFmt( fmt, pxGetAppName().c_str() );
 }
 
 __fi wxString AddAppName( const char* fmt )
 {
-	return wxsFormat( fromUTF8(fmt), pxGetAppName().c_str() );
+	return pxsFmt( fromUTF8(fmt), pxGetAppName().c_str() );
 }
 
 // ------------------------------------------------------------------------------------------

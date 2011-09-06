@@ -18,31 +18,37 @@
 
 #include "SPR.h"
 #include "VUmicro.h"
+#include "MTVU.h"
 
 extern void mfifoGIFtransfer(int);
 
 static bool spr0finished = false;
 static bool spr1finished = false;
-
+static bool spr0lastqwc = false;
+static bool spr1lastqwc = false;
 static u32 mfifotransferred = 0;
 
 void sprInit()
 {
 }
 
-static void TestClearVUs(u32 madr, u32 size)
+static void TestClearVUs(u32 madr, u32 qwc)
 {
 	if (madr >= 0x11000000)
 	{
 		if (madr < 0x11004000)
 		{
 			DbgCon.Warning("scratch pad clearing vu0");
-			CpuVU0->Clear(madr&0xfff, size);
+			CpuVU0->Clear(madr&0xfff, qwc * 16);
 		}
 		else if (madr >= 0x11008000 && madr < 0x1100c000)
 		{
 			DbgCon.Warning("scratch pad clearing vu1");
-			CpuVU1->Clear(madr&0x3fff, size);
+			if (THREAD_VU1) {
+				DevCon.Error("MTVU Warning: SPR Accessing VU1 Memory!!!");
+				vu1Thread.WaitVU();
+			}
+			CpuVU1->Clear(madr&0x3fff, qwc * 16);
 		}
 	}
 }
@@ -50,44 +56,55 @@ static void TestClearVUs(u32 madr, u32 size)
 int  _SPR0chain()
 {
 	tDMA_TAG *pMem;
-
+	int partialqwc = 0;
 	if (spr0ch.qwc == 0) return 0;
 	pMem = SPRdmaGetAddr(spr0ch.madr, true);
 	if (pMem == NULL) return -1;
 
-	switch (dmacRegs.ctrl.MFD)
+	if(spr0ch.madr >= dmacRegs.rbor.ADDR && spr0ch.madr < (dmacRegs.rbor.ADDR + dmacRegs.rbsr.RMSK + 16))
 	{
-		case MFD_VIF1:
-		case MFD_GIF:
+			partialqwc = spr0ch.qwc;
+
 			if ((spr0ch.madr & ~dmacRegs.rbsr.RMSK) != dmacRegs.rbor.ADDR)
 				Console.WriteLn("SPR MFIFO Write outside MFIFO area");
 			else
-				mfifotransferred += spr0ch.qwc;
+				mfifotransferred += partialqwc;
 
-			hwMFIFOWrite(spr0ch.madr, &psSu128(spr0ch.sadr), spr0ch.qwc);
-			spr0ch.madr += spr0ch.qwc << 4;
+			hwMFIFOWrite(spr0ch.madr, &psSu128(spr0ch.sadr), partialqwc);
+			spr0ch.madr += partialqwc << 4;
 			spr0ch.madr = dmacRegs.rbor.ADDR + (spr0ch.madr & dmacRegs.rbsr.RMSK);
-			break;
-
-		case NO_MFD:
-		case MFD_RESERVED:
-			memcpy_qwc(pMem, &psSu128(spr0ch.sadr), spr0ch.qwc);
+			spr0ch.sadr += partialqwc << 4;
+			spr0ch.qwc -= partialqwc;
+			
+			spr0finished = true;
+	}
+	else
+	{
+			
+			//Taking an arbitary small value for games which like to check the QWC/MADR instead of STR, so get most of
+			//the cycle delay out of the way before the end.
+			partialqwc = spr0ch.qwc;
+			memcpy_qwc(pMem, &psSu128(spr0ch.sadr), partialqwc);
 
 			// clear VU mem also!
-			TestClearVUs(spr0ch.madr, spr0ch.qwc << 2); // Wtf is going on here? AFAIK, only VIF should affect VU micromem (cottonvibes)
-			spr0ch.madr += spr0ch.qwc << 4;
-			break;
+			TestClearVUs(spr0ch.madr, partialqwc);
+
+			spr0ch.madr += partialqwc << 4;
+			spr0ch.sadr += partialqwc << 4;
+			spr0ch.qwc -= partialqwc;
+
 	}
 
-	spr0ch.sadr += spr0ch.qwc << 4;
+	
 
-	return (spr0ch.qwc); // bus is 1/2 the ee speed
+	return (partialqwc); // bus is 1/2 the ee speed
 }
 
 __fi void SPR0chain()
 {
-	CPU_INT(DMAC_FROM_SPR, _SPR0chain() / BIAS);
-	spr0ch.qwc = 0;
+	int cycles = 0;
+	cycles =  _SPR0chain() * BIAS;
+	CPU_INT(DMAC_FROM_SPR, cycles);
 }
 
 void _SPR0interleave()
@@ -102,7 +119,7 @@ void _SPR0interleave()
 	SPR_LOG("SPR0 interleave size=%d, tqwc=%d, sqwc=%d, addr=%lx sadr=%lx",
 	        spr0ch.qwc, tqwc, sqwc, spr0ch.madr, spr0ch.sadr);
 
-	CPU_INT(DMAC_FROM_SPR, qwc / BIAS);
+	CPU_INT(DMAC_FROM_SPR, qwc * BIAS);
 
 	while (qwc > 0)
 	{
@@ -121,7 +138,7 @@ void _SPR0interleave()
 			case NO_MFD:
 			case MFD_RESERVED:
 				// clear VU mem also!
-				TestClearVUs(spr0ch.madr, spr0ch.qwc << 2);
+				TestClearVUs(spr0ch.madr, spr0ch.qwc);
 				memcpy_qwc(pMem, &psSu128(spr0ch.sadr), spr0ch.qwc);
 				break;
  		}
@@ -136,7 +153,7 @@ static __fi void _dmaSPR0()
 {
 	if (dmacRegs.ctrl.STS == STS_fromSPR)
 	{
-		Console.WriteLn("SPR0 stall %d", dmacRegs.ctrl.STS);
+		DevCon.Warning("SPR0 stall %d", dmacRegs.ctrl.STS);
 	}
 
 	// Transfer Dn_QWC from SPR to Dn_MADR
@@ -219,7 +236,9 @@ void SPRFROMinterrupt()
 	{
 		_dmaSPR0();
 
-		if(mfifotransferred != 0)
+		//the qwc check is simply because having data still to transfer from the packet can freak games out if they do a d.tadr == s.madr check
+		//and there is still data to come over (FF12 ingame menu)
+		if(mfifotransferred != 0 && spr0ch.qwc == 0)
 		{
 			switch (dmacRegs.ctrl.MFD)
 			{
@@ -245,12 +264,15 @@ void SPRFROMinterrupt()
 					break;
 			}
 		}
+		
 		return;
 	}
 
 
+	spr0lastqwc = false;
 	spr0ch.chcr.STR = false;
 	hwDmacIrq(DMAC_FROM_SPR);
+	DMA_LOG("SPR0 DMA End");
 }
 
 void dmaSPR0()   // fromSPR
@@ -265,7 +287,7 @@ void dmaSPR0()   // fromSPR
 	{
 		//DevCon.Warning(L"SPR0 QWC on Chain " + spr0ch.chcr.desc());
 		if (spr0ch.chcr.tag().ID == TAG_END) // but not TAG_REFE?
-		{
+		{									 // Correct not REFE, Destination Chain doesnt have REFE!
 			spr0finished = true;
 		}
 	}
@@ -279,6 +301,8 @@ __fi static void SPR1transfer(const void* data, int qwc)
 	spr1ch.sadr += qwc * 16;
 }
 
+
+
 int  _SPR1chain()
 {
 	tDMA_TAG *pMem;
@@ -287,17 +311,33 @@ int  _SPR1chain()
 
 	pMem = SPRdmaGetAddr(spr1ch.madr, false);
 	if (pMem == NULL) return -1;
+	int partialqwc = 0;
+	//Taking an arbitary small value for games which like to check the QWC/MADR instead of STR, so get most of
+	//the cycle delay out of the way before the end.
+	partialqwc = spr1ch.qwc;
 
-	SPR1transfer(pMem, spr1ch.qwc);
-	spr1ch.madr += spr1ch.qwc * 16;
+	SPR1transfer(pMem, partialqwc);
+	spr1ch.madr += partialqwc * 16;
+	spr1ch.qwc -= partialqwc;
 
-	return (spr1ch.qwc);
+	hwDmacSrcTadrInc(spr1ch);
+	
+	return (partialqwc);
 }
 
 __fi void SPR1chain()
 {
-	CPU_INT(DMAC_TO_SPR, _SPR1chain() / BIAS);
-	spr1ch.qwc = 0;
+	int cycles = 0;
+	if(!CHECK_IPUWAITHACK) 
+	{
+		cycles =  _SPR1chain() * BIAS;
+		CPU_INT(DMAC_TO_SPR, cycles);
+	}
+	else 
+	{
+		 _SPR1chain();
+		CPU_INT(DMAC_TO_SPR, 8);
+	}
 }
 
 void _SPR1interleave()
@@ -310,7 +350,7 @@ void _SPR1interleave()
 	if (tqwc == 0) tqwc = qwc;
 	SPR_LOG("SPR1 interleave size=%d, tqwc=%d, sqwc=%d, addr=%lx sadr=%lx",
 	        spr1ch.qwc, tqwc, sqwc, spr1ch.madr, spr1ch.sadr);
-	CPU_INT(DMAC_TO_SPR, qwc / BIAS);
+	CPU_INT(DMAC_TO_SPR, qwc * BIAS);
 	while (qwc > 0)
 	{
 		spr1ch.qwc = std::min(tqwc, qwc);
@@ -424,8 +464,9 @@ void SPRTOinterrupt()
 		return;
 	}
 
-	SPR_LOG("SPR1 End");
+	DMA_LOG("SPR1 DMA End");
 	spr1ch.chcr.STR = false;
+	spr1lastqwc = false;
 	hwDmacIrq(DMAC_TO_SPR);
 }
 

@@ -1,0 +1,2 @@
+void EnumDevices(int hideDXXinput);
+

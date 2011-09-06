@@ -1,0 +1,319 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#include ""res/tfx.fx""\r\n"
+    "#include ""res/convert.fx""\r\n"
+    "#include ""res/interlace.fx""\r\n"
+    "#include ""res/merge.fx""\r\0"
+    "#include ""res/fxaa.fx""\r\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// RCDATA
+//
+
+IDR_CONVERT_FX          RCDATA                  "res\\convert.fx"
+IDR_TFX_FX              RCDATA                  "res\\tfx.fx"
+IDR_MERGE_FX            RCDATA                  "res\\merge.fx"
+IDR_INTERLACE_FX        RCDATA                  "res\\interlace.fx"
+IDR_FXAA_FX			    RCDATA                  "res\\fxaa.fx"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_LOGO9               BITMAP                  "res\\logo9.bmp"
+IDB_LOGO10              BITMAP                  "res\\logo10.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_CONFIG DIALOGEX 0, 0, 189, 351
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings..."
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         2022,IDC_LOGO11,"Static",SS_BITMAP,7,7,175,42
+    CONTROL         2021,IDC_LOGO9,"Static",SS_BITMAP,7,7,175,44
+    LTEXT           "Resolution:",IDC_STATIC,7,58,37,8
+    COMBOBOX        IDC_RESOLUTION,71,56,111,125,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Renderer:",IDC_STATIC,7,73,34,8
+    COMBOBOX        IDC_RENDERER,71,71,111,118,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Interlacing (F5):",IDC_STATIC,7,89,53,8
+    COMBOBOX        IDC_INTERLACE,71,86,111,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Aspect Ratio (F6):",IDC_STATIC,7,104,60,8
+    COMBOBOX        IDC_ASPECTRATIO,71,101,111,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,43,323,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,96,323,50,14
+    CONTROL         "Windowed",IDC_WINDOWED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,89,231,93,10
+    LTEXT           "D3D internal res:",IDC_STATIC,18,135,55,8
+    EDITTEXT        IDC_RESX_EDIT,82,132,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_RESX,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,110,135,11,14
+    EDITTEXT        IDC_RESY_EDIT,120,132,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_RESY,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,144,135,11,14
+    CONTROL         "Native",IDC_NATIVERES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,123,165,33,10
+    COMBOBOX        IDC_UPSCALE_MULTIPLIER,82,147,74,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Or use Scaling:",IDC_STATIC,18,150,49,8
+    LTEXT           "Or use original PS2 resolution :",IDC_STATIC,18,165,99,8
+    EDITTEXT        IDC_MSAAEDIT,75,258,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_MSAA,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,109,261,11,14
+    LTEXT           "HW Anti Aliasing",IDC_STATIC_TEXT_HWAA,18,261,53,8
+    GROUPBOX        "D3D Enhancements (can cause glitches)",IDC_STATIC,7,117,175,66
+    LTEXT           "SW rend. threads:",IDC_STATIC,7,189,60,8
+    EDITTEXT        IDC_SWTHREADS_EDIT,71,187,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_SWTHREADS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,99,190,11,14
+    CONTROL         "Texture filtering",IDC_FILTER,"Button",BS_AUTO3STATE | WS_TABSTOP,7,203,67,10
+    CONTROL         "Logarithmic Z",IDC_LOGZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,89,204,58,10
+    CONTROL         "Allow 8-bit textures",IDC_PALTEX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,217,82,10
+    CONTROL         "Alpha correction (FBA)",IDC_FBA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,89,217,93,10
+    CONTROL         "Edge anti-aliasing",IDC_AA1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,231,72,10
+    CONTROL         "Alpha Hack",IDC_ALPHAHACK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,20,279,51,10
+    CONTROL         "Offset Hack",IDC_OFFSETHACK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,85,279,51,10
+    GROUPBOX        "Hacks",IDC_USERHACKS,13,244,161,71,BS_CENTER
+    EDITTEXT        IDC_SKIPDRAWHACKEDIT,55,291,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_SKIPDRAWHACK,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,94,293,11,14
+    LTEXT           "SkipDraw:",IDC_STATIC_TEXT_SKIPDRAW,20,293,33,8
+END
+
+IDD_CAPTURE DIALOGEX 0, 0, 279, 71
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Capture settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_FILENAME,7,7,207,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BROWSE,222,7,50,14
+    COMBOBOX        IDC_CODECS,7,27,207,122,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Config...",IDC_CONFIGURE,222,26,50,14
+    LTEXT           "Size:",IDC_STATIC,6,50,16,8
+    EDITTEXT        IDC_WIDTH,30,47,31,14,ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_HEIGHT,64,47,31,14,ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER
+    PUSHBUTTON      "Cancel",IDCANCEL,169,47,50,14
+    DEFPUSHBUTTON   "OK",IDOK,221,47,50,14
+    COMBOBOX        IDC_COLORSPACE,102,47,48,32,CBS_DROPDOWNLIST | WS_TABSTOP
+END
+
+IDD_GPUCONFIG DIALOGEX 0, 0, 189, 199
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings..."
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         2021,IDC_LOGO9,"Static",SS_BITMAP,7,7,175,44
+    LTEXT           "Resolution:",IDC_STATIC,7,59,37,8
+    COMBOBOX        IDC_RESOLUTION,78,57,104,125,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Renderer:",IDC_STATIC,7,74,34,8
+    COMBOBOX        IDC_RENDERER,78,72,104,118,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Texture Filter (Del):",IDC_STATIC,7,90,64,8
+    COMBOBOX        IDC_FILTER,78,87,104,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Dithering (End):",IDC_STATIC,7,105,52,8
+    COMBOBOX        IDC_DITHERING,78,102,104,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Aspect Ratio (PgDn):",IDC_STATIC,7,120,68,8
+    COMBOBOX        IDC_ASPECTRATIO,78,117,104,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Rendering Threads:",IDC_STATIC,7,157,64,8
+    EDITTEXT        IDC_SWTHREADS_EDIT,78,155,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_SWTHREADS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,99,161,11,14
+    DEFPUSHBUTTON   "OK",IDOK,43,178,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,96,178,50,14
+    CONTROL         2022,IDC_LOGO11,"Static",SS_BITMAP,7,7,173,42
+    LTEXT           "Internal Resolution:",IDC_STATIC,7,135,64,8
+    COMBOBOX        IDC_SCALE,78,132,104,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Windowed",IDC_WINDOWED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,129,157,49,10
+END
+
+IDD_CONFIG2 DIALOGEX 0, 0, 187, 341
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings..."
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         2022,IDC_LOGO11,"Static",SS_BITMAP,6,6,173,42
+    DEFPUSHBUTTON   "OK",IDOK,41,312,50,14
+    LTEXT           "Renderer:",IDC_STATIC,6,57,34,8
+    COMBOBOX        IDC_RENDERER,70,55,111,118,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Interlacing (F5):",IDC_STATIC,6,73,81,8
+    COMBOBOX        IDC_INTERLACE,70,70,111,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Custom resolution:",IDC_STATIC,26,135,65,8
+    EDITTEXT        IDC_RESX_EDIT,92,132,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_RESX,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,120,135,11,14
+    EDITTEXT        IDC_RESY_EDIT,130,132,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_RESY,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,154,130,11,14
+    CONTROL         "Native",IDC_NATIVERES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,92,105,33,10
+    LTEXT           "Rendering threads:",IDC_STATIC,19,214,63,8
+    EDITTEXT        IDC_SWTHREADS_EDIT,87,212,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_SWTHREADS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,115,215,11,14
+    COMBOBOX        IDC_UPSCALE_MULTIPLIER,92,117,74,98,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Or use Scaling:",IDC_STATIC,38,120,49,8
+    LTEXT           "Original PS2 resolution :",IDC_STATIC,10,105,80,8
+    CONTROL         "Edge anti-aliasing (AA1)",IDC_AA1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,230,93,10
+    PUSHBUTTON      "Cancel",IDCANCEL,95,312,50,14
+    CONTROL         2021,IDC_LOGO9,"Static",SS_BITMAP,6,6,175,44
+    CONTROL         "Alpha Hack",IDC_ALPHAHACK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,275,51,10
+    CONTROL         "Offset Hack",IDC_OFFSETHACK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,87,275,51,10
+    GROUPBOX        "Hacks",IDC_USERHACKS,6,250,175,55,BS_CENTER
+    EDITTEXT        IDC_SKIPDRAWHACKEDIT,65,286,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_SKIPDRAWHACK,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,104,288,11,14
+    LTEXT           "Skipdraw Hack:",IDC_STATIC_TEXT_SKIPDRAW,11,289,50,8
+    EDITTEXT        IDC_MSAAEDIT,69,260,35,13,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_MSAA,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,103,263,11,14
+    GROUPBOX        "D3D Internal resolution (can cause glitches)",IDC_STATIC,6,87,175,64,BS_CENTER
+    GROUPBOX        "Software Mode Settings",IDC_STATIC,6,198,175,50,BS_CENTER
+    GROUPBOX        "Hardware Mode Settings",IDC_STATIC,6,152,175,45,BS_CENTER
+    CONTROL         "Logarithmic Z",IDC_LOGZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,88,166,58,10
+    CONTROL         "Alpha correction (FBA)",IDC_FBA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,88,179,87,10
+    CONTROL         "Allow 8-bit textures",IDC_PALTEX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,179,82,10
+    CONTROL         "Texture filtering",IDC_FILTER,"Button",BS_AUTO3STATE | WS_TABSTOP,6,165,67,10
+    LTEXT           "HW Anti Aliasing",IDC_STATIC_TEXT_HWAA,11,263,53,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_CONFIG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 182
+        VERTGUIDE, 71
+        VERTGUIDE, 89
+        VERTGUIDE, 182
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 344
+        HORZGUIDE, 49
+    END
+
+    IDD_CAPTURE, DIALOG
+    BEGIN
+        VERTGUIDE, 6
+        VERTGUIDE, 30
+        VERTGUIDE, 271
+        HORZGUIDE, 54
+    END
+
+    IDD_GPUCONFIG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 182
+        VERTGUIDE, 78
+        VERTGUIDE, 182
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 192
+    END
+
+    IDD_CONFIG2, DIALOG
+    BEGIN
+        LEFTMARGIN, 6
+        RIGHTMARGIN, 181
+        VERTGUIDE, 87
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 334
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,1,9
+ PRODUCTVERSION 1,0,1,9
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904e4"
+        BEGIN
+            VALUE "Comments", "http://guliverkli.sf.net/"
+            VALUE "CompanyName", "Gabest"
+            VALUE "FileDescription", "GS plugin for ps2 emulators"
+            VALUE "FileVersion", "1, 0, 1, 9"
+            VALUE "InternalName", "GSdx.dll"
+            VALUE "LegalCopyright", "Copyright (c) 2007-2008 Gabest.  All rights reserved."
+            VALUE "OriginalFilename", "GSdx.dll"
+            VALUE "ProductName", "GSdx"
+            VALUE "ProductVersion", "1, 0, 1, 9"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#include "res/tfx.fx"
+#include "res/convert.fx"
+#include "res/interlace.fx"
+#include "res/merge.fx"
+#include "res/fxaa.fx"
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

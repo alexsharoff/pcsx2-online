@@ -65,7 +65,7 @@ static __fi bool WriteFifoToEE()
 static __fi bool WriteIOPtoFifo()
 {
 	// There's some data ready to transfer into the fifo..
-	const int writeSize = min(sif0.iop.counter, sif0.fifo.free());
+	const int writeSize = min(sif0.iop.counter, sif0.fifo.sif_free());
 
 	SIF_LOG("Write IOP to Fifo: +++++++++++ %lX of %lX", writeSize, sif0.iop.counter);
 
@@ -105,7 +105,7 @@ static __fi bool ProcessEETag()
 		case TAG_CNT:	break;
 
 		case TAG_CNTS:
-			if (dmacRegs.ctrl.STS != NO_STS)
+			if (dmacRegs.ctrl.STS == STS_SIF0)
 				dmacRegs.stadr.ADDR = sif0dma.madr + (sif0dma.qwc * 16);
 			break;
 
@@ -182,7 +182,7 @@ static __fi void HandleEETransfer()
 {
 	if(sif0dma.chcr.STR == false)
 	{
-		DevCon.Warning("Replacement for irq prevention hack EE SIF0");
+		//DevCon.Warning("Replacement for irq prevention hack EE SIF0");
 		sif0.ee.end = false;
 		sif0.ee.busy = false;
 		return;
@@ -276,7 +276,7 @@ static __fi void HandleIOPTransfer()
 	else
 	{
 		// Write IOP to Fifo.
-		if (sif0.fifo.free() > 0)
+		if (sif0.fifo.sif_free() > 0)
 		{
 			WriteIOPtoFifo();
 		}
@@ -288,7 +288,7 @@ static __fi void Sif0End()
 	psHu32(SBUS_F240) &= ~0x20;
 	psHu32(SBUS_F240) &= ~0x2000;
 
-	SIF_LOG("SIF0 DMA end...");
+	DMA_LOG("SIF0 DMA End");
 }
 
 // Transfer IOP to EE, putting data in the fifo as an intermediate step.
@@ -304,7 +304,7 @@ __fi void SIF0Dma()
 
 		if (sif0.iop.busy)
 		{
-			if(sif0.fifo.free() > 0 || (sif0.iop.end == true && sif0.iop.counter == 0)) 
+			if(sif0.fifo.sif_free() > 0 || (sif0.iop.end == true && sif0.iop.counter == 0)) 
 			{
 				BusyCheck++;
 				HandleIOPTransfer();
@@ -353,9 +353,13 @@ __fi void dmaSIF0()
 	// These 2 games could be made playable again by increasing the time the EE or the IOP run,
 	// showing that this is very timing sensible.
 	// Doing this DMA unfortunately brings back an old warning in Legend of Legaia though, but it still works.
-	if (sif0.iop.busy)
-	{
+
+	//Updated 23/08/2011: The hangs are caused by the EE suspending SIF1 DMA and restarting it when in the middle 
+	//of processing a "REFE" tag, so the hangs can be solved by forcing the ee.end to be false
+	// (as it should always be at the beginning of a DMA).  using "if iop is busy" flags breaks Tom Clancy Rainbow Six.
+	// Legend of Legaia doesn't throw a warning either :)
+	sif0.ee.end = false;
         //hwIntcIrq(INTC_SBUS); // not sure, so let's not
 		SIF0Dma();
-	}
+
 }

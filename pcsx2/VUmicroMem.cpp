@@ -18,45 +18,44 @@
 #include "Common.h"
 #include "VUmicro.h"
 
+
 __aligned16 VURegs vuRegs[2];
 
-static u8* m_vuAllMem = NULL;
-static const uint m_vuMemSize =
-	0x1000 +					// VU0micro memory
-	0x4000 +					// VU0 memory
-	0x4000 +					// VU1 memory
-	0x4000;
 
-void vuMicroMemAlloc()
+vuMemoryReserve::vuMemoryReserve()
+	: _parent( L"VU0/1 on-chip memory", VU1_PROGSIZE + VU1_MEMSIZE + VU0_PROGSIZE + VU0_MEMSIZE )
 {
-	if( m_vuAllMem == NULL )
-		m_vuAllMem = vtlb_malloc( m_vuMemSize, 16 );
-
-	if( m_vuAllMem == NULL )
-		throw Exception::OutOfMemory( L"VU0 and VU1 on-chip memory" );
-
-	u8* curpos = m_vuAllMem;
-	VU0.Micro	= curpos; curpos += 0x1000;
-	VU0.Mem		= curpos; curpos += 0x4000;
-	VU1.Micro	= curpos; curpos += 0x4000;
-	VU1.Mem		= curpos;
-	 //curpos += 0x4000;
 }
 
-void vuMicroMemShutdown()
+void vuMemoryReserve::Reserve()
 {
-	// -- VTLB Memory Allocation --
+	_parent::Reserve(HostMemoryMap::VUmem);
+	//_parent::Reserve(EmuConfig.HostMemMap.VUmem);
 
-	vtlb_free( m_vuAllMem, m_vuMemSize );
-	m_vuAllMem = NULL;
+	u8* curpos = m_reserve.GetPtr();
+	VU0.Micro	= curpos; curpos += VU0_PROGSIZE;
+	VU0.Mem		= curpos; curpos += VU0_MEMSIZE;
+	VU1.Micro	= curpos; curpos += VU1_PROGSIZE;
+	VU1.Mem		= curpos; curpos += VU1_MEMSIZE;
 }
 
-void vuMicroMemReset()
+void vuMemoryReserve::Release()
 {
-	pxAssume( VU0.Mem != NULL );
-	pxAssume( VU1.Mem != NULL );
+	_parent::Release();
 
-	memMapVUmicro();
+	VU0.Micro	= VU0.Mem	= NULL;
+	VU1.Micro	= VU1.Mem	= NULL;
+}
+
+void vuMemoryReserve::Reset()
+{
+	_parent::Reset();
+	
+	pxAssert( VU0.Mem );
+	pxAssert( VU1.Mem );
+
+	// Below memMap is already called by "void eeMemoryReserve::Reset()"
+	//memMapVUmicro();
 
 	// === VU0 Initialization ===
 	memzero(VU0.ACC);
@@ -67,8 +66,6 @@ void vuMicroMemReset()
 	VU0.VF[0].f.z = 0.0f;
 	VU0.VF[0].f.w = 1.0f;
 	VU0.VI[0].UL = 0;
-	memzero_ptr<4*1024>(VU0.Mem);
-	memzero_ptr<4*1024>(VU0.Micro);
 
 	// === VU1 Initialization ===
 	memzero(VU1.ACC);
@@ -79,28 +76,14 @@ void vuMicroMemReset()
 	VU1.VF[0].f.z = 0.0f;
 	VU1.VF[0].f.w = 1.0f;
 	VU1.VI[0].UL = 0;
-	memzero_ptr<16*1024>(VU1.Mem);
-	memzero_ptr<16*1024>(VU1.Micro);
 }
 
 void SaveStateBase::vuMicroFreeze()
 {
-	FreezeTag( "vuMicro" );
-
-	pxAssume( VU0.Mem != NULL );
-	pxAssume( VU1.Mem != NULL );
+	FreezeTag( "vuMicroRegs" );
 
 	Freeze(VU0.ACC);
-
-	// Seemingly silly and pointless use of temp var:  GCC is unable to bind packed fields
-	// (appears to be a bug, tracked here: http://gcc.gnu.org/bugzilla/show_bug.cgi?id=36566 ).
-	// Dereferencing outside the context of the function (via a temp var) seems to circumvent it. --air
-	
-	u32& temp_vu0_code = VU0.code;
-	Freeze(temp_vu0_code);
-
-	FreezeMem(VU0.Mem,   4*1024);
-	FreezeMem(VU0.Micro, 4*1024);
+	Freeze(VU0.code);
 
 	Freeze(VU0.VF);
 	Freeze(VU0.VI);
@@ -109,9 +92,6 @@ void SaveStateBase::vuMicroFreeze()
 
 	u32& temp_vu1_code = VU1.code;
 	Freeze(temp_vu1_code);
-
-	FreezeMem(VU1.Mem,   16*1024);
-	FreezeMem(VU1.Micro, 16*1024);
 
 	Freeze(VU1.VF);
 	Freeze(VU1.VI);

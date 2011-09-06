@@ -21,37 +21,69 @@
 
 enum DocsModeType
 {
-	// uses /home/user or /cwd for the program data
+	// uses /home/user or /cwd for the program data.  This is the default mode and is the most
+	// friendly to modern computing security requirements; as it isolates all file modification
+	// to a zone of the hard drive that has granted write permissions to the user.
 	DocsFolder_User,
 	
-	// uses the current working directory for program data
-	//DocsFolder_CWD,
-	
-	// uses a custom location for program data
+	// uses a custom location for program data. Typically the custom folder is either the
+	// absolute or relative location of the program -- absolute is preferred because it is
+	// considered more secure by MSW standards, due to DLL search rules.
+	//
+	// To enable PCSX2's "portable" mode, use this setting and specify "." for the custom
+	// documents folder.
 	DocsFolder_Custom,
 };
 
 namespace PathDefs
 {
-	// complete pathnames are returned by these functions
-	// For 99% of all code, you should use these.
+	// complete pathnames are returned by these functions.
+	// These are used for initial default values when first configuring PCSX2, or when the
+	// user checks "Use Default paths" option provided on most path selectors.  These are not
+	// used otherwise, in favor of the user-configurable specifications in the ini files.
 
-    extern wxDirName GetUserLocalDataDir();
+	extern wxDirName GetUserLocalDataDir();
 	extern wxDirName GetDocuments();
 	extern wxDirName GetDocuments( DocsModeType mode );
 	extern wxDirName GetThemes();
 }
 
 extern DocsModeType		DocsFolderMode;				// 
-extern wxDirName		SettingsFolder;				// dictates where the settings folder comes from, *if* UseDefaultSettingsFolder is FALSE.
-extern wxDirName		CustomDocumentsFolder;		// allows the specification of a custom home folder for PCSX2 documents files.
-extern bool				UseDefaultSettingsFolder;	// when TRUE, pcsx2 derives the settings folder from the UseAdminMode
-extern wxDirName		Logs;
-extern bool			    UseDefaultLogs;
+extern bool				UseDefaultSettingsFolder;	// when TRUE, pcsx2 derives the settings folder from the DocsFolderMode
+extern bool				UseDefaultPluginsFolder;
+extern bool				UseDefaultThemesFolder;
 
-wxDirName GetSettingsFolder();
-wxString  GetSettingsFilename();
-wxDirName GetLogFolder();
+extern wxDirName		CustomDocumentsFolder;		// allows the specification of a custom home folder for PCSX2 documents files.
+extern wxDirName		SettingsFolder;				// dictates where the settings folder comes from, *if* UseDefaultSettingsFolder is FALSE.
+
+extern wxDirName		InstallFolder;
+extern wxDirName		PluginsFolder;
+extern wxDirName		ThemesFolder;
+
+extern wxDirName GetSettingsFolder();
+extern wxString  GetVmSettingsFilename();
+extern wxString  GetUiSettingsFilename();
+extern wxDirName GetLogFolder();
+
+enum InstallationModeType
+{
+	// Use the user defined folder selections.  These can be anywhere on a user's hard drive,
+	// though by default the binaries (plugins, themes) are located in Install_Dir (registered
+	// by the installer), and the user files (screenshots, inis) are in the user's documents
+	// folder.  All folders are changable within the GUI.
+	InstallMode_Registered,
+
+	// In this mode, both Install_Dir and UserDocuments folders default the directory containing
+	// PCSX2.exe, or the current working directory (if the PCSX2 directory could not be determined).
+	// Folders cannot be changed from within the gui, however the fixed defaults can be manually
+	// specified in the portable.ini by power users/devs.
+	//
+	// This mode is typically enabled by the presence of a 'portable.ini' in the folder.
+	InstallMode_Portable,
+};
+bool IsPortable();
+
+extern InstallationModeType	InstallationMode;
 
 enum AspectRatioType
 {
@@ -93,21 +125,20 @@ public:
 	{
 		BITFIELD32()
 			bool
-				UseDefaultPlugins:1,
-				UseDefaultSettings:1,
 				UseDefaultBios:1,
 				UseDefaultSnapshots:1,
 				UseDefaultSavestates:1,
 				UseDefaultMemoryCards:1,
-				UseDefaultLogs:1;
+				UseDefaultLogs:1,
+				UseDefaultLangs:1;
 		BITFIELD_END
 
 		wxDirName
-			Plugins,
 			Bios,
 			Snapshots,
 			Savestates,
 			MemoryCards,
+			Langs,
 			Logs;
 
 		wxDirName RunIso;		// last used location for Iso loading.
@@ -158,11 +189,18 @@ public:
 		bool		DisableScreenSaver;
 
 		AspectRatioType AspectRatio;
+		Fixed100	Zoom;
+		Fixed100	StretchY;
+		Fixed100	OffsetX;
+		Fixed100	OffsetY;
+
 
 		wxSize		WindowSize;
 		wxPoint		WindowPos;
 		bool		IsMaximized;
 		bool		IsFullscreen;
+
+		bool		IsToggleFullscreenOnDoubleClick;
 
 		GSWindowOptions();
 
@@ -203,11 +241,17 @@ public:
 	// by it's UTF/ASCII name).
 	wxString	SysSettingsTabName;
 	wxString	McdSettingsTabName;
+	wxString	ComponentsTabName;
 	wxString	AppSettingsTabName;
 	wxString	GameDatabaseTabName;
 
-	// Current language in use (correlates to a wxWidgets wxLANGUAGE specifier)
+	// Currently selected language ID -- wxWidgets version-specific identifier.  This is one side of
+	// a two-part configuration that also includes LanguageCode.
 	wxLanguage	LanguageId;
+
+	// Current language in use (correlates to the universal language codes, such as "en_US", "de_DE", etc).
+	// This code is not always unique, which is why we use the language ID also.
+	wxString	LanguageCode;
 
 	int			RecentIsoCount;		// number of files displayed in the Recent Isos list.
 
@@ -235,6 +279,16 @@ public:
 	// (the toggle is applied when a new EmuConfig is sent through AppCoreThread::ApplySettings)
 	bool		EnableSpeedHacks;
 	bool		EnableGameFixes;
+
+	// Presets try to prevent users from overwhelming when they want to change settings (usually to make a game run faster).
+	// The presets allow to modify the balance between emulation accuracy and emulation speed using a pseudo-linear control.
+	// It's pseudo since there's no way to arrange groups of all of pcsx2's settings such that each next group makes it slighty faster and slightly less compatiible for all games.
+	//However, By carefully selecting these preset config groups, it's hopefully possible to achieve this goal for a reasonable percentage (hopefully above 50%) of the games.
+	//when presets are enabled, the user has practically no control over the emulation settings, and can only choose the preset to use.
+
+	// The next 2 vars enable/disable presets alltogether, and select/reflect current preset, respectively.
+	bool		EnablePresets;
+	int			PresetIndex;
 
 	wxString				CurrentIso;
 	wxString				CurrentELF;
@@ -265,17 +319,35 @@ public:
 	wxString FullpathTo( PluginsEnum_t pluginId ) const;
 
 	bool FullpathMatchTest( PluginsEnum_t pluginId, const wxString& cmpto ) const;
-	
-	void LoadSaveUserMode( IniInterface& ini, const wxString& cwdhash );
 
 	void LoadSave( IniInterface& ini );
 	void LoadSaveRootItems( IniInterface& ini );
 	void LoadSaveMemcards( IniInterface& ini );
+
+	static int  GetMaxPresetIndex();
+    static bool isOkGetPresetTextAndColor(int n, wxString& label, wxColor& c);
+	
+	bool        IsOkApplyPreset(int n);
+
+
+	//The next 2 flags are used with ApplyConfigToGui which the presets system use:
+	
+	//Indicates that the scope is only for preset-related items.
+	static const int APPLY_FLAG_FROM_PRESET			= 0x01;
+
+	//Indicates that the change should manually propagate to sub items because it's called directly and not as an event.
+	//Currently used by some panels which contain sub-panels which are affected by presets.
+	static const int APPLY_FLAG_MANUALLY_PROPAGATE	= 0x02;
+
 };
 
 extern void AppLoadSettings();
 extern void AppSaveSettings();
 extern void AppApplySettings( const AppConfig* oldconf=NULL );
+
+extern void App_LoadSaveInstallSettings( IniInterface& ini );
+extern void App_SaveInstallSettings( wxConfigBase* ini );
+extern void App_LoadInstallSettings( wxConfigBase* ini );
 
 extern void ConLog_LoadSaveSettings( IniInterface& ini );
 extern void SysTraceLog_LoadSaveSettings( IniInterface& ini );

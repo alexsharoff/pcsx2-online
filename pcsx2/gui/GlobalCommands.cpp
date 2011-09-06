@@ -16,6 +16,8 @@
 #include "PrecompiledHeader.h"
 #include "MainFrame.h"
 #include "GSFrame.h"
+#include "ApplyState.h"
+
 
 #include "AppAccelerators.h"
 #include "AppSaveStates.h"
@@ -84,20 +86,44 @@ namespace Implementations
 			g_LimiterMode = Limit_Turbo;
 			g_Conf->EmuOptions.GS.LimitScalar = g_Conf->Framerate.TurboScalar;
 			Console.WriteLn("(FrameLimiter) Turbo + FrameLimit ENABLED." );
+			if ( g_Conf->Framerate.SkipOnTurbo == true) 
+				g_Conf->EmuOptions.GS.FrameSkipEnable = true;
+			else
+				g_Conf->EmuOptions.GS.FrameSkipEnable = false;
 		}
 		else if( g_LimiterMode == Limit_Turbo )
 		{
 			GSsetVsync( g_Conf->EmuOptions.GS.VsyncEnable );
 			g_LimiterMode = Limit_Nominal;
 			g_Conf->EmuOptions.GS.LimitScalar = g_Conf->Framerate.NominalScalar;
-			Console.WriteLn("(FrameLimiter) Turbo DISABLED." );
+			
+			if ( g_Conf->Framerate.SkipOnLimit == true) 
+			{
+				Console.WriteLn("(FrameLimiter) Turbo DISABLED. Frameskip ENABLED" );
+				g_Conf->EmuOptions.GS.FrameSkipEnable = true;
+			}
+			else
+			{
+				Console.WriteLn("(FrameLimiter) Turbo DISABLED." );
+				g_Conf->EmuOptions.GS.FrameSkipEnable = false;
+			}
 		}
 		else
 		{
 			GSsetVsync( false );
 			g_LimiterMode = Limit_Turbo;
 			g_Conf->EmuOptions.GS.LimitScalar = g_Conf->Framerate.TurboScalar;
-			Console.WriteLn("(FrameLimiter) Turbo ENABLED." );
+			
+			if ( g_Conf->Framerate.SkipOnTurbo == true)
+			{
+				Console.WriteLn("(FrameLimiter) Turbo + Frameskip ENABLED." );
+				g_Conf->EmuOptions.GS.FrameSkipEnable = true;
+			}
+			else
+			{
+				Console.WriteLn("(FrameLimiter) Turbo ENABLED." );
+				g_Conf->EmuOptions.GS.FrameSkipEnable = false;
+			}
 		}
 		pauser.AllowResume();
 	}
@@ -137,6 +163,123 @@ namespace Implementations
 		pauser.AllowResume();
 	}
 
+	void UpdateImagePosition()
+	{
+		//AppApplySettings() would have been nicer, since it also immidiately affects the GUI (if open).
+		//However, the events sequence it generates also "depresses" Shift/CTRL/etc, so consecutive zoom with CTRL down breaks.
+		//Since zoom only affects the window viewport anyway, we can live with directly calling it.
+		if (GSFrame* gsFrame = wxGetApp().GetGsFramePtr())
+			if (GSPanel* woot = gsFrame->GetViewport())
+				woot->DoResize();
+	}
+
+	void GSwindow_CycleAspectRatio()
+	{
+		AspectRatioType& art = g_Conf->GSWindow.AspectRatio;
+		wxString arts(L"Not modified");
+		switch( art )
+		{
+			case AspectRatio_Stretch:	art = AspectRatio_4_3; arts = L"AspectRatio_4_3"; break;
+			case AspectRatio_4_3:		art = AspectRatio_16_9; arts = L"AspectRatio_16:9"; break;
+			case AspectRatio_16_9:		art = AspectRatio_Stretch; arts = L"AspectRatio_Stretch";break;
+		}
+
+		Console.WriteLn(L"(GSwindow) Aspect ratio: %s.", arts.c_str());
+		UpdateImagePosition();
+	}
+
+	void SetOffset(float x, float y)
+	{
+		g_Conf->GSWindow.OffsetX = x;
+		g_Conf->GSWindow.OffsetY = y;
+		Console.WriteLn(L"(GSwindow) Offset: x=%f, y=%f", x,y);
+
+		UpdateImagePosition();
+
+	}
+
+	void GSwindow_OffsetYplus(){
+		SetOffset(g_Conf->GSWindow.OffsetX.ToFloat(), g_Conf->GSWindow.OffsetY.ToFloat()+1);
+	}
+
+	void GSwindow_OffsetYminus(){
+		SetOffset(g_Conf->GSWindow.OffsetX.ToFloat(), g_Conf->GSWindow.OffsetY.ToFloat()-1);
+	}
+
+	void GSwindow_OffsetXplus(){
+		SetOffset(g_Conf->GSWindow.OffsetX.ToFloat()+1, g_Conf->GSWindow.OffsetY.ToFloat());
+	}
+
+	void GSwindow_OffsetXminus(){
+		SetOffset(g_Conf->GSWindow.OffsetX.ToFloat()-1, g_Conf->GSWindow.OffsetY.ToFloat());
+	}
+
+	void GSwindow_OffsetReset(){
+		SetOffset(0,0);
+	}
+
+	void SetZoomY(float zoom)
+	{
+		if( zoom <= 0 )
+			return;
+		g_Conf->GSWindow.StretchY = zoom;
+		Console.WriteLn(L"(GSwindow) Vertical stretch: %f", zoom);
+
+		UpdateImagePosition();
+	}
+
+	void GSwindow_ZoomInY()
+	{
+		SetZoomY( g_Conf->GSWindow.StretchY.ToFloat()+1 );
+	}
+	void GSwindow_ZoomOutY()
+	{
+		SetZoomY( g_Conf->GSWindow.StretchY.ToFloat()-1 );
+	}
+	void GSwindow_ZoomResetY()
+	{
+		SetZoomY( 100 );
+	}
+
+	void SetZoom(float zoom)
+	{
+		if( zoom < 0 )
+			return;
+		g_Conf->GSWindow.Zoom = zoom;
+		
+		if ( zoom == 0 ) 
+            Console.WriteLn(L"(GSwindow) Zoom: 0 (auto, no black bars)");
+		else 
+            Console.WriteLn(L"(GSwindow) Zoom: %f", zoom);
+		
+		UpdateImagePosition();
+	}
+
+
+	void GSwindow_ZoomIn()
+	{
+		float z = g_Conf->GSWindow.Zoom.ToFloat();
+		if( z==0 ) z = 100;
+		z++;
+		SetZoom( z );
+	}
+	void GSwindow_ZoomOut()
+	{
+		float z = g_Conf->GSWindow.Zoom.ToFloat();
+		if( z==0 ) z = 100;
+		z--;
+		SetZoom( z );
+	}
+	void GSwindow_ZoomToggle()
+	{
+		float z = g_Conf->GSWindow.Zoom.ToFloat();
+		if( z==100 )	z = 0;
+		else			z = 100;
+
+		SetZoom( z );
+	}
+
+
 	void Sys_Suspend()
 	{
 		CoreThread.Suspend();
@@ -167,9 +310,10 @@ namespace Implementations
 		// --arcum42
 
 		// FIXME: Some of the trace logs will require recompiler resets to be activated properly.
-		//  But since those haven't been implemented yet, no point in implementing that here either.
+#ifdef PCSX2_DEVBUILD		
 		SetTraceConfig().Enabled = !EmuConfig.Trace.Enabled;
 		GSprintf(10, const_cast<char*>(EmuConfig.Trace.Enabled ? "Logging Enabled." : "Logging Disabled."));
+#endif
 	}
 
 	void Sys_FreezeGS()
@@ -240,26 +384,32 @@ static const GlobalCommandDescriptor CommandDeclarations[] =
 {
 	{	"States_FreezeCurrentSlot",
 		States_FreezeCurrentSlot,
-		wxLt( "Save state" ),
-		wxLt( "Saves the virtual machine state to the current slot." ),
+		pxL( "Save state" ),
+		pxL( "Saves the virtual machine state to the current slot." ),
 	},
 
 	{	"States_DefrostCurrentSlot",
 		States_DefrostCurrentSlot,
-		wxLt( "Load state" ),
-		wxLt( "Loads a virtual machine state from the current slot." ),
+		pxL( "Load state" ),
+		pxL( "Loads a virtual machine state from the current slot." ),
+	},
+
+	{	"States_DefrostCurrentSlotBackup",
+		States_DefrostCurrentSlotBackup,
+		pxL( "Load State Backup" ),
+		pxL( "Loads virtual machine state backup for current slot." ),
 	},
 
 	{	"States_CycleSlotForward",
 		States_CycleSlotForward,
-		wxLt( "Cycle to next slot" ),
-		wxLt( "Cycles the current save slot in +1 fashion!" ),
+		pxL( "Cycle to next slot" ),
+		pxL( "Cycles the current save slot in +1 fashion!" ),
 	},
 
 	{	"States_CycleSlotBackward",
 		States_CycleSlotBackward,
-		wxLt( "Cycle to prev slot" ),
-		wxLt( "Cycles the current save slot in -1 fashion!" ),
+		pxL( "Cycle to prev slot" ),
+		pxL( "Cycles the current save slot in -1 fashion!" ),
 	},
 
 	{	"Frameskip_Toggle",
@@ -284,7 +434,43 @@ static const GlobalCommandDescriptor CommandDeclarations[] =
 		Implementations::Framelimiter_MasterToggle,
 		NULL,
 		NULL,
+		true,
 	},
+
+	{	"GSwindow_CycleAspectRatio",
+		Implementations::GSwindow_CycleAspectRatio,
+		NULL,
+		NULL,
+		true,
+	},
+
+	{	"GSwindow_ZoomIn",
+		Implementations::GSwindow_ZoomIn,
+		NULL,
+		NULL,
+	},
+
+	{	"GSwindow_ZoomOut",
+		Implementations::GSwindow_ZoomOut,
+		NULL,
+		NULL,
+	},
+
+	{	"GSwindow_ZoomToggle",
+		Implementations::GSwindow_ZoomToggle,
+		NULL,
+		NULL,
+	},
+
+	{	"GSwindow_ZoomInY",	Implementations::GSwindow_ZoomInY, NULL, NULL, },
+	{	"GSwindow_ZoomOutY",	Implementations::GSwindow_ZoomOutY, NULL, NULL, },
+	{	"GSwindow_ZoomResetY",	Implementations::GSwindow_ZoomResetY, NULL, NULL, },
+
+	{	"GSwindow_OffsetYminus",	Implementations::GSwindow_OffsetYminus, NULL, NULL, },
+	{	"GSwindow_OffsetYplus",		Implementations::GSwindow_OffsetYplus, NULL, NULL, },
+	{	"GSwindow_OffsetXminus",	Implementations::GSwindow_OffsetXminus, NULL, NULL, },
+	{	"GSwindow_OffsetXplus",		Implementations::GSwindow_OffsetXplus, NULL, NULL, },
+	{	"GSwindow_OffsetReset",		Implementations::GSwindow_OffsetReset, NULL, NULL, },
 
 	{	"Sys_Suspend",
 		Implementations::Sys_Suspend,

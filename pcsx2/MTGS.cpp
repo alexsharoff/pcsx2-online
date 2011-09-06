@@ -20,6 +20,8 @@
 #include <wx/datetime.h>
 
 #include "GS.h"
+#include "Gif_Unit.h"
+#include "MTVU.h"
 #include "Elfheader.h"
 #include "SamplProf.h"
 
@@ -113,8 +115,6 @@ void SysMtgsThread::ResetGS()
 	SendSimplePacket( GS_RINGTYPE_RESET, 0, 0, 0 );
 	SendSimplePacket( GS_RINGTYPE_FRAMESKIP, 0, 0, 0 );
 	SetEvent();
-
-	GIFPath_Reset();
 }
 
 struct RingCmdPacket_Vsync
@@ -125,7 +125,7 @@ struct RingCmdPacket_Vsync
 	GSRegSIGBLID	siglblid;
 };
 
-void SysMtgsThread::PostVsyncEnd()
+void SysMtgsThread::PostVsyncStart()
 {
 	// Optimization note: Typically regset1 isn't needed.  The regs in that area are typically
 	// changed infrequently, usually during video mode changes.  However, on modern systems the
@@ -152,7 +152,13 @@ void SysMtgsThread::PostVsyncEnd()
 	// in the ringbuffer.  The queue limit is disabled when both FrameLimiting and Vsync are
 	// disabled, since the queue can have perverse effects on framerate benchmarking.
 
-	if ((AtomicIncrement(m_QueuedFrameCount) < EmuConfig.GS.VsyncQueueSize) || (!EmuConfig.GS.VsyncEnable && !EmuConfig.GS.FrameLimitEnable)) return;
+	// Edit: It's possible that MTGS is that much faster than the GS plugin that it creates so much lag, 
+	// a game becomes uncontrollable (software rendering for example).
+	// For that reason it's better to have the limit always in place, at the cost of a few max FPS in benchmarks.
+	// If those are needed back, it's better to increase the VsyncQueueSize via PCSX_vm.ini.
+	// (The Xenosaga engine is known to run into this, due to it throwing bulks of data in one frame followed by 2 empty frames.)
+
+	if ((AtomicIncrement(m_QueuedFrameCount) < EmuConfig.GS.VsyncQueueSize) /*|| (!EmuConfig.GS.VsyncEnable && !EmuConfig.GS.FrameLimitEnable)*/) return;
 
 	m_VsyncSignalListener = true;
 	//Console.WriteLn( Color_Blue, "(EEcore Sleep) Vsync\t\tringpos=0x%06x, writepos=0x%06x", volatize(m_ReadPos), m_WritePos );
@@ -182,15 +188,15 @@ void SysMtgsThread::OpenPlugin()
 	int result;
 
 	if( GSopen2 != NULL )
-		result = GSopen2( (void*)&pDsp, 1 | (renderswitch ? 4 : 0) );
+		result = GSopen2( (void*)pDsp, 1 | (renderswitch ? 4 : 0) );
 	else
-		result = GSopen( (void*)&pDsp, "PCSX2", renderswitch ? 2 : 1 );
+		result = GSopen( (void*)pDsp, "PCSX2", renderswitch ? 2 : 1 );
 
 	// Vsync on / off ?
 	if( renderswitch )
 	{
 		Console.Indent(2).WriteLn( "Forced software switch enabled." );
-		if (EmuConfig.GS.VsyncEnable)
+		if (EmuConfig.GS.VsyncEnable && !EmuConfig.GS.ManagedVsync)
 		{
 			// Better turn Vsync off now, as in most cases sw rendering is not fast enough to support a steady 60fps.
 			// Having Vsync still enabled then means a big cut in speed and sloppy rendering.
@@ -237,36 +243,29 @@ void SysMtgsThread::OpenPlugin()
 	GSsetGameCRC( ElfCRC, 0 );
 }
 
-class RingBufferLock : public ScopedLock
-{
-	typedef ScopedLock _parent;
-	
-protected:
-	SysMtgsThread&		m_mtgs;
+struct RingBufferLock {	
+	ScopedLock     m_lock1;
+	ScopedLock     m_lock2;
+	SysMtgsThread& m_mtgs;
 
-public:
-	RingBufferLock( SysMtgsThread& mtgs )
-		: ScopedLock( mtgs.m_mtx_RingBufferBusy )
-		, m_mtgs( mtgs )
-	{
+	RingBufferLock(SysMtgsThread& mtgs)
+		: m_lock1(mtgs.m_mtx_RingBufferBusy),
+		  m_lock2(mtgs.m_mtx_RingBufferBusy2),
+		  m_mtgs(mtgs) {
 		m_mtgs.m_RingBufferIsBusy = true;
 	}
-
-	virtual ~RingBufferLock() throw()
-	{
+	virtual ~RingBufferLock() throw() {
 		m_mtgs.m_RingBufferIsBusy = false;
 	}
-	
-	void Acquire()
-	{
-		_parent::Acquire();
+	void Acquire() {
+		m_lock1.Acquire();
+		m_lock2.Acquire();
 		m_mtgs.m_RingBufferIsBusy = true;
 	}
-	
-	void Release()
-	{
+	void Release() {
 		m_mtgs.m_RingBufferIsBusy = false;
-		_parent::Release();	
+		m_lock2.Release();
+		m_lock1.Release();
 	}
 };
 
@@ -276,10 +275,9 @@ void SysMtgsThread::ExecuteTaskInThread()
 	PacketTagType prevCmd;
 #endif
 
-	RingBufferLock busy( *this );
+	RingBufferLock busy (*this);
 
-	while( true )
-	{
+	while(true) {
 		busy.Release();
 
 		// Performance note: Both of these perform cancellation tests, but pthread_testcancel
@@ -294,8 +292,7 @@ void SysMtgsThread::ExecuteTaskInThread()
 		// ever be modified by this thread.
 		while( m_ReadPos != volatize(m_WritePos))
 		{
-			if( EmuConfig.GS.DisableOutput )
-			{
+			if (EmuConfig.GS.DisableOutput) {
 				m_ReadPos = m_WritePos;
 				continue;
 			}
@@ -322,6 +319,7 @@ void SysMtgsThread::ExecuteTaskInThread()
 
 			switch( tag.command )
 			{
+#if COPY_GS_PACKET_TO_MTGS == 1
 				case GS_RINGTYPE_P1:
 				{
 					uint datapos = (m_ReadPos+1) & RingBufferMask;
@@ -396,6 +394,30 @@ void SysMtgsThread::ExecuteTaskInThread()
 					ringposinc += qsize;
 				}
 				break;
+#endif
+				case GS_RINGTYPE_GSPACKET: {
+					Gif_Path& path   = gifUnit.gifPath[tag.data[2]];
+					u32       offset = tag.data[0];
+					u32       size   = tag.data[1];
+					if (offset != ~0u) GSgifTransfer((u32*)&path.buffer[offset], size/16);
+					AtomicExchangeSub(path.readAmount, size);
+					break;
+				}
+
+				case GS_RINGTYPE_MTVU_GSPACKET: {
+					MTVU_LOG("MTGS - Waiting on semaXGkick!");
+					vu1Thread.KickStart(true);
+					busy.m_lock2.Release();
+					// Wait for MTVU to complete vu1 program
+					vu1Thread.semaXGkick.WaitWithoutYield();
+					busy.m_lock2.Acquire();
+					Gif_Path& path   = gifUnit.gifPath[GIF_PATH_1];
+					GS_Packet gsPack = path.GetGSPacketMTVU(); // Get vu1 program's xgkick packet(s)
+					if (gsPack.size) GSgifTransfer((u32*)&path.buffer[gsPack.offset], gsPack.size/16);
+					AtomicExchangeSub(path.readAmount, gsPack.size + gsPack.readAmount);
+					path.PopGSPacketMTVU(); // Should be done last, for proper Gif_MTGS_Wait()
+					break;
+				}
 
 				default:
 				{
@@ -557,34 +579,50 @@ void SysMtgsThread::OnCleanupInThread()
 }
 
 // Waits for the GS to empty out the entire ring buffer contents.
-// Used primarily for plugin startup/shutdown.
-void SysMtgsThread::WaitGS()
+// If syncRegs, then writes pcsx2's gs regs to MTGS's internal copy
+// If weakWait, then this function is allowed to exit after MTGS finished a path1 packet
+// If isMTVU, then this implies this function is being called from the MTVU thread...
+void SysMtgsThread::WaitGS(bool syncRegs, bool weakWait, bool isMTVU)
 {
 	pxAssertDev( !IsSelf(), "This method is only allowed from threads *not* named MTGS." );
 
 	if( m_ExecMode == ExecMode_NoThreadYet || !IsRunning() ) return;
 	if( !pxAssertDev( IsOpen(), "MTGS Warning!  WaitGS issued on a closed thread." ) ) return;
 
-	if( volatize(m_ReadPos) != m_WritePos )
-	{
+	Gif_Path&   path = gifUnit.gifPath[GIF_PATH_1];
+	u32 startP1Packs = weakWait ? path.GetPendingGSPackets() : 0;
+
+	if (isMTVU || volatize(m_ReadPos) != m_WritePos) {
 		SetEvent();
 		RethrowException();
-
-		do {
-			m_mtx_RingBufferBusy.Wait();
+		for(;;) {
+			if (weakWait) m_mtx_RingBufferBusy2.Wait();
+			else          m_mtx_RingBufferBusy .Wait();
 			RethrowException();
-		} while( volatize(m_ReadPos) != m_WritePos );
+			if(!isMTVU && volatize(m_ReadPos) == m_WritePos) break;
+			u32 curP1Packs = weakWait ? path.GetPendingGSPackets() : 0;
+			if (weakWait && ((startP1Packs-curP1Packs) || !curP1Packs)) break;
+			// On weakWait we will stop waiting on the MTGS thread if the
+			// MTGS thread has processed a vu1 xgkick packet, or is pending on
+			// its final vu1 xgkick packet (!curP1Packs)...
+			// Note: m_WritePos doesn't seem to have proper atomic write
+			// code, so reading it from the MTVU thread might be dangerous;
+			// hence it has been avoided...
+		}
 	}
 	
-	// Completely synchronize GS and MTGS register states.
-	memcpy_fast( RingBuffer.Regs, PS2MEM_GS, sizeof(RingBuffer.Regs) );
+	if (syncRegs) {
+		ScopedLock lock(m_mtx_WaitGS);
+		// Completely synchronize GS and MTGS register states.
+		memcpy_fast(RingBuffer.Regs, PS2MEM_GS, sizeof(RingBuffer.Regs));
+	}
 }
 
 // Sets the gsEvent flag and releases a timeslice.
 // For use in loops that wait on the GS thread to do certain things.
 void SysMtgsThread::SetEvent()
 {
-	if( !m_RingBufferIsBusy )
+	if(!m_RingBufferIsBusy)
 		m_sem_event.Post();
 
 	m_CopyDataTally = 0;
@@ -764,6 +802,18 @@ void SysMtgsThread::SendSimplePacket( MTGS_RingCommand type, int data0, int data
 	_FinishSimplePacket();
 }
 
+void SysMtgsThread::SendSimpleGSPacket(MTGS_RingCommand type, u32 offset, u32 size, GIF_PATH path)
+{
+	SendSimplePacket(type, (int)offset, (int)size, (int)path);
+
+	if(!EmuConfig.GS.SynchronousMTGS) {
+		if(!m_RingBufferIsBusy) {
+			m_CopyDataTally += size / 16;
+			if (m_CopyDataTally > 0x2000) SetEvent();
+		}
+	}
+}
+
 void SysMtgsThread::SendPointerPacket( MTGS_RingCommand type, u32 data0, void* data1 )
 {
 	//ScopedLock locker( m_PacketLocker );
@@ -806,7 +856,7 @@ void SysMtgsThread::WaitForOpen()
 			//   emulator forcefully, or to continue waiting on the GS.
 
 			throw Exception::PluginOpenError( PluginId_GS )
-				.SetBothMsgs(wxLt("The MTGS thread has become unresponsive while waiting for the GS plugin to open."));
+				.SetBothMsgs(pxLt("The MTGS thread has become unresponsive while waiting for the GS plugin to open."));
 		}
 	}
 

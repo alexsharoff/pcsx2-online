@@ -14,9 +14,9 @@
  */
 
 #include "PrecompiledHeader.h"
-
 #include "MainFrame.h"
 #include "GSFrame.h"
+#include "GS.h"
 #include "AppSaveStates.h"
 #include "AppGameDatabase.h"
 #include "AppAccelerators.h"
@@ -30,9 +30,19 @@
 
 #include "Utilities/IniInterface.h"
 
+#include <wx/stdpaths.h>
+
 #ifdef __WXMSW__
 #	include <wx/msw/wrapwin.h>		// needed to implement the app!
 #endif
+
+#ifdef __WXGTK__
+// Need to tranform the GSPanel to a X11 window/display for the GS plugins
+#include <wx/gtk/win_gtk.h> // GTK_PIZZA interface
+#include <gdk/gdkx.h>
+#include <gtk/gtk.h>
+#endif
+
 
 IMPLEMENT_APP(Pcsx2App)
 
@@ -40,13 +50,6 @@ DEFINE_EVENT_TYPE( pxEvt_LoadPluginsComplete );
 DEFINE_EVENT_TYPE( pxEvt_LogicalVsync );
 
 DEFINE_EVENT_TYPE( pxEvt_ThreadTaskTimeout_SysExec );
-
-DocsModeType			DocsFolderMode = DocsFolder_User;
-wxDirName				SettingsFolder;
-wxDirName				CustomDocumentsFolder;
-bool					UseDefaultSettingsFolder = true;
-wxDirName               Logs;
-bool					UseDefaultLogs = true;
 
 ScopedPtr<AppConfig>	g_Conf;
 
@@ -276,6 +279,12 @@ public:
 	virtual void Printf(const wxChar* format, ...);
 };
 
+// EXTRAORDINARY HACK!  wxWidgets does not provide a clean way of overriding the commandline options
+// display dialog.  The default one uses operating system built-in message/notice windows, which are
+// appaling, ugly, and not at all suited to a large number of command line options.  Fortunately,
+// wxMessageOutputMessageBox::PrintF is only used in like two places, so we can just check for the
+// commandline window using an identifier we know is contained in it, and then format our own window
+// display. :D  --air
 void pxMessageOutputMessageBox::Printf(const wxChar* format, ...)
 {
 	using namespace pxSizerFlags;
@@ -286,14 +295,16 @@ void pxMessageOutputMessageBox::Printf(const wxChar* format, ...)
 	out.PrintfV(format, args);
 	va_end(args);
 
-	int pos = out.Find( L"[IsoFile]" );
+	FastFormatUnicode isoFormatted;
+	isoFormatted.Write( L"[%s]", _("IsoFile") );
+	int pos = out.Find( isoFormatted );
 	
 	if(pos == wxNOT_FOUND)
 	{
 		Msgbox::Alert( out ); return;
 	}
 
-	pos += 9;		// strlen of [IsoFile]
+	pos += isoFormatted.Length();
 
 	wxDialogWithHelpers popup( NULL, AddAppName(_("%s Commandline Options")) );
 	popup.SetMinWidth( 640 );
@@ -306,8 +317,8 @@ void pxMessageOutputMessageBox::Printf(const wxChar* format, ...)
 		wxTE_READONLY | wxTE_MULTILINE | wxTE_RICH2 | wxHSCROLL
 	);
 
-	traceArea->SetDefaultStyle( wxTextAttr( wxNullColour, wxNullColour, pxGetFixedFont() ) );
-	traceArea->SetFont( pxGetFixedFont() );
+	traceArea->SetDefaultStyle( wxTextAttr( wxNullColour, wxNullColour, pxGetFixedFont(9) ) );
+	traceArea->SetFont( pxGetFixedFont(9) );
 
 	int fonty = traceArea->GetCharHeight();
 
@@ -329,7 +340,54 @@ wxMessageOutput* Pcsx2AppTraits::CreateMessageOutput()
 	return new pxMessageOutputMessageBox;
 #endif
 }
-	
+
+// --------------------------------------------------------------------------------------
+//  Pcsx2StandardPaths
+// --------------------------------------------------------------------------------------
+#ifdef wxUSE_STDPATHS
+class Pcsx2StandardPaths : public wxStandardPaths
+{
+public:
+	wxString GetResourcesDir() const
+	{
+		return Path::Combine( GetDataDir(), L"Langs" );
+	}
+
+#ifdef __LINUX__
+	wxString GetUserLocalDataDir() const
+	{
+		// Note: GetUserLocalDataDir() on linux return $HOME/.pcsx2 unfortunately it does not follow the XDG standard
+		// So we re-implement it, to follow the standard.
+		wxDirName user_local_dir;
+		wxString xdg_home_value;
+		if( wxGetEnv(L"XDG_CONFIG_HOME", &xdg_home_value) ) {
+			if ( xdg_home_value.IsEmpty() ) {
+				// variable exist but it is empty. So use the default value
+				user_local_dir = (wxDirName)Path::Combine( GetUserConfigDir() , wxDirName( L".config/pcsx2" ));
+			} else {
+				user_local_dir = (wxDirName)Path::Combine( xdg_home_value, pxGetAppName());
+			}
+		} else {
+			// variable do not exist
+			user_local_dir = (wxDirName)Path::Combine( GetUserConfigDir() , wxDirName( L".config/pcsx2" ));
+		}
+		return user_local_dir.ToString();
+	}
+#endif
+};
+
+wxStandardPathsBase& Pcsx2AppTraits::GetStandardPaths()
+{
+	static Pcsx2StandardPaths stdPaths;
+	return stdPaths;
+}
+#endif
+
+wxAppTraits* Pcsx2App::CreateTraits()
+{
+	return new Pcsx2AppTraits;
+}
+
 // --------------------------------------------------------------------------------------
 //  FramerateManager  (implementations)
 // --------------------------------------------------------------------------------------
@@ -386,11 +444,72 @@ void Pcsx2App::LogicalVsync()
 	// Update / Calculate framerate!
 
 	FpsManager.DoFrame();
+	
+	if (EmuConfig.GS.ManagedVsync && EmuConfig.GS.VsyncEnable)
+	{
+		static bool last_enabled = true; // Avoids locking it in some scenarios
+		static int too_slow = 0;
+		static int fast_enough = 0;
 
+		if ( g_LimiterMode == Limit_Nominal && EmuConfig.GS.VsyncEnable && g_Conf->EmuOptions.GS.FrameLimitEnable )
+		{
+			float fps = (float)FpsManager.GetFramerate();
+			
+			if( gsRegionMode == Region_NTSC )
+			{
+				if (fps < 59.0f ) {
+					too_slow++;
+					fast_enough = 0;
+					if (too_slow > 4 && last_enabled == true)
+					{
+						last_enabled = false;
+						GSsetVsync( 0 );
+					}
+				}
+				else {
+					fast_enough++;
+					too_slow = 0;
+					if (fast_enough > 12 && last_enabled == false)
+					{
+						last_enabled = true;
+						GSsetVsync( 1 );
+					}
+				}
+			}
+			else
+			{
+				if (fps < 49.2f ) {
+					too_slow++;
+					fast_enough = 0;
+					if (too_slow > 3 && last_enabled == true)
+					{
+						last_enabled = false;
+						GSsetVsync( 0 );
+					}
+				}
+				else {
+					fast_enough++;
+					too_slow = 0;
+					if (fast_enough > 15 && last_enabled == false)
+					{
+						last_enabled = true;
+						GSsetVsync( 1 );
+					}
+				}
+			}
+		}
+		else
+		{
+			last_enabled = true; // Avoids locking it in some scenarios
+			too_slow = 0;
+			fast_enough = 0;
+			GSsetVsync( 0 );
+		}
+	}
 	// Only call PADupdate here if we're using GSopen2.  Legacy GSopen plugins have the
 	// GS window belonging to the MTGS thread.
 	if( (PADupdate != NULL) && (GSopen2 != NULL) && (wxGetApp().GetGsFramePtr() != NULL) )
- 		PADupdate(0);
+		PADupdate(0);
 
 	while( const keyEvent* ev = PADkeyEvent() )
 	{
@@ -424,11 +543,10 @@ void Pcsx2App::OnEmuKeyDown( wxKeyEvent& evt )
 // are multiple variations on the BIOS and BIOS folder checks).
 wxString BIOS_GetMsg_Required()
 {
-	return pxE( ".Popup:BiosDumpRequired",
-		L"\n\n"
-		L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain \n"
-		L"a BIOS from an actual PS2 unit that you own (borrowing doesn't count).\n"
-		L"Please consult the FAQs and Guides for further instructions.\n"
+	return pxE( "!Notice:BiosDumpRequired",
+		L"PCSX2 requires a PS2 BIOS in order to run.  For legal reasons, you *must* obtain "
+		L"a BIOS from an actual PS2 unit that you own (borrowing doesn't count).  "
+		L"Please consult the FAQs and Guides for further instructions."
 	);
 }
 
@@ -453,7 +571,7 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 	catch( Exception::BiosLoadFailed& ex )
 	{
 		wxDialogWithHelpers dialog( NULL, _("PS2 BIOS Error") );
-		dialog += dialog.Heading( ex.FormatDisplayMessage() + BIOS_GetMsg_Required() + _("\nPress Ok to go to the BIOS Configuration Panel.") );
+		dialog += dialog.Heading( ex.FormatDisplayMessage() + L"\n\n" + BIOS_GetMsg_Required() + L"\n\n" + _("Press Ok to go to the BIOS Configuration Panel.") );
 		dialog += new ModalButtonPanel( &dialog, MsgButtons().OKCancel() );
 		
 		if( dialog.ShowModal() == wxID_CANCEL )
@@ -508,7 +626,7 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 		wxDialogWithHelpers dialog( NULL, _("PCSX2 Unresponsive Thread"), wxVERTICAL );
 		
 		dialog += dialog.Heading( ex.FormatDisplayMessage() + L"\n\n" +
-			pxE( ".Popup Error:Thread Deadlock Actions",
+			pxE( "!Notice Error:Thread Deadlock Actions",
 				L"'Ignore' to continue waiting for the thread to respond.\n"
 				L"'Cancel' to attempt to cancel the thread.\n"
 				L"'Terminate' to quit PCSX2 immediately.\n"
@@ -549,6 +667,12 @@ void Pcsx2App::HandleEvent(wxEvtHandler* handler, wxEventFunction func, wxEvent&
 	}
 }
 
+bool Pcsx2App::HasPendingSaves() const
+{
+	AffinityAssert_AllowFrom_MainUI();
+	return !!m_PendingSaves;
+}
+
 // A call to this method informs the app that there is a pending save operation that must be
 // finished prior to exiting the app, or else data loss will occur.  Any call to this method
 // should be matched by a call to ClearPendingSave().
@@ -566,18 +690,13 @@ void Pcsx2App::ClearPendingSave()
 	if( AppRpc_TryInvokeAsync(&Pcsx2App::ClearPendingSave) ) return;
 
 	--m_PendingSaves;
-	pxAssumeDev( m_PendingSaves >= 0, "Pending saves count mismatch (pending count is less than 0)" );
+	pxAssertDev( m_PendingSaves >= 0, "Pending saves count mismatch (pending count is less than 0)" );
 
 	if( (m_PendingSaves == 0) && m_ScheduledTermination )
 	{
 		Console.WriteLn( "App: All pending saves completed; exiting!" );
 		Exit();
 	}
-}
-
-wxAppTraits* Pcsx2App::CreateTraits()
-{
-	return new Pcsx2AppTraits;
 }
 
 // This method generates debug assertions if the MainFrame handle is NULL (typically
@@ -589,17 +708,16 @@ MainEmuFrame& Pcsx2App::GetMainFrame() const
 {
 	MainEmuFrame* mainFrame = GetMainFramePtr();
 
-	pxAssume( mainFrame != NULL );
-	pxAssert( ((uptr)GetTopWindow()) == ((uptr)mainFrame) );
-	return *mainFrame;
+	pxAssert(mainFrame != NULL);
+	pxAssert(((uptr)GetTopWindow()) == ((uptr)mainFrame));
+	return  *mainFrame;
 }
 
 GSFrame& Pcsx2App::GetGsFrame() const
 {
-	GSFrame* gsFrame = (GSFrame*)wxWindow::FindWindowById( m_id_GsFrame );
-
-	pxAssume( gsFrame != NULL );
-	return *gsFrame;
+	GSFrame* gsFrame  = (GSFrame*)wxWindow::FindWindowById( m_id_GsFrame );
+	pxAssert(gsFrame != NULL);
+	return  *gsFrame;
 }
 
 // NOTE: Plugins are *not* applied by this function.  Changes to plugins need to handled
@@ -623,16 +741,10 @@ void AppApplySettings( const AppConfig* oldconf )
 
 	RelocateLogfile();
 
-	if( (oldconf == NULL) || (oldconf->LanguageId != g_Conf->LanguageId) )
+	if( (oldconf == NULL) || (oldconf->LanguageCode.CmpNoCase(g_Conf->LanguageCode)) )
 	{
 		wxDoNotLogInThisScope please;
-		if( !i18n_SetLanguage( g_Conf->LanguageId ) )
-		{
-			if( !i18n_SetLanguage( wxLANGUAGE_DEFAULT ) )
-			{
-				i18n_SetLanguage( wxLANGUAGE_ENGLISH );
-			}
-		}
+		i18n_SetLanguage( g_Conf->LanguageId, g_Conf->LanguageCode );
 	}
 	
 	CorePlugins.SetSettingsFolder( GetSettingsFolder().ToString() );
@@ -703,6 +815,12 @@ void Pcsx2App::PostIdleAppMethod( FnPtr_Pcsx2App method )
 	AddIdleEvent( evt );
 }
 
+SysMainMemory& Pcsx2App::GetVmReserve()
+{
+	if (!m_VmReserve) m_VmReserve = new SysMainMemory();
+	return *m_VmReserve;
+}
+
 void Pcsx2App::OpenGsPanel()
 {
 	if( AppRpc_TryInvoke( &Pcsx2App::OpenGsPanel ) ) return;
@@ -751,12 +869,30 @@ void Pcsx2App::OpenGsPanel()
 	}
 	
 	pxAssertDev( !GetCorePlugins().IsOpen( PluginId_GS ), "GS Plugin must be closed prior to opening a new Gs Panel!" );
-	pDsp = (uptr)gsFrame->GetViewport()->GetHandle();
+
+#ifdef __WXGTK__
+	// The x window/display are actually very deeper in the widget. You need both display and window
+	// because unlike window there are unrelated. One could think it would be easier to send directly the GdkWindow.
+	// Unfortunately there is a race condition between gui and gs threads when you called the
+	// GDK_WINDOW_* macro. To be safe I think it is best to do here. It only cost a slight
+	// extension (fully compatible) of the plugins API. -- Gregory
+	GtkWidget *child_window = gtk_bin_get_child(GTK_BIN(gsFrame->GetViewport()->GetHandle()));
+
+	gtk_widget_realize(child_window); // create the widget to allow to use GDK_WINDOW_* macro
+	gtk_widget_set_double_buffered(child_window, false); // Disable the widget double buffer, you will use the opengl one
+
+	GdkWindow* draw_window = GTK_PIZZA(child_window)->bin_window;
+	Window Xwindow = GDK_WINDOW_XWINDOW(draw_window);
+	Display* XDisplay = GDK_WINDOW_XDISPLAY(draw_window);
+
+	pDsp[0] = (uptr)XDisplay;
+	pDsp[1] = (uptr)Xwindow;
+#else
+	pDsp[0] = (uptr)gsFrame->GetViewport()->GetHandle();
+	pDsp[1] = NULL;
+#endif
 
 	gsFrame->ShowFullScreen( g_Conf->GSWindow.IsFullscreen );
-
-	// The "in the main window" quickie hack...
-	//pDsp = (uptr)m_MainFrame->m_background.GetHandle();
 }
 
 void Pcsx2App::CloseGsPanel()
@@ -852,7 +988,7 @@ protected:
 
 		DbgCon.WriteLn( Color_Gray, "(SysExecute) received." );
 
-		CoreThread.Reset();
+		CoreThread.ResetQuick();
 
 		CDVDsys_SetFile( CDVDsrc_Iso, g_Conf->CurrentIso );
 		if( m_UseCDVDsrc )
@@ -929,6 +1065,11 @@ MainEmuFrame& GetMainFrame()
 MainEmuFrame* GetMainFramePtr()
 {
 	return wxTheApp ? wxGetApp().GetMainFramePtr() : NULL;
+}
+
+SysMainMemory& GetVmMemory()
+{
+	return wxGetApp().GetVmReserve();
 }
 
 SysCoreThread& GetCoreThread()

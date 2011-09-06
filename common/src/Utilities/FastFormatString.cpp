@@ -55,7 +55,7 @@ protected:
 	typedef char CharType;
 	typedef CharBufferType BufferType;
 
-	static const uint BufferCount = 4;
+	static const uint BufferCount = 6;
 
 	BufferType		m_buffers[BufferCount];
 	uint			m_curslot;
@@ -69,7 +69,7 @@ public:
 
 		for (uint i=0; i<BufferCount; ++i)
 		{
-			m_buffers[i].Alloc(1024);
+			m_buffers[i].Alloc(512);
 		}
 
 		m_curslot = 0;
@@ -92,14 +92,14 @@ public:
 	BufferType& GrabBuffer()
 	{
 		++m_curslot;
-		pxAssume(m_curslot < BufferCount);
+		pxAssert(m_curslot < BufferCount);
 		return m_buffers[m_curslot];
 	}
 
 	void ReleaseBuffer()
 	{
 		--m_curslot;
-		pxAssume(m_curslot < BufferCount);
+		pxAssert(m_curslot < BufferCount);
 	}
 
 	BufferType& operator[](uint i)
@@ -174,7 +174,7 @@ static __ri void format_that_ascii_mess( CharBufferType& buffer, uint writepos, 
 
 		len += writepos;
 		if (len < size) break;
-		buffer.Alloc( len + 128 );
+		buffer.Resize( len + 128 );
 	};
 
 	// performing an assertion or log of a truncated string is unsafe, so let's not; even
@@ -205,7 +205,7 @@ static __ri uint format_that_unicode_mess( CharBufferType& buffer, uint writepos
 
 		len += writepos;
 		if (len < size) return len;
-		buffer.Alloc( (len + 128) * sizeof(wxChar) );
+		buffer.Resize( (len + 128) * sizeof(wxChar) );
 	};
 
 	// performing an assertion or log of a truncated string is unsafe, so let's not; even
@@ -334,7 +334,6 @@ wxString operator+(const wxString& str1, const FastFormatUnicode& str2)
 {
 	wxString s = str1;
 	s += str2;
-
 	return s;
 }
 
@@ -342,7 +341,20 @@ wxString operator+(const wxChar* str1, const FastFormatUnicode& str2)
 {
 	wxString s = str1;
 	s += str2;
+	return s;
+}
 
+wxString operator+(const FastFormatUnicode& str1, const wxString& str2)
+{
+	wxString s = str1;
+	s += str2;
+	return s;
+}
+
+wxString operator+(const FastFormatUnicode& str1, const wxChar* str2)
+{
+	wxString s = str1;
+	s += str2;
 	return s;
 }
 

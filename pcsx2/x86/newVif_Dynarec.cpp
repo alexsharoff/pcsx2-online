@@ -19,35 +19,41 @@
 
 #include "PrecompiledHeader.h"
 #include "newVif_UnpackSSE.h"
+#include "MTVU.h"
 
-static __aligned16 nVifBlock _vBlock = {0};
+void dVifReserve(int idx) {
+	if(!nVif[idx].recReserve)
+		nVif[idx].recReserve = new RecompiledCodeReserve(pxsFmt(L"VIF%u Unpack Recompiler Cache", idx));
+
+	nVif[idx].recReserve->Reserve( nVif[idx].recReserveSizeMB * _1mb, idx ? HostMemoryMap::VIF1rec : HostMemoryMap::VIF0rec );
+}
 
 void dVifReset(int idx) {
-	// If the VIF cache is greater than 12mb, then it's due for a complete reset back
-	// down to a reasonable starting point of 4mb.
-	if( nVif[idx].vifCache && (nVif[idx].vifCache->getAllocSize() > _1mb*12) )
-		safe_delete(nVif[idx].vifCache);
+	pxAssertDev(nVif[idx].recReserve, "Dynamic VIF recompiler reserve must be created prior to VIF use or reset!");
 
-	if( !nVif[idx].vifCache )
-		nVif[idx].vifCache = new BlockBuffer(_1mb*4);
-	else
-		nVif[idx].vifCache->clear();
-
-	if( !nVif[idx].vifBlocks )
+	if(!nVif[idx].vifBlocks)
 		nVif[idx].vifBlocks = new HashBucket<_tParams>();
 	else
 		nVif[idx].vifBlocks->clear();
 
-	nVif[idx].numBlocks =  0;
+	nVif[idx].recReserve->Reset();
 
-	nVif[idx].recPtr	=  nVif[idx].vifCache->getBlock();
-	nVif[idx].recEnd	= &nVif[idx].recPtr[nVif[idx].vifCache->getAllocSize()-(_1mb/4)]; // .25mb Safe Zone
+	nVif[idx].numBlocks   =  0;
+	nVif[idx].recWritePtr = nVif[idx].recReserve->GetPtr();
+	//memset(nVif[idx].recWritePtr, 0xcc, nVif[idx].recReserveSizeMB * _1mb);
 }
 
 void dVifClose(int idx) {
 	nVif[idx].numBlocks = 0;
-	safe_delete(nVif[idx].vifCache);
+	if (nVif[idx].recReserve)
+		nVif[idx].recReserve->Reset();
+
 	safe_delete(nVif[idx].vifBlocks);
+}
+
+void dVifRelease(int idx) {
+	dVifClose(idx);
+	safe_delete(nVif[idx].recReserve);
 }
 
 VifUnpackSSE_Dynarec::VifUnpackSSE_Dynarec(const nVifStruct& vif_, const nVifBlock& vifBlock_)
@@ -66,14 +72,15 @@ VifUnpackSSE_Dynarec::VifUnpackSSE_Dynarec(const nVifStruct& vif_, const nVifBlo
 }
 
 __fi void VifUnpackSSE_Dynarec::SetMasks(int cS) const {
-	const vifStruct& vif = v.idx ? vif1 : vif0;
+	const int idx = v.idx;
+	const vifStruct& vif = MTVU_VifX;
 
 	u32 m0 = vB.mask;
 	u32 m1 =  m0 & 0xaaaaaaaa;
 	u32 m2 =(~m1>>1) &  m0;
 	u32 m3 = (m1>>1) & ~m0;
-	if((m2&&(doMask||isFill))||doMode) { xMOVAPS(xmmRow, ptr128[&vif.MaskRow]); }
-	if (m3&&(doMask||isFill)) {
+	if((m2&&doMask)||doMode) { xMOVAPS(xmmRow, ptr128[&vif.MaskRow]); }
+	if (m3&&doMask) {
 		xMOVAPS(xmmCol0, ptr128[&vif.MaskCol]);
 		if ((cS>=2) && (m3&0x0000ff00)) xPSHUF.D(xmmCol1, xmmCol0, _v1);
 		if ((cS>=3) && (m3&0x00ff0000)) xPSHUF.D(xmmCol2, xmmCol0, _v2);
@@ -84,7 +91,7 @@ __fi void VifUnpackSSE_Dynarec::SetMasks(int cS) const {
 }
 
 void VifUnpackSSE_Dynarec::doMaskWrite(const xRegisterSSE& regX) const {
-	pxAssumeDev(regX.Id <= 1, "Reg Overflow! XMM2 thru XMM6 are reserved for masking.");
+	pxAssertDev(regX.Id <= 1, "Reg Overflow! XMM2 thru XMM6 are reserved for masking.");
 	xRegisterSSE t  =  regX == xmm0 ? xmm1 : xmm0; // Get Temp Reg
 	int cc =  aMin(vCL, 3);
 	u32 m0 = (vB.mask >> (cc * 8)) & 0xff;
@@ -118,7 +125,8 @@ void VifUnpackSSE_Dynarec::doMaskWrite(const xRegisterSSE& regX) const {
 }
 
 void VifUnpackSSE_Dynarec::writeBackRow() const {
-	xMOVAPS(ptr128[&((v.idx ? vif1 : vif0).MaskRow)], xmmRow);
+	const int idx = v.idx;
+	xMOVAPS(ptr128[&(MTVU_VifX.MaskRow)], xmmRow);
 	DevCon.WriteLn("nVif: writing back row reg! [doMode = 2]");
 	// ToDo: Do we need to write back to vifregs.rX too!? :/
 }
@@ -174,12 +182,18 @@ void VifUnpackSSE_Dynarec::CompileRoutine() {
 			if (++vCL == blockSize) vCL = 0;
 		}
 		else if (isFill) {
+			//Filling doesn't need anything fancy, it's pretty much a normal write, just doesnt increment the source.
 			//DevCon.WriteLn("filling mode!");
-			VifUnpackSSE_Dynarec fill( VifUnpackSSE_Dynarec::FillingWrite( *this ) );
-			fill.xUnpack(upkNum);
-			fill.xMovDest();
+			xUnpack(upkNum);
+			xMovDest();
 
 			dstIndirect += 16;
+
+			if( IsUnmaskedOp() ) {
+				++destReg;
+				++workReg;
+			}
+
 			vNum--;
 			if (++vCL == blockSize) vCL = 0;
 		}
@@ -194,26 +208,25 @@ void VifUnpackSSE_Dynarec::CompileRoutine() {
 }
 
 _vifT static __fi u8* dVifsetVUptr(uint cl, uint wl, bool isFill) {
-	vifStruct& vif			= GetVifX;
-	VIFregisters& vifRegs	= vifXRegs;
-	const VURegs& VU		= vuRegs[idx];
-	const uint vuMemLimit	= idx ? 0x4000 : 0x1000;
+	nVifStruct&   v          = nVif[idx];
+	vifStruct&    vif        = MTVU_VifX;
+	const VURegs& VU         = vuRegs[idx];
+	const uint    vuMemLimit = idx ? 0x4000 : 0x1000;
 
-	u8* startmem = VU.Mem + (vif.tag.addr & (vuMemLimit-0x10));
-	u8* endmem = VU.Mem + vuMemLimit;
-	uint length = _vBlock.num * 16;
+	u8*  startmem = VU.Mem + (vif.tag.addr & (vuMemLimit-0x10));
+	u8*  endmem   = VU.Mem + vuMemLimit;
+	uint length   = (v.block.num > 0) ? (v.block.num * 16) : 4096; // 0 = 256
 
 	if (!isFill) {
 		// Accounting for skipping mode: Subtract the last skip cycle, since the skipped part of the run
 		// shouldn't count as wrapped data.  Otherwise, a trailing skip can cause the emu to drop back
 		// to the interpreter. -- Refraction (test with MGS3)
-
 		uint skipSize  = (cl - wl) * 16;
-		uint blocks    = _vBlock.num / wl;
+		uint blocks    = v.block.num / wl;
 		length += (blocks-1) * skipSize;
 	}
 
-	if ( (startmem+length) <= endmem ) {
+	if ((startmem + length) <= endmem) {
 		return startmem;
 	}
 	//Console.WriteLn("nVif%x - VU Mem Ptr Overflow; falling back to interpreter. Start = %x End = %x num = %x, wl = %x, cl = %x", v.idx, vif.tag.addr, vif.tag.addr + (_vBlock.num * 16), _vBlock.num, wl, cl);
@@ -223,20 +236,21 @@ _vifT static __fi u8* dVifsetVUptr(uint cl, uint wl, bool isFill) {
 // [TODO] :  Finish implementing support for VIF's growable recBlocks buffer.  Currently
 //    it clears the buffer only.
 static __fi void dVifRecLimit(int idx) {
-	if (nVif[idx].recPtr > nVif[idx].recEnd) {
-		DevCon.WriteLn("nVif Rec - Out of Rec Cache! [%x > %x]", nVif[idx].recPtr, nVif[idx].recEnd);
-		nVif[idx].vifBlocks->clear();
-		nVif[idx].recPtr = nVif[idx].vifCache->getBlock();
-		nVif[idx].recEnd = &nVif[idx].recPtr[nVif[idx].vifCache->getAllocSize()-(_1mb/4)]; // .25mb Safe Zone
+	if (nVif[idx].recWritePtr > (nVif[idx].recReserve->GetPtrEnd() - _256kb)) {
+		DevCon.WriteLn(L"nVif Recompiler Cache Reset! [%s > %s]",
+			pxsPtr(nVif[idx].recWritePtr), pxsPtr(nVif[idx].recReserve->GetPtrEnd())
+		);
+		nVif[idx].recReserve->Reset();
+		nVif[idx].recWritePtr = nVif[idx].recReserve->GetPtr();
 	}
 }
 
-_vifT static __fi bool dVifExecuteUnpack(const u8* data, bool isFill)
+_vifT static __ri bool dVifExecuteUnpack(const u8* data, bool isFill)
 {
-	const nVifStruct& v		= nVif[idx];
-	VIFregisters& vifRegs	= vifXRegs;
+	nVifStruct&   v		  = nVif[idx];
+	VIFregisters& vifRegs = MTVU_VifXRegs;
 
-	if (nVifBlock* b = v.vifBlocks->find(&_vBlock)) {
+	if (nVifBlock* b = v.vifBlocks->find(&v.block)) {
 		if (u8* dest = dVifsetVUptr<idx>(vifRegs.cycle.cl, vifRegs.cycle.wl, isFill)) {
 			//DevCon.WriteLn("Running Recompiled Block!");
 			((nVifrecCall)b->startPtr)((uptr)dest, (uptr)data);
@@ -252,39 +266,37 @@ _vifT static __fi bool dVifExecuteUnpack(const u8* data, bool isFill)
 
 _vifT __fi void dVifUnpack(const u8* data, bool isFill) {
 
-	const nVifStruct& v		= nVif[idx];
-	vifStruct& vif			= GetVifX;
-	VIFregisters& vifRegs	= vifXRegs;
+	nVifStruct&   v       = nVif[idx];
+	vifStruct&    vif	  = MTVU_VifX;
+	VIFregisters& vifRegs = MTVU_VifXRegs;
 
-	const u8	upkType		= (vif.cmd & 0x1f) | (vif.usn << 5);
-	const int	doMask		= (vif.cmd & 0x10);
+	const u8	upkType   = (vif.cmd & 0x1f) | (vif.usn << 5);
+	const int	doMask    = isFill? 1 : (vif.cmd & 0x10);
 
-	_vBlock.upkType = upkType;
-	_vBlock.num		= (u8&)vifRegs.num;
-	_vBlock.mode	= (u8&)vifRegs.mode;
-	_vBlock.cl		= vifRegs.cycle.cl;
-	_vBlock.wl		= vifRegs.cycle.wl;
+	v.block.upkType = upkType;
+	v.block.num     = (u8&)vifRegs.num;
+	v.block.mode    = (u8&)vifRegs.mode;
+	v.block.cl      = vifRegs.cycle.cl;
+	v.block.wl      = vifRegs.cycle.wl;
 
 	// Zero out the mask parameter if it's unused -- games leave random junk
 	// values here which cause false recblock cache misses.
-	_vBlock.mask	= doMask ? vifRegs.mask : 0;
+	v.block.mask	= doMask ? vifRegs.mask : 0;
 
 	//DevCon.WriteLn("nVif%d: Recompiled Block! [%d]", idx, nVif[idx].numBlocks++);
 	//DevCon.WriteLn(L"[num=% 3d][upkType=0x%02x][scl=%d][cl=%d][wl=%d][mode=%d][m=%d][mask=%s]",
-	//	_vBlock.num, _vBlock.upkType, _vBlock.scl, _vBlock.cl, _vBlock.wl, _vBlock.mode,
-	//	doMask >> 4, doMask ? wxsFormat( L"0x%08x", _vBlock.mask ).c_str() : L"ignored"
+	//	v.Block.num, v.Block.upkType, v.Block.scl, v.Block.cl, v.Block.wl, v.Block.mode,
+	//	doMask >> 4, doMask ? wxsFormat( L"0x%08x", v.Block.mask ).c_str() : L"ignored"
 	//);
 
 	if (dVifExecuteUnpack<idx>(data, isFill)) return;
 
-	xSetPtr(v.recPtr);
-	_vBlock.startPtr = (uptr)xGetAlignedCallTarget();
-	v.vifBlocks->add(_vBlock);
-	VifUnpackSSE_Dynarec( v, _vBlock ).CompileRoutine();
-	nVif[idx].recPtr = xGetPtr();
+	xSetPtr(v.recWritePtr);
+	v.block.startPtr = (uptr)xGetAlignedCallTarget();
+	v.vifBlocks->add(v.block);
+	VifUnpackSSE_Dynarec(v, v.block).CompileRoutine();
+	nVif[idx].recWritePtr = xGetPtr();
 
-	// [TODO] : Ideally we should test recompile buffer limits prior to each instruction,
-	//   which would be safer and more memory efficient than using an 0.25 meg recEnd marker.
 	dVifRecLimit(idx);
 
 	// Run the block we just compiled.  Various conditions may force us to still use
