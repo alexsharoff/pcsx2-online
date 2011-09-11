@@ -593,7 +593,8 @@ void MainEmuFrame::Menu_SysReset_Click(wxCommandEvent &event)
 void MainEmuFrame::Menu_SysShutdown_Click(wxCommandEvent &event)
 {
 	//if( !SysHasValidState() && !CorePlugins.AreAnyInitialized() ) return;
-
+	if(INetplayPlugin::GetInstance().IsEnabled())
+		UI_EnableEverything();
 	UI_DisableSysShutdown();
 	CoreThread.Reset();
 }

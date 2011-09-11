@@ -22,6 +22,8 @@
 #include "Dialogs/ModalPopups.h"
 #include "IsoDropTarget.h"
 
+#include "Netplay/NetplayPlugin.h"
+
 #include <wx/iconbndl.h>
 
 #if _MSC_VER || defined(LINUX_PRINT_SVN_NUMBER)
@@ -581,7 +583,7 @@ void MainEmuFrame::ApplyCoreStatus()
 
 	bool vm = SysHasValidState();
 
-	if( susres )
+	if( susres && !INetplayPlugin::GetInstance().IsEnabled() )
 	{
 		if( !CoreThread.IsClosing() )
 		{

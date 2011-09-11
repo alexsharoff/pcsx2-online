@@ -730,6 +730,8 @@ extern void UI_EnableSysActions();
 extern void UI_DisableSysReset();
 extern void UI_DisableSysShutdown();
 
+extern void UI_DisableEverything();
+extern void UI_EnableEverything();
 
 #define AffinityAssert_AllowFrom_SysExecutor() \
 	pxAssertMsg( wxGetApp().SysExecutorThread.IsSelf(), "Thread affinity violation: Call allowed from SysExecutor thread only." )

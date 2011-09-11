@@ -20,6 +20,7 @@ Release/
 /deps
 /tools/bin
 /3rdparty/Netplay/bin
+/ipch
 
 #extensions
 *.svn

@@ -203,6 +203,7 @@ public:
 		{
 			_isEnabled = true;
 			sApp.SysExecute( g_Conf->CdvdSource );
+			UI_DisableEverything();
 		}
 	}
 	virtual s32 CALLBACK NETPADopen(void *pDsp)
