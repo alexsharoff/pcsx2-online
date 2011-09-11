@@ -101,6 +101,27 @@ public:
 	NetplayPlugin() : _isEnabled(false){}
 	virtual void Open()
 	{
+		if( g_Conf->Net.MyPort <= 0 || g_Conf->Net.MyPort > 65535 )
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Invalid local port: %d.", g_Conf->Net.MyPort);
+			UI_EnableEverything();
+			return;
+		}
+		if( g_Conf->Net.Connect && (g_Conf->Net.RemotePort <= 0 || g_Conf->Net.RemotePort > 65535) )
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Invalid remove port: %d.", g_Conf->Net.RemotePort);
+			UI_EnableEverything();
+			return;
+		}
+		if( g_Conf->Net.Connect && g_Conf->Net.RemoteIp.Len() == 0 )
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Invalid hostname.");
+			UI_EnableEverything();
+			return;
+		}
 		if(BindPort(g_Conf->Net.MyPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
@@ -148,8 +169,9 @@ public:
 		}
 		else
 		{
-			Console.Error("NETPLAY: unable to bind port %d. Disabling netplay.", g_Conf->Net.MyPort);
-			_isEnabled = false;
+			CoreThread.Reset();
+			Console.Error("NETPLAY: unable to bind port %d.", g_Conf->Net.MyPort);
+			UI_EnableEverything();
 		}
 	}
 	virtual void Init()
@@ -226,6 +248,7 @@ public:
 		{
 			RestoreHandlers();
 			CoreThread.Reset();
+			UI_EnableEverything();
 			return r;
 		}
 
@@ -309,6 +332,7 @@ public:
 		{
 			RestoreHandlers();
 			CoreThread.Reset();
+			UI_EnableEverything();
 		}
 		else
 		{
@@ -328,6 +352,7 @@ public:
 					{
 						CoreThread.Reset();
 						Console.Error("NETPLAY: Unable to establish connection.");
+						UI_EnableEverything();
 						return PADsetSlotBackup(port, slot);
 					}
 				}

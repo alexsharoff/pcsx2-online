@@ -19,7 +19,7 @@ NetplayDialogBase::NetplayDialogBase( wxWindow* parent, wxWindowID id, const wxS
 	sizer->SetFlexibleDirection( wxBOTH );
 	sizer->SetNonFlexibleGrowMode( wxFLEX_GROWMODE_SPECIFIED );
 	
-	labelPort = new wxStaticText( this, wxID_ANY, wxT("Port"), wxDefaultPosition, wxDefaultSize, 0 );
+	labelPort = new wxStaticText( this, wxID_ANY, wxT("Local Port"), wxDefaultPosition, wxDefaultSize, 0 );
 	labelPort->Wrap( -1 );
 	sizer->Add( labelPort, 0, wxALL|wxALIGN_CENTER_VERTICAL, 5 );
 	
@@ -38,7 +38,7 @@ NetplayDialogBase::NetplayDialogBase( wxWindow* parent, wxWindowID id, const wxS
 	
 	sizer->Add( checkBoxHostGame, 0, wxALL|wxALIGN_RIGHT, 5 );
 	
-	labelHostIP = new wxStaticText( this, wxID_ANY, wxT("Host IP"), wxDefaultPosition, wxDefaultSize, 0 );
+	labelHostIP = new wxStaticText( this, wxID_ANY, wxT("Host Address"), wxDefaultPosition, wxDefaultSize, 0 );
 	labelHostIP->Wrap( -1 );
 	sizer->Add( labelHostIP, 0, wxALL|wxALIGN_CENTER_VERTICAL, 5 );
 	
@@ -48,7 +48,7 @@ NetplayDialogBase::NetplayDialogBase( wxWindow* parent, wxWindowID id, const wxS
 	
 	sizer->Add( textBoxHostIP, 0, wxALL|wxEXPAND, 5 );
 	
-	labelHostPort = new wxStaticText( this, wxID_ANY, wxT("Host port"), wxDefaultPosition, wxDefaultSize, 0 );
+	labelHostPort = new wxStaticText( this, wxID_ANY, wxT("Host Port"), wxDefaultPosition, wxDefaultSize, 0 );
 	labelHostPort->Wrap( -1 );
 	sizer->Add( labelHostPort, 0, wxALL|wxALIGN_CENTER_VERTICAL, 5 );
 	
