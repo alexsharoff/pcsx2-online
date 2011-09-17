@@ -11,12 +11,6 @@ namespace shoryu
 
 #define repeat(N) for(decltype (N) i = 0; i < N; i++)
 #define MS_IN_SEC 1000;
-	
-	boost::mutex log_m;
-	std::ostream& log()
-	{
-		return std::cout;
-	}
 
 	typedef boost::gregorian::date date;
 	typedef boost::asio::ip::udp::endpoint endpoint;

@@ -9,7 +9,6 @@
 
 namespace shoryu
 {
-	
 	template<typename MsgType>
 	struct peer_data
 	{
@@ -60,8 +59,6 @@ namespace shoryu
 			++next_id;
 			m.data = msg;
 			msg_queue.push_back(m);
-			if(msg_queue.size() >= 10)
-				msg_queue.pop_front();
 			return m.id;
 		}
 
@@ -75,36 +72,24 @@ namespace shoryu
 				datagram_header header;
 				header.deserialize(ia);
 				data.remote_time = header.time;
-				/*log_m.lock();
-				log() << "ack from " << data.ep.port() << ":\t";*/
 				msg_queue.remove_if([&](const msg_wrapper& msg) { return header.is_acknoledged(msg.id);});
-				/*log() << std::endl;
-				log_m.unlock();*/
-				//FIX
+				
 				if(header.rtt != 0)
 					estimate_rtt( (int32_t)(time_ms() - header.rtt));
 				container_type::size_type msg_count;
 				ia >> msg_count;
 
-				/*log_m.lock();
-				log() << "from " << data.ep.port() << ":\t";*/
 				repeat(msg_count)
 				{
 					msg_wrapper msg;
 					msg.deserialize(ia);
+					// TODO: Optimize here
 					if(std::find(received_msgs.begin(), received_msgs.end(), msg.id) == received_msgs.end())
 					{
-						//log() << "+" << msg.id << ", ";
 						received_msgs.push_back(msg.id);
 						data_list.push_back(msg.data);
 					}
-					else
-					{
-						//log() << "-" << msg.id << ", ";
-					}
 				}
-				//log() << std::endl;
-				//log_m.unlock();
 			}
 			foreach(MsgType& data, data_list)
 				yield(data);
@@ -115,9 +100,6 @@ namespace shoryu
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			datagram_header header;
 			header.set_defaults();
-			/*
-			log_m.lock();
-			log() << "ack to " << data.ep.port() << ":\t";*/
 			if(received_msgs.begin() != received_msgs.end())
 			{
 				std::sort(received_msgs.begin(), received_msgs.end());
@@ -127,25 +109,23 @@ namespace shoryu
 					if(*it - min> 31)
 						break;
 					header.acknoledge(*it);
-					//log() << *it << ", ";
 				}
 			}
-			/*log() << std::endl;
-			log_m.unlock();*/
-
 			if(data.remote_time != 0)
 				header.rtt = data.remote_time + (time_ms() - data.recv_time);
+
 			header.serialize(oa);
-			oa << msg_queue.size();
-			/*log_m.lock();
-			log() << "to " << data.ep.port() << ":\t";*/
+			container_type::size_type size = msg_queue.size();
+			if(size > 10)
+				size = 10;
+			oa << size;
+			container_type::size_type i = 0;
 			foreach(msg_wrapper& msg, msg_queue) {
-				//log() << msg.id << ", ";
 				msg.serialize(oa);
+				if(++i == size)
+					break;
 			}
-			/*log() << std::endl;
-			log_m.unlock();*/
-			return msg_queue.size();
+			return size;
 		}
 	private:
 		container_type msg_queue;

@@ -9,6 +9,7 @@
 #include <boost/thread/thread.hpp>
 #include <boost/foreach.hpp>
 #include <boost/function.hpp>
+#include <boost/asio/deadline_timer.hpp>
 #define foreach         BOOST_FOREACH
 #define reverse_foreach BOOST_REVERSE_FOREACH
 
@@ -25,6 +26,14 @@
 
 namespace shoryu
 {
+	
+	boost::asio::io_service _io_service;
+	void prepare_io_service()
+	{
+		_io_service.~io_service();
+		new( &_io_service ) boost::asio::io_service;
+	}
+
 	enum OperationType
 	{
 		Send,
@@ -120,7 +129,15 @@ namespace shoryu
 			if(_is_running)
 				queue_impl(ep, data);
 		}
-		int send(const boost::asio::ip::udp::endpoint& ep) {
+		int send(const boost::asio::ip::udp::endpoint& ep, int delay_ms, int loss_percentage)
+		{
+			//lock_type lock(_mutex);
+			if(_is_running)
+				return send_impl(ep, delay_ms, loss_percentage);
+			return -1;
+		}
+		int send(const boost::asio::ip::udp::endpoint& ep)
+		{
 			//lock_type lock(_mutex);
 			if(_is_running)
 				return send_impl(ep);
@@ -161,6 +178,42 @@ namespace shoryu
 			return send_n;
 		}
 
+		inline int send_impl(const boost::asio::ip::udp::endpoint& ep, int delay_ms, int loss_percentage)
+		{
+			boost::shared_ptr<boost::asio::deadline_timer> timer(new boost::asio::deadline_timer(_io_service));
+			timer->expires_from_now(boost::posix_time::milliseconds(delay_ms));
+
+			boost::shared_ptr<transaction_data<Send,BufferSize>> t(new transaction_data<Send,BufferSize>());
+			t->ep = ep;
+			oarchive oa(t->buffer.begin(), t->buffer.end());
+			int send_n = find_peer(ep).serialize_datagram(oa);
+
+			if((rand() % 100)+1 <= loss_percentage)
+				return send_n;
+
+			t->buffer_length = oa.pos();
+			timer->async_wait(
+				[=](const boost::system::error_code& err) mutable
+				{
+					if (err != boost::asio::error::operation_aborted)
+					{
+						_socket.async_send_to(boost::asio::buffer(t->buffer, t->buffer_length), boost::ref(t->ep),
+							[=](const boost::system::error_code& e, size_t bytes_sent) mutable
+							{
+								send_handler(*t, bytes_sent, e);
+							}
+						);
+					}
+					else
+					{
+						throw std::exception("timer_aborted");
+					}
+					timer.reset();
+				}
+			);
+			return send_n;
+		}
+
 		inline uint64_t queue_impl(const boost::asio::ip::udp::endpoint& ep, const DataType& data)
 		{
 			return find_peer(ep).queue_msg(data);
@@ -168,6 +221,7 @@ namespace shoryu
 		
 		inline peer_type& find_peer(const endpoint& ep)
 		{
+			lock_type lock(_mutex);
 			peer_map_type::iterator end;
 			if(_peers.find(ep) == end)
 			{
@@ -247,7 +301,6 @@ namespace shoryu
 
 		volatile bool _is_running;
 
-		boost::asio::io_service _io_service;
 		boost::asio::ip::udp::socket _socket;
 		boost::thread_group _thread_group;
 
@@ -256,6 +309,6 @@ namespace shoryu
 		transaction_buffer<Send,BufferSize, BufferQueueSize> _send_buffer;
 		transaction_buffer<Recv,BufferSize, BufferQueueSize> _recv_buffer;
 
-		//mutex_type _mutex;
+		mutex_type _mutex;
 	};
 }

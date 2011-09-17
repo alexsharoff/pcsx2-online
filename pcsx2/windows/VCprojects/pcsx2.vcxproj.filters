@@ -1246,9 +1246,6 @@
     <ClInclude Include="..\..\Netplay\shoryu\peer.h">
       <Filter>AppHost\Netplay\shoryu</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\Netplay\shoryu\repeater.h">
-      <Filter>AppHost\Netplay\shoryu</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\Netplay\shoryu\session.h">
       <Filter>AppHost\Netplay\shoryu</Filter>
     </ClInclude>

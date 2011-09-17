@@ -702,7 +702,6 @@
     <ClInclude Include="..\..\Netplay\shoryu\boost_extensions.h" />
     <ClInclude Include="..\..\Netplay\shoryu\datagram_header.h" />
     <ClInclude Include="..\..\Netplay\shoryu\peer.h" />
-    <ClInclude Include="..\..\Netplay\shoryu\repeater.h" />
     <ClInclude Include="..\..\Netplay\shoryu\session.h" />
     <ClInclude Include="..\..\Netplay\shoryu\tools.h" />
     <ClInclude Include="..\..\Patch.h" />

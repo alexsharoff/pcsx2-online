@@ -95,7 +95,8 @@ namespace
 
 class NetplayPlugin : public INetplayPlugin
 {
-	shoryu::session<Message, EmulatorSyncState> _session;
+	typedef shoryu::session<Message, EmulatorSyncState> session_type;
+	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;
 public:
 	NetplayPlugin() : _isEnabled(false){}
@@ -122,6 +123,12 @@ public:
 			UI_EnableEverything();
 			return;
 		}
+		shoryu::prepare_io_service();
+		_session.reset(new session_type());
+		_session->packet_loss(5);
+		_session->send_delay_min(50);
+		_session->send_delay_max(80);
+
 		if(BindPort(g_Conf->Net.MyPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
@@ -180,13 +187,13 @@ public:
 	virtual void Close()
 	{
 		EndSession();
+		_session.reset();
 		_isEnabled = false;
 		g_Conf->EmuOptions = EmuOptionsBackup;
 		g_Conf->Mcd[0].Enabled = Mcd1EnabledBackup;
 		g_Conf->Mcd[1].Enabled = Mcd2EnabledBackup;
 		g_Conf->ProgLogBox = ProgLogBoxBackup;
 		g_Conf->EnableGameFixes = EnableGameFixesBackup;
-
 		RestoreHandlers();
 	}
 	virtual bool IsEnabled()
@@ -195,7 +202,7 @@ public:
 	}
 	virtual bool BindPort(unsigned short port)
 	{
-		return _session.bind(port);
+		return _session->bind(port);
 	}
 	virtual bool Connect(const wxString& ip, unsigned short port, int timeout)
 	{
@@ -203,19 +210,19 @@ public:
 			g_Conf->Net.RemoteIp, g_Conf->Net.RemotePort, g_Conf->Net.MyPort);
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.mb_str()));
 		ep.port(port);
-		return _session.join(ep, GetSyncState(),
+		return _session->join(ep, GetSyncState(),
 			boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
 	}
 	virtual bool Host(int timeout)
 	{
 		Console.Warning("NETPLAY: hosting using local port %d.", g_Conf->Net.MyPort);
-		return _session.create(2, GetSyncState(),
+		return _session->create(2, GetSyncState(),
 			boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
 	}
 	virtual void EndSession()
 	{
-		_session.shutdown();
-		_session.unbind();
+		_session->shutdown();
+		_session->unbind();
 	}
 	
 	virtual void ShowNetplayDialog(AppConfig::NetOptions& options)
@@ -263,15 +270,15 @@ public:
 					{
 						if(!synchronized)
 						{
-							synchronized = _session.first_received_frame() > 0
-								&& _session.frame() > _session.first_received_frame()
-								&& _session.frame() <= _session.last_received_frame();
+							synchronized = _session->first_received_frame() > 0
+								&& _session->frame() > _session->first_received_frame()
+								&& _session->frame() <= _session->last_received_frame();
 						}
 						if(poller.pollCounter == 7)
 						{
 							try
 							{
-								_session.set(myFrame);
+								_session->set(myFrame);
 							}
 							catch(std::exception& e)
 							{
@@ -283,8 +290,8 @@ public:
 					}
 					if(!synchronized)
 					{
-						if(_session.frame() > _session.last_received_frame())
-								shoryu::sleep(100);
+						if(_session->frame() > _session->last_received_frame())
+								shoryu::sleep(17);
 						r = f.input[poller.pollCounter-2];
 					}
 				}
@@ -292,19 +299,20 @@ public:
 				{
 					if(synchronized)
 					{
-						if(!_session.get(poller.side, f, _session.delay()*100))
+						//if(!_session->get(poller.side, f, _session->delay()*100))
+						while(!_session->get(poller.side, f, _session->delay()*17))
 						{
-							_session.send();
-							using std::ios_base;
+							_session->send();
+							/*using std::ios_base;
 							std::stringstream ss(ios_base::in + ios_base::out);
-							ss << "NETPLAY: timeout on frame "<<_session.frame()<<
-								" (last received frame - "<<_session.last_received_frame()<<").";
-							Console.Error(ss.str().c_str() );
+							ss << "NETPLAY: timeout on frame "<<_session->frame()<<
+								" (last received frame - "<<_session->last_received_frame()<<").";
+							Console.Error(ss.str().c_str() );*/
 						}
 					}
 					else
 					{
-						_session.send();
+						_session->send();
 					}
 				}
 				catch(std::exception& e)
@@ -340,11 +348,11 @@ public:
 			{
 				if(_thread->timed_join(boost::posix_time::milliseconds(100)))
 				{
-					if(_session.state() != shoryu::None)
+					if(_session->state() != shoryu::None)
 					{
-						std::string ip = _session.endpoints()[0].address().to_string();
-						int port = _session.endpoints()[0].port();
-						int delay = _session.delay();
+						std::string ip = _session->endpoints()[0].address().to_string();
+						int port = _session->endpoints()[0].port();
+						int delay = _session->delay();
 						Console.WriteLn(Color_StrongGreen, "NETPLAY: Connection from %s:%d, delay %d", ip.c_str(), port, delay);
 						ready = true;
 					}
@@ -360,7 +368,7 @@ public:
 			if(!first && port == 1)
 			{
 				if(poller.cmd42Counter > 2)
-					_session.next_frame();
+					_session->next_frame();
 			}
 			poller.pollCounter = 0;
 			poller.side = port-1;
@@ -386,12 +394,12 @@ protected:
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
 		{
 			Console.Error("NETPLAY: Bios version mismatch.");
-			return false;
+			return true;
 		}
 		if(memcmp(s1.discSerial, s2.discSerial, sizeof(s1.discSerial)))
 		{
 			Console.Error("NETPLAY: You're trying to boot different games (%s != %s).", s1.discSerial, s2.discSerial);
-			return false;
+			return true;
 		}
 		if(s1.mcd1CRC != s2.mcd1CRC)
 		{

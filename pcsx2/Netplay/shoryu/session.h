@@ -120,13 +120,20 @@ namespace shoryu
 		typedef std::function<bool(const StateType&, const StateType&)> state_check_handler_type;
 	public:
 #ifdef SHORYU_ENABLE_LOG
-		std::stringstream log(ios_base::in + ios_base::out);
+		std::stringstream log;
 #endif
+		// pcsx2 does not compile if log's initialized the other way
+		session() : 
+#ifdef SHORYU_ENABLE_LOG
+			log(std::ios_base::in + std::ios_base::out),
+#endif
+			_send_delay_max(0), _send_delay_min(0), _packet_loss(0),_counter(0) {}
+
 		bool bind(int port)
 		{
 			try
 			{
-				_async.start(port, 1);
+				_async.start(port, 2);
 			}
 			catch(boost::system::system_error&)
 			{
@@ -141,6 +148,7 @@ namespace shoryu
 
 		bool create(int players, const StateType& state, const state_check_handler_type& handler, int timeout = 0)
 		{
+			_shutdown = false;
 			try_prepare();
 			_state = state;
 			_state_check_handler = handler;
@@ -166,6 +174,7 @@ namespace shoryu
 		}
 		bool join(endpoint ep, const StateType& state, const state_check_handler_type& handler, int timeout = 0)
 		{
+			_shutdown = false;
 			try_prepare();
 			_state = state;
 			_state_check_handler = handler;
@@ -189,8 +198,10 @@ namespace shoryu
 			}
 			return connected;
 		}
-		void set(const FrameType& frame)
+		inline void set(const FrameType& frame)
 		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			_frame_table[_side][_frame+_delay] = frame;
 			message_type msg(Frame);
@@ -198,15 +209,29 @@ namespace shoryu
 			msg.frame = frame;
 			foreach(auto ep, _eps)
 				_async.queue(ep, msg);
-			
 			send();
 		}
-		void send()
+		inline int send()
 		{
+			int n = 0;
 			foreach(auto ep, _eps)
-				_async.send(ep);
+				n += send(ep);
+			return n;
 		}
-		bool get(int side, FrameType& f, int timeout = 0)
+		inline int send(const endpoint& ep)
+		{
+			if(_packet_loss == 0 && _send_delay_max == 0)
+				return _async.send(ep);
+			else
+			{
+				int delay = _send_delay_min;
+				int max_add = _send_delay_max - _send_delay_min;
+				if(max_add > 0)
+					delay += rand() % max_add;
+				return _async.send(ep, delay, _packet_loss);
+			}
+		}
+		inline bool get(int side, FrameType& f, int timeout = 0)
 		{
 			if(_current_state == None)
 				throw std::exception("invalid state");
@@ -240,6 +265,13 @@ namespace shoryu
 			f = _frame_table[side][_frame];
 			return true;
 		}
+
+		FrameType get(int side)
+		{
+			FrameType f;
+			get(side, f, 0);
+			return f;
+		}
 		void delay(int d)
 		{
 			_delay = d;
@@ -264,12 +296,13 @@ namespace shoryu
 		{
 			return _side;
 		}
+		bool _shutdown;
 		void shutdown()
 		{
+			_shutdown = true;
 			clear();
 			_frame_cond.notify_all();
 			_connection_sem.post();
-			//_connection_sem.clear();
 		}
 		int port()
 		{
@@ -291,6 +324,30 @@ namespace shoryu
 		{
 			return _last_received_frame;
 		}
+		int send_delay_min()
+		{
+			return _send_delay_min;
+		}
+		void send_delay_min(int ms)
+		{
+			_send_delay_min = ms;
+		}
+		int send_delay_max()
+		{
+			return _send_delay_max;
+		}
+		void send_delay_max(int ms)
+		{
+			_send_delay_max = ms;
+		}
+		int packet_loss()
+		{
+			return _packet_loss;
+		}
+		void packet_loss(int ms)
+		{
+			_packet_loss = ms;
+		}
 	protected:
 		void try_prepare()
 		{
@@ -298,6 +355,7 @@ namespace shoryu
 		}
 		void clear()
 		{
+			_connection_sem.clear();
 			_last_received_frame = -1;
 			_first_received_frame = -1;
 			_delay = _side = /*_players =*/ 0;
@@ -317,7 +375,6 @@ namespace shoryu
 			_frame_table.resize(_eps.size() + 1);
 			_async.error_handler(boost::bind(&session<FrameType, StateType>::err_hdl, this, _1));
 			_async.receive_handler(boost::bind(&session<FrameType, StateType>::recv_hdl, this, _1, _2));
-			sleep(delay() * 50 + 4 * 32);
 		}
 		int calculate_delay(uint32_t rtt)
 		{
@@ -345,15 +402,36 @@ namespace shoryu
 		int64_t _first_received_frame;
 		int64_t _last_received_frame;
 
+		bool check_peers_readiness()
+		{
+#ifdef SHORYU_ENABLE_LOG
+			log << "[" << time_ms() << "] Out.Ready ";
+#endif
+			return send() == 0;
+		}
+
 		bool create_handler(int players, int timeout)
 		{
 			_players_needed = players;
 			_current_state = Wait;
+			msec start_time = time_ms();
 			if(timeout)
-				return _connection_sem.timed_wait(timeout);
+			{
+				if(!_connection_sem.timed_wait(timeout))
+					return false;
+			}
 			else
 				_connection_sem.wait();
-			return true;
+			if(_current_state != Ready)
+				return false;
+			while(true)
+			{
+				if(timeout > 0 && (time_ms() - start_time > timeout))
+					return false;
+				if(check_peers_readiness())
+					return true;
+				sleep(50);
+			}
 		}
 		void create_recv_handler(const endpoint& ep, message_type& msg)
 		{
@@ -362,14 +440,17 @@ namespace shoryu
 			if(msg.cmd == Join)
 			{
 #ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Join ";
+				log << "[" << time_ms() << "] In.Join ";
 #endif
 				if(!_state_check_handler(_state, msg.state))
 				{
 					message_type msg(Deny);
 					msg.state = _state;
 					_async.queue(ep, msg);
-					_async.send(ep);
+					send(ep);
+#ifdef SHORYU_ENABLE_LOG
+					log << "[" << time_ms() << "] Out.Deny ";
+#endif
 					return;
 				}
 				if(_current_state == Wait)
@@ -377,6 +458,9 @@ namespace shoryu
 					peer_info pi = { Join, time_ms(), 0 };
 					_states[ep] = pi;
 				}
+				else
+					_states[ep].time = time_ms();
+				
 				std::vector<endpoint> ready_list;
 				ready_list.push_back(msg.host_ep);
 				foreach(auto kv, _states)
@@ -410,23 +494,29 @@ namespace shoryu
 						_side = 0;
 					}
 					for(size_t i = 1; i < ready_list.size(); i++)
-						_async.send(ready_list[i]);
+						send(ready_list[i]);
+#ifdef SHORYU_ENABLE_LOG
+					log << "[" << time_ms() << "] Out.Info ";
+#endif
 				}
 			}
 			if(msg.cmd == Ping)
 			{
 #ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Ping ";
+				log << "[" << time_ms() << "] In.Ping ";
 #endif
 				message_type msg;
 				msg.cmd = None;
 				_async.queue(ep, msg);
-				_async.send(ep);
+				send(ep);
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] Out.None ";
+#endif
 			}
 			if(msg.cmd == Delay)
 			{
 #ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Delay ";
+				log << "[" << time_ms() << "] In.Delay ";
 #endif
 				peer_info pi = { Delay, 0, msg.delay };
 				_states[ep] = pi;
@@ -447,26 +537,16 @@ namespace shoryu
 				}
 				if(ready == (_players_needed - 1))
 				{
-					_current_state = Ready;
-					message_type msg(Delay);
-					msg.delay = d;
-					delay(d);
-					for(size_t i = 0; i< _eps.size(); i++)
-						_async.queue(_eps[i], msg);
-
-					repeat(4)
+					if(_current_state != Ready)
 					{
-						bool ready = true;
-						for(size_t i = 0; i< _eps.size(); i++)
-						{
-							if(_async.send(_eps[i]))
-								ready = false;
-						}
-						if(ready)
-							break;
-						sleep(32);
+						message_type msg(Delay);
+						msg.delay = d;
+						delay(d);
+						for(size_t i = 0; i < _eps.size(); i++)
+							_async.queue(_eps[i], msg);
+						_current_state = Ready;
+						_connection_sem.post();
 					}
-					_connection_sem.post();
 				}
 			}
 		}
@@ -477,38 +557,39 @@ namespace shoryu
 			msec start_time = time_ms();
 			do
 			{
-#ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Connecting ";
-#endif
+				if(_shutdown)
+					return false;
 				if(timeout > 0 && (time_ms() - start_time > timeout))
 					return false;
 				message_type msg(Join);
 				msg.host_ep = host_ep;
 				msg.state = _state;
-				if(!_async.send(host_ep))
+				if(!send(host_ep))
 				{
 					_async.queue(host_ep, msg);
-					_async.send(host_ep);
+					send(host_ep);
 				}
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] Out.Join ";
+#endif
 			}
-			while(!_connection_sem.timed_wait(50));
+			while(!_connection_sem.timed_wait(500));
 
 			if(_current_state == Deny)
 				return false;
 
-			int i = 400;
+			int i = 250;
 			while(i-->0)
 			{
+				if(_shutdown)
+					return false;
 #ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Pinging ";
+				log << "[" << time_ms() << "] Out.Ping ";
 #endif
 				foreach(endpoint& ep, _eps)
 				{
-					if(!_async.send(ep))
-					{
-						_async.queue(ep, message_type(Ping));
-						_async.send(ep);
-					}
+					_async.queue(ep, message_type(Ping));
+					send(ep);
 				}
 				shoryu::sleep(17);
 			}
@@ -525,19 +606,37 @@ namespace shoryu
 			msg.delay = calculate_delay(rtt);
 			_async.queue(host_ep, msg);
 
-			int try_count = 10;
-			while(_async.send(host_ep))
+			bool packet_reached = false;
+			while(true)
 			{
-#ifdef SHORYU_ENABLE_LOG
-				log << "[" << time_ms() << "] Statecheck ";
-#endif
-				if(_current_state == Ready)
-					return true;
-				if(try_count-- == 0)
+				if(!packet_reached)
+					packet_reached = (send(host_ep) == 0);
+
+				if(_shutdown)
 					return false;
-				sleep(17);
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] Out.Delay ";
+#endif
+				if(timeout > 0 && (time_ms() - start_time > timeout))
+					return false;
+				if(_current_state == Ready)
+				{
+					if(packet_reached)
+						break;
+				}
+				_connection_sem.timed_wait(50);
 			}
-			return false;
+
+			{
+				message_type msg(Ready);
+				_async.queue(host_ep, msg);
+				for(int i = 0; i < delay(); i++)
+				{
+					if(!send(host_ep)) break;
+					sleep(17);
+				}
+			}
+			return true;
 		}
 		void join_recv_handler(const endpoint& ep, message_type& msg)
 		{
@@ -546,6 +645,9 @@ namespace shoryu
 			boost::unique_lock<boost::mutex> lock(_connection_mutex);
 			if(msg.cmd == Info)
 			{
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] In.Info ";
+#endif
 				_side = msg.side;
 				_eps = msg.eps;
 				for(size_t i = 0; i < _eps.size(); i++)
@@ -558,49 +660,61 @@ namespace shoryu
 			}
 			if(msg.cmd == Deny)
 			{
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] In.Deny ";
+#endif
 				_current_state = Deny;
 				_state_check_handler(_state, msg.state);
 				_connection_sem.post();
 			}
 			if(msg.cmd == Delay)
 			{
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] In.Delay ";
+#endif
 				if(_current_state != Ready)
 				{
 					delay(msg.delay);
 					_current_state = Ready;
 				}
 				_async.queue(ep, message_type(Ready));
-				_async.send(ep);
+				send(ep);
+				_connection_sem.post();
 			}
 			if(msg.cmd == Ping)
 			{
+#ifdef SHORYU_ENABLE_LOG
+				log << "[" << time_ms() << "] In.Ping ";
+#endif
 				message_type msg;
 				msg.cmd = None;
 				_async.queue(ep, msg);
-				_async.send(ep);
+				send(ep);
 			}
 		}
 		
 		void recv_hdl(const endpoint& ep, message_type& msg)
 		{
-			if(msg.cmd == Frame && _sides.find(ep) != _sides.end())
+			if(_sides.find(ep) != _sides.end())
 			{
-				int side = _sides[ep];
-				boost::unique_lock<boost::mutex> lock(_mutex);
-				_frame_table[side][msg.frame_id] = msg.frame;
-				if(_first_received_frame < 0)
-					_first_received_frame = msg.frame_id;
-				else if(msg.frame_id < _first_received_frame)
-					_first_received_frame = msg.frame_id;
+				if(msg.cmd == Frame)
+				{
+					int side = _sides[ep];
+					boost::unique_lock<boost::mutex> lock(_mutex);
+					_frame_table[side][msg.frame_id] = msg.frame;
+					if(_first_received_frame < 0)
+						_first_received_frame = msg.frame_id;
+					else if(msg.frame_id < _first_received_frame)
+						_first_received_frame = msg.frame_id;
 
-				if(_last_received_frame < 0)
-					_last_received_frame = msg.frame_id;
-				else if(msg.frame_id > _last_received_frame)
-					_last_received_frame = msg.frame_id;
-				_frame_cond.notify_all();
-				/*log_m.lock();
-				log() << "FRAME FROM " << ep.port() << ": " << msg.frame_id << std::endl;
-				log_m.unlock();*/
+					if(_last_received_frame < 0)
+						_last_received_frame = msg.frame_id;
+					else if(msg.frame_id > _last_received_frame)
+						_last_received_frame = msg.frame_id;
+					_frame_cond.notify_all();
+				}
+				_counter++;
+				send(ep);
 			}
 		}
 		void err_hdl(const error_code& error)
@@ -611,6 +725,11 @@ namespace shoryu
 		int _delay;
 		int64_t _frame;
 		int _side;
+		int _packet_loss;
+		int _send_delay_max;
+		int _send_delay_min;
+
+		uint64_t _counter;
 
 		side_map _sides;
 		async_transport<message_type> _async;
