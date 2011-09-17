@@ -300,7 +300,7 @@ public:
 					if(synchronized)
 					{
 						//if(!_session->get(poller.side, f, _session->delay()*100))
-						while(!_session->get(poller.side, f, _session->delay()*17))
+						if(!_session->get(poller.side, f, -1))
 						{
 							_session->send();
 							/*using std::ios_base;
@@ -348,7 +348,7 @@ public:
 			{
 				if(_thread->timed_join(boost::posix_time::milliseconds(100)))
 				{
-					if(_session->state() != shoryu::None)
+					if(_session->state() == shoryu::Ready)
 					{
 						std::string ip = _session->endpoints()[0].address().to_string();
 						int port = _session->endpoints()[0].port();

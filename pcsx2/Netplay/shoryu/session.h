@@ -238,6 +238,16 @@ namespace shoryu
 			if(_frame < _delay)
 				return true;
 			boost::unique_lock<boost::mutex> lock(_mutex);
+			if(timeout == -1)
+			{
+				if(_frame_table[side].find(_frame) != _frame_table[side].end())
+				{
+					f = _frame_table[side][_frame];
+					return true;
+				}
+				else
+					return true;
+			}
 			if(timeout > 0)
 			{
 				if(!_frame_cond.timed_wait(lock, boost::posix_time::millisec(timeout),
@@ -601,9 +611,16 @@ namespace shoryu
 				if(rtt < peer.rtt_avg)
 					rtt = peer.rtt_avg;
 			}
+			int max_rtt = 0;
+			foreach(auto ep, _eps)
+			{
+				auto peer = _async.peer(ep);
+				if(max_rtt < peer.rtt_avg)
+					max_rtt = peer.rtt_avg;
+			}
 
 			message_type msg(Delay);
-			msg.delay = calculate_delay(rtt);
+			msg.delay = calculate_delay((rtt + max_rtt) / 1.5);
 			_async.queue(host_ep, msg);
 
 			bool packet_reached = false;
