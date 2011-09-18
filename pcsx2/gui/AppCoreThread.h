@@ -138,6 +138,7 @@ public:
 	virtual void Cancel( bool isBlocking=true );
 	virtual bool StateCheckInThread();
 	virtual void ChangeCdvdSource();
+	virtual void CloseMcdPlugin();
 
 	virtual void ApplySettings( const Pcsx2Config& src );
 	virtual void UploadStateCopy( const VmStateBuffer& copy );

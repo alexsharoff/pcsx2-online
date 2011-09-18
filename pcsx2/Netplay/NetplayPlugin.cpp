@@ -125,6 +125,9 @@ public:
 		}
 		shoryu::prepare_io_service();
 		_session.reset(new session_type());
+		_session->send_delay_min(32);
+		_session->send_delay_max(75);
+		_session->packet_loss(10);
 		if(BindPort(g_Conf->Net.MyPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
@@ -160,6 +163,7 @@ public:
 			g_Conf->EmuOptions.Profiler.bitset = 0;
 			g_Conf->EmuOptions.Trace.Enabled = false;
 
+			_sessionEnded = false;
 			first = true;
 			synchronized = false;
 			ready = false;
@@ -206,17 +210,41 @@ public:
 			g_Conf->Net.RemoteIp, g_Conf->Net.RemotePort, g_Conf->Net.MyPort);
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.mb_str()));
 		ep.port(port);
-		return _session->join(ep, GetSyncState(),
-			boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+		auto state = GetSyncState();
+		if(state)
+		{
+			return _session->join(ep, *state,
+				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+		}
+		return false;
 	}
 	virtual bool Host(int timeout)
 	{
 		Console.Warning("NETPLAY: hosting using local port %d.", g_Conf->Net.MyPort);
-		return _session->create(2, GetSyncState(),
-			boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+		auto state = GetSyncState();
+		if(state)
+		{
+			return _session->create(2, *state,
+				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+		}
+		return false;
 	}
 	virtual void EndSession()
 	{
+		if(_session->state() == shoryu::Ready)
+		{
+			_session->next_frame();
+			Message f;
+			f.end_session = true;
+			_session->set(f);
+			int try_count = _session->delay() * 4;
+			while(_session->send())
+			{
+				shoryu::sleep(17);
+				if(try_count-- == 0)
+					break;
+			}
+		}
 		_session->shutdown();
 		_session->unbind();
 	}
@@ -247,14 +275,6 @@ public:
 
 		u8 r = PADpollBackup(value);
 		Message f;
-		if(!IsEnabled())
-		{
-			RestoreHandlers();
-			CoreThread.Reset();
-			UI_EnableEverything();
-			return r;
-		}
-
 		if(poller.cmd42Counter > 2 && poller.pollCounter > 1)
 		{
 			if(poller.pollCounter <=7)
@@ -310,6 +330,13 @@ public:
 					{
 						_session->send();
 					}
+					if(f.end_session && !_sessionEnded)
+					{
+						CoreThread.Reset();
+						Console.Warning("NETPLAY: Session ended.");
+						UI_EnableEverything();
+						_sessionEnded = true;
+					}
 				}
 				catch(std::exception& e)
 				{
@@ -344,7 +371,7 @@ public:
 			{
 				if(_thread->timed_join(boost::posix_time::milliseconds(100)))
 				{
-					if(_session->state() != shoryu::None)
+					if(_session->state() == shoryu::Ready)
 					{
 						std::string ip = _session->endpoints()[0].address().to_string();
 						int port = _session->endpoints()[0].port();
@@ -390,25 +417,25 @@ protected:
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
 		{
 			Console.Error("NETPLAY: Bios version mismatch.");
-			return true;
+			return false;
 		}
 		if(memcmp(s1.discSerial, s2.discSerial, sizeof(s1.discSerial)))
 		{
 			Console.Error("NETPLAY: You're trying to boot different games (%s != %s).", s1.discSerial, s2.discSerial);
-			return true;
+			return false;
 		}
 		if(s1.mcd1CRC != s2.mcd1CRC)
 		{
-			Console.Warning("NETPLAY: Memory card 1 CRC mismatch (CRC %d != %d). Memory cards will be disabled.",
+			Console.Warning("NETPLAY: Memory card 1 CRC mismatch. Memory cards will be disabled.",
 				s1.mcd1CRC, s2.mcd1CRC);
-			GetCorePlugins().Close(PluginId_Mcd);
+			CoreThread.CloseMcdPlugin();
 		}
 		else
 			if(s1.mcd2CRC != s2.mcd2CRC)
 			{
-				Console.Warning("NETPLAY: Memory card 2 CRC mismatch (CRC %d != %d). Memory cards will be disabled.",
+				Console.Warning("NETPLAY: Memory card 2 CRC mismatch. Memory cards will be disabled.",
 					s1.mcd2CRC, s2.mcd2CRC);
-				GetCorePlugins().Close(PluginId_Mcd);
+				CoreThread.CloseMcdPlugin();
 			}
 		return true;
 	}
@@ -435,6 +462,7 @@ protected:
 	} poller;
 
 	bool _isEnabled;
+	bool _sessionEnded;
 
 	Message myFrame;
 	Pcsx2Config EmuOptionsBackup;
@@ -447,29 +475,53 @@ protected:
 	bool ready;
 	bool synchronized;
 
-	EmulatorSyncState GetSyncState()
+
+
+	boost::shared_ptr<EmulatorSyncState> GetSyncState()
 	{
-		EmulatorSyncState syncState;
+		boost::shared_ptr<EmulatorSyncState> syncState(new EmulatorSyncState());
 
 		cdvdReloadElfInfo();
-		//syncState.cdvdCRC = ElfCRC;
+		if(DiscSerial.Len() == 0)
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Unable to obtain disc srerial.");
+			UI_EnableEverything();
+			syncState.reset();
+			return syncState;
+		}
 
-		memset(syncState.discSerial, 0, sizeof(syncState.discSerial));
-		memcpy(syncState.discSerial, DiscSerial.ToAscii().data(), 
-			DiscSerial.length() > sizeof(syncState.discSerial) ? 
-			sizeof(syncState.discSerial) : DiscSerial.length());
+		memset(syncState->discSerial, 0, sizeof(syncState->discSerial));
+		memcpy(syncState->discSerial, DiscSerial.ToAscii().data(), 
+			DiscSerial.length() > sizeof(syncState->discSerial) ? 
+			sizeof(syncState->discSerial) : DiscSerial.length());
 
 		wxString biosDesc;
-		IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc);
+		if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc))
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Unable to check BIOS.");
+			UI_EnableEverything();
+			syncState.reset();
+			return syncState;
+		}
 
-		memset(syncState.biosVersion, 0, sizeof(syncState.biosVersion));
-		memcpy(syncState.biosVersion, biosDesc.ToAscii().data(), 
-			biosDesc.length() > sizeof(syncState.biosVersion) ? 
-			sizeof(syncState.biosVersion) : biosDesc.length());
-		wxString name;
-		GetPS2ElfName(name);
-		syncState.mcd1CRC = SysPlugins.McdGetCRC( 0, 0 );
-		syncState.mcd2CRC = SysPlugins.McdGetCRC( 1, 0 );
+		memset(syncState->biosVersion, 0, sizeof(syncState->biosVersion));
+		memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
+			biosDesc.length() > sizeof(syncState->biosVersion) ? 
+			sizeof(syncState->biosVersion) : biosDesc.length());
+		try
+		{
+			syncState->mcd1CRC = SysPlugins.McdGetCRC( 0, 0 );
+			syncState->mcd2CRC = SysPlugins.McdGetCRC( 1, 0 );
+		}
+		catch(...)
+		{
+			CoreThread.Reset();
+			Console.Error("NETPLAY: Unable to read memory cards.");
+			UI_EnableEverything();
+			syncState.reset();
+		}
 		return syncState;
 	}
 };

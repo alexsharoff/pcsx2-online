@@ -1264,13 +1264,15 @@ void SysCorePlugins::ClosePlugin_Mcd()
 
 void SysCorePlugins::Close( PluginsEnum_t pid )
 {
-	pxAssert( (uint)pid < PluginId_Count );
+	if(pid != PluginId_Mcd)
+	{
+		pxAssert( (uint)pid < PluginId_Count );
 
-	if( !IsOpen(pid) ) return;
-	
-	if( !GetMTGS().IsSelf() )		// stop the spam!
-		Console.Indent().WriteLn( "Closing %s", tbl_PluginInfo[pid].shortname );
+		if( !IsOpen(pid) ) return;
 
+		if( !GetMTGS().IsSelf() )		// stop the spam!
+			Console.Indent().WriteLn( "Closing %s", tbl_PluginInfo[pid].shortname );
+	}
 	switch( pid )
 	{
 		case PluginId_GS:	ClosePlugin_GS();	break;
@@ -1284,9 +1286,11 @@ void SysCorePlugins::Close( PluginsEnum_t pid )
 		
 		jNO_DEFAULT;
 	}
-
-	ScopedLock lock( m_mtx_PluginStatus );
-	if( m_info[pid] ) m_info[pid]->IsOpened = false;
+	if(pid != PluginId_Mcd)
+	{
+		ScopedLock lock( m_mtx_PluginStatus );
+		if( m_info[pid] ) m_info[pid]->IsOpened = false;
+	}
 }
 
 void SysCorePlugins::Close()
