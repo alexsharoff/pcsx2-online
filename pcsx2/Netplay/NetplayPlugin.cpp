@@ -19,7 +19,7 @@
  * log IO
  * replays
  * no-ip connection system
- * improve memory card hadling
+ * improve memory card handling
  * matchmaking
 */
 
