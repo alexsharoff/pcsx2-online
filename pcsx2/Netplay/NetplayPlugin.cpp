@@ -125,9 +125,9 @@ public:
 		}
 		shoryu::prepare_io_service();
 		_session.reset(new session_type());
-		_session->send_delay_min(32);
+		/*_session->send_delay_min(32);
 		_session->send_delay_max(75);
-		_session->packet_loss(10);
+		_session->packet_loss(10);*/
 		if(BindPort(g_Conf->Net.MyPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
