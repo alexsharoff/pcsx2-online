@@ -652,12 +652,12 @@ void MainEmuFrame::ApplyCoreStatus()
 	{
 		if( vm )
 		{
-			net->SetText(_("Reboot netplay (experimental)"));
+			net->SetText(_("Reboot Netplay"));
 			net->SetHelp(_(""));
 		}
 		else
 		{
-			net->SetText(_("Boot netplay (experimental)"));
+			net->SetText(_("Boot Netplay"));
 			net->SetHelp(_(""));
 		}
 	}

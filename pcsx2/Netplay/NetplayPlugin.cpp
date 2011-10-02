@@ -13,6 +13,16 @@
 #include "shoryu/session.h"
 #include "Message.h"
 
+/*
+ * TODO:
+ * hook IO, but do not init netplay
+ * log IO
+ * replays
+ * no-ip connection system
+ * improve memory card hadling
+ * matchmaking
+*/
+
 using namespace std;
 namespace
 {
