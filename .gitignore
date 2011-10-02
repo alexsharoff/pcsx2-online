@@ -12,6 +12,10 @@
 /pcsx2/gui/Resources/ConfigIcon_Speedhacks.h
 /pcsx2/gui/Resources/ConfigIcon_Video.h
 /pcsx2/gui/Resources/Dualshock.h
+svnrev.h
+postBuild.cmd
+*.log
+*.tlog
 
 #directories
 Win32/

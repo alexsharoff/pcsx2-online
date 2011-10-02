@@ -1,0 +1,33 @@
+PCSX2 0.9.9.r4918 (modded) - compiled on Sep 18 2011
+Savestate version: 0x9a030000
+
+Host Machine Init:
+	Operating System =  Microsoft Windows 7  Service Pack 1 (build 7601), 32-bit
+	Physical RAM     =  1791 MB
+	CPU name         =  AMD Phenom(tm) II X3 710 Processor
+	Vendor/Model     =  AuthenticAMD (stepping 02)
+	CPU speed        =  2.598 ghz (3 logical threads)
+	x86PType         =  Standard OEM
+	x86Flags         =  178bfbff 00802009
+	x86EFlags        =  efd3fbff
+
+x86 Features Detected:
+	MMX.. SSE.. SSE2.. SSE3
+	MMX2  .. 3DNOW .. 3DNOW2.. SSE4a 
+
+Reserving memory for recompilers...
+
+Loading plugins...
+	Binding GS	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\GSdx32-SSE2.dll 
+Windows 6.1.7601 (Service Pack 1 1.0)
+NVIDIA GeForce 8300 (8.17.12.7533)
+	Binding PAD	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\PadSSSPSX.dll 
+(GameDB) 9535 games on record (loaded in 277ms)
+	Binding SPU2	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\SPU2-X.dll 
+	Binding CDVD	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\cdvdGigaherz-dbg.dll 
+	Binding USB	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\USBnull-dbg.dll 
+	Binding FW	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\FWnull-dbg.dll 
+	Binding DEV9	: C:\Users\sat0ri\Projects\github\pcsx2-online\bin\plugins\DEV9null-dbg.dll 
+Plugins loaded successfully.
+
+(GameDB) Unloading...

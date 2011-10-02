@@ -1,0 +1,19 @@
+﻿Build started 11.09.2011 13:10:28.
+     1>Project "C:\Users\sat0ri\Projects\github\pcsx2-online\3rdparty\wxWidgets\build\msw\wx_config.vcxproj" on node 2 (build target(s)).
+     1>PrepareForBuild:
+         Creating directory "C:\Users\sat0ri\Projects\github\pcsx2-online\Devel\".
+       InitializeBuildStatus:
+         Creating "Devel\wxConfig28.unsuccessfulbuild" because "AlwaysCreate" was specified.
+       CustomBuild:
+         Creating ..\..\lib\vc_lib\mswd\wx\msw\rcdefs.h
+         genrcdefs.h
+         Creating ..\..\lib\vc_lib\msw\wx\setup.h
+                 1 file(s) copied.
+       FinalizeBuildStatus:
+         Deleting file "Devel\wxConfig28.unsuccessfulbuild".
+         Touching "Devel\wxConfig28.lastbuildstate".
+     1>Done Building Project "C:\Users\sat0ri\Projects\github\pcsx2-online\3rdparty\wxWidgets\build\msw\wx_config.vcxproj" (build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:29.27
