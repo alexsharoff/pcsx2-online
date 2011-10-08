@@ -8,6 +8,7 @@ namespace shoryu
 	{
 		None,
 		Frame,
+		Data,
 		Ping, //for pinging
 		Join,
 		Deny,
@@ -15,6 +16,12 @@ namespace shoryu
 		Wait,
 		Delay, //set delay
 		Ready //send to eps, after all eps answered - start game
+	};
+
+	struct message_data
+	{
+		boost::shared_array<char> p;
+		uint16_t data_length;
 	};
 
 	template<typename T, typename StateType>
@@ -39,7 +46,8 @@ namespace shoryu
 		uint8_t peers_needed;
 		uint8_t peers_count;
 		T frame;
-
+		message_data data;
+		
 		inline void serialize(shoryu::oarchive& a) const
 		{
 			a << cmd;
@@ -48,6 +56,9 @@ namespace shoryu
 			case Join:
 				a << state << host_ep.address().to_v4().to_ulong() << host_ep.port();
 				break;
+			case Data:
+				a << data.data_length;
+				a.write(data.p.get(), data.data_length);
 			case Deny:
 				a << state;
 				break;
@@ -81,6 +92,10 @@ namespace shoryu
 				a >> state >> addr >> port;
 				host_ep = endpoint(address_type(addr), port);
 				break;
+			case Data:
+				a >> data.data_length;
+				data.p.reset(new char[data.data_length]);
+				a.read(data.p.get(), data.data_length);
 			case Deny:
 				a >> state;
 				break;
@@ -118,6 +133,7 @@ namespace shoryu
 		typedef boost::unordered_map<endpoint, int> side_map;
 		typedef std::vector<frame_map> frame_table;
 		typedef std::function<bool(const StateType&, const StateType&)> state_check_handler_type;
+		typedef std::vector<std::list<message_data>> data_table;
 	public:
 #ifdef SHORYU_ENABLE_LOG
 		std::stringstream log;
@@ -127,7 +143,7 @@ namespace shoryu
 #ifdef SHORYU_ENABLE_LOG
 			log(std::ios_base::in + std::ios_base::out),
 #endif
-			_send_delay_max(0), _send_delay_min(0), _packet_loss(0),_counter(0) {}
+			_send_delay_max(0), _send_delay_min(0), _packet_loss(0) {}
 
 		bool bind(int port)
 		{
@@ -198,6 +214,46 @@ namespace shoryu
 			}
 			return connected;
 		}
+
+		inline void queue_data(message_data& data)
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			message_type msg(Data);
+			msg.data = data;
+			foreach(auto ep, _eps)
+				_async.queue(ep, msg);
+			send();
+		}
+
+		inline bool get_data(int side, message_data& data, int timeout = 0)
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			auto pred = [&]() -> bool {
+				if(_current_state != None)
+					return _data_table[side].begin() != _data_table[side].end();
+				else
+					return true;
+			};
+			if(timeout > 0)
+			{
+				if(!_data_cond.timed_wait(lock, boost::posix_time::millisec(timeout), pred))
+					return false;
+			}
+			else
+				_data_cond.wait(lock, pred);
+
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			data = _data_table[side].front();
+			_data_table[side].pop_front();
+			return true;
+		}
+		
 		inline void set(const FrameType& frame)
 		{
 			if(_current_state == None)
@@ -231,39 +287,36 @@ namespace shoryu
 				return _async.send(ep, delay, _packet_loss);
 			}
 		}
-		inline bool get(int side, FrameType& f, int timeout = 0)
+		inline bool get(int side, FrameType& f, int64_t frame, int timeout = 0)
 		{
 			if(_current_state == None)
 				throw std::exception("invalid state");
 			if(_frame < _delay)
 				return true;
 			boost::unique_lock<boost::mutex> lock(_mutex);
+			auto pred = [&]() -> bool {
+				if(_current_state != None)
+					return _frame_table[side].find(_frame) != _frame_table[side].end();
+				else
+					return true;
+			};
 			if(timeout > 0)
 			{
-				if(!_frame_cond.timed_wait(lock, boost::posix_time::millisec(timeout),
-					[&]() -> bool {
-					if(_current_state != None)
-						return _frame_table[side].find(_frame) != _frame_table[side].end();
-					else
-						return true;
-				}))
-				{
+				if(!_frame_cond.timed_wait(lock, boost::posix_time::millisec(timeout), pred))
 					return false;
-				}
 			}
 			else
-			{
-				_frame_cond.wait(lock, [&]() -> bool {
-					if(_current_state != None)
-						return _frame_table[side].find(_frame) != _frame_table[side].end();
-					else
-						return true;
-				});
-			}
+				_frame_cond.wait(lock, pred);
+
 			if(_current_state == None)
 				throw std::exception("invalid state");
 			f = _frame_table[side][_frame];
 			return true;
+		}
+
+		inline bool get(int side, FrameType& f, int timeout = 0)
+		{
+			return get(side, f, _frame, timeout);
 		}
 
 		FrameType get(int side)
@@ -364,6 +417,7 @@ namespace shoryu
 			//_host = false;
 			_eps.clear();
 			_frame_table.clear();
+			_data_table.clear();
 			_async.error_handler(std::function<void(const error_code&)>());
 			_async.receive_handler(std::function<void(const endpoint&, message_type&)>());
 #ifdef SHORYU_ENABLE_LOG
@@ -373,6 +427,7 @@ namespace shoryu
 		void connection_established()
 		{
 			_frame_table.resize(_eps.size() + 1);
+			_data_table.resize(_eps.size() + 1);
 			_async.error_handler(boost::bind(&session<FrameType, StateType>::err_hdl, this, _1));
 			_async.receive_handler(boost::bind(&session<FrameType, StateType>::recv_hdl, this, _1, _2));
 		}
@@ -697,9 +752,9 @@ namespace shoryu
 		{
 			if(_sides.find(ep) != _sides.end())
 			{
+				int side = _sides[ep];
 				if(msg.cmd == Frame)
 				{
-					int side = _sides[ep];
 					boost::unique_lock<boost::mutex> lock(_mutex);
 					_frame_table[side][msg.frame_id] = msg.frame;
 					if(_first_received_frame < 0)
@@ -713,8 +768,13 @@ namespace shoryu
 						_last_received_frame = msg.frame_id;
 					_frame_cond.notify_all();
 				}
-				_counter++;
-				//send(ep);
+				if(msg.cmd == Data)
+				{
+					boost::unique_lock<boost::mutex> lock(_mutex);
+					_data_table[side].push_back(msg.data);
+					_data_cond.notify_all();
+					send(ep);
+				}
 			}
 		}
 		void err_hdl(const error_code& error)
@@ -729,13 +789,13 @@ namespace shoryu
 		int _send_delay_max;
 		int _send_delay_min;
 
-		uint64_t _counter;
-
 		side_map _sides;
 		async_transport<message_type> _async;
 		endpoint_container _eps;
 		frame_table _frame_table;
 		boost::mutex _mutex;
 		boost::condition_variable _frame_cond;
+		boost::condition_variable _data_cond;
+		data_table _data_table;
 	};
 }

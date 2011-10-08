@@ -76,13 +76,16 @@ namespace shoryu
 				
 				if(header.rtt != 0)
 					estimate_rtt( (int32_t)(time_ms() - header.rtt));
-				container_type::size_type msg_count;
-				ia >> msg_count;
 
-				repeat(msg_count)
+				while(true)
 				{
 					msg_wrapper msg;
-					msg.deserialize(ia);
+					try
+					{
+						msg.deserialize(ia);
+					}
+					catch(std::ios_base::failure&){ break; }
+
 					// TODO: Optimize here
 					if(std::find(received_msgs.begin(), received_msgs.end(), msg.id) == received_msgs.end())
 					{
@@ -115,16 +118,19 @@ namespace shoryu
 				header.rtt = data.remote_time + (time_ms() - data.recv_time);
 
 			header.serialize(oa);
-			container_type::size_type size = msg_queue.size();
-			if(size > 10)
-				size = 10;
-			oa << size;
-			container_type::size_type i = 0;
-			foreach(msg_wrapper& msg, msg_queue) {
-				msg.serialize(oa);
-				if(++i == size)
-					break;
+			container_type::size_type size = 0;
+			foreach(msg_wrapper& msg, msg_queue)
+			{
+				try
+				{
+					msg.serialize(oa);
+				}
+				catch(std::ios_base::failure&) { break; }
+				++size;
 			}
+			if(msg_queue.size() && !size)
+				throw std::runtime_error("Unable to serialize message: packet is too long.");
+
 			return size;
 		}
 	private:

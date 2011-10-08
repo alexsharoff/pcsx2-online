@@ -13,6 +13,8 @@
 #include "shoryu/session.h"
 #include "Message.h"
 
+#include "zlib\zlib.h"
+
 /*
  * TODO:
  * hook IO, but do not init netplay
@@ -22,6 +24,8 @@
  * improve memory card handling
  * matchmaking
 */
+
+//#define CONNECTION_TEST
 
 using namespace std;
 namespace
@@ -135,9 +139,11 @@ public:
 		}
 		shoryu::prepare_io_service();
 		_session.reset(new session_type());
-		/*_session->send_delay_min(32);
-		_session->send_delay_max(75);
-		_session->packet_loss(10);*/
+#ifdef CONNECTION_TEST
+		_session->send_delay_min(40);
+		_session->send_delay_max(80);
+		_session->packet_loss(25);
+#endif
 		if(BindPort(g_Conf->Net.MyPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
@@ -147,7 +153,7 @@ public:
 			EnableGameFixesBackup = g_Conf->EnableGameFixes;
 
 			g_Conf->Mcd[0].Enabled = true;
-			g_Conf->Mcd[1].Enabled = true;
+			g_Conf->Mcd[1].Enabled = false;
 
 			g_Conf->ProgLogBox.Visible = true;
 
@@ -204,6 +210,14 @@ public:
 		g_Conf->Mcd[1].Enabled = Mcd2EnabledBackup;
 		g_Conf->ProgLogBox = ProgLogBoxBackup;
 		g_Conf->EnableGameFixes = EnableGameFixesBackup;
+		if(mcd_backup.get())
+		{
+			PS2E_McdSizeInfo info;
+			SysPlugins.McdGetSizeInfo(0,0,info);
+			size_t size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
+			SysPlugins.McdSave(0,0,mcd_backup.get(), 0, size);
+			mcd_backup.reset();
+		}
 		RestoreHandlers();
 	}
 	virtual bool IsEnabled()
@@ -223,8 +237,62 @@ public:
 		auto state = GetSyncState();
 		if(state)
 		{
-			return _session->join(ep, *state,
-				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+			if(!_session->join(ep, *state,
+				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
+				return false;
+			PS2E_McdSizeInfo info;
+			SysPlugins.McdGetSizeInfo(0,0,info);
+			size_t size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
+			Console.WriteLn("CMD_SIZE=%d",size);
+			mcd_backup.reset(new u8[size]);
+			SysPlugins.McdRead(0,0, (u8*) mcd_backup.get(), 0, size);
+			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
+			while(true)
+			{
+				std::auto_ptr<u8> compressed_data(new u8[size]);
+				uLongf pos = 0;
+
+				_session->send();
+				shoryu::message_data data;
+				if(!_session->get_data(1-_session->side(), data, 50))
+				{
+					if(timeout_timestamp < shoryu::time_ms())
+					{
+						Console.Error("NETPLAY: Timeout while synchonizing memory cards.",size);
+						EndSession();
+						return false;
+					}
+				}
+				else
+				{
+					if(data.data_length != 9 || memcmp(data.p.get(), "BLOCK_END", 9) != 0)
+					{
+						Console.WriteLn("Receiving block of size %d",data.data_length);
+						std::copy(data.p.get(), data.p.get() + data.data_length, compressed_data.get()+pos);
+						pos += data.data_length;
+					}
+					else
+					{
+						std::auto_ptr<u8> uncompressed_data(new u8[size]);
+						uLongf size_test = size;
+						int r = uncompress(uncompressed_data.get(), &size_test, compressed_data.get(), pos);
+						if(r != Z_OK)
+						{
+							Console.Error("NETPLAY: Unable to decompress MCD buffer. Error: %d.", r);
+							EndSession();
+							return false;
+						}
+						if(size_test != size)
+						{
+							Console.Error("NETPLAY: Invalid MCD received from host.");
+							EndSession();
+							return false;
+						}
+						SysPlugins.McdSave(0,0,uncompressed_data.get(), 0, size);
+						return true;
+					}
+				}
+			}
 		}
 		return false;
 	}
@@ -234,8 +302,60 @@ public:
 		auto state = GetSyncState();
 		if(state)
 		{
-			return _session->create(2, *state,
-				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout);
+			if(!_session->create(2, *state,
+				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
+				return false;
+			PS2E_McdSizeInfo info;
+			SysPlugins.McdGetSizeInfo(0,0,info);
+			uLongf size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
+			std::auto_ptr<Bytef> buffer(new Bytef[size]);
+			Console.WriteLn("CMD_SIZE=%d",size);
+			{
+				std::auto_ptr<Bytef> mcd(new Bytef[size]);
+				SysPlugins.McdRead(0,0, (u8*) mcd.get(), 0, size);
+				uLongf size_tmp = size;
+				int r = compress2(buffer.get(), &size, mcd.get(), size_tmp, Z_BEST_COMPRESSION);
+				if(r != Z_OK)
+				{
+					Console.Error("NETPLAY: Unable to compress MCD buffer. Error: %d.", r);
+					EndSession();
+					return false;
+				}
+			}
+			Console.WriteLn("COMPRESSED_SIZE=%d",size);
+			size_t blockSize = 128;
+			for(size_t i = 0; i < size; i+=blockSize)
+			{
+				shoryu::message_data data;
+				data.data_length = size - i;
+				if(data.data_length > blockSize)
+					data.data_length = blockSize;
+				data.p.reset(new char[data.data_length]);
+				std::copy(buffer.get()+i, buffer.get()+i+data.data_length, data.p.get());
+				Console.WriteLn("Pushing block of size %d",data.data_length);
+				_session->queue_data(data);
+			}
+			shoryu::message_data data;
+			data.data_length = 9;
+			data.p.reset(new char[data.data_length]);
+			char* blockEndMsg = "BLOCK_END";
+			std::copy(blockEndMsg, blockEndMsg + data.data_length, data.p.get());
+			Console.WriteLn("Pushing block of size %d",data.data_length);
+			_session->queue_data(data);
+
+			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
+			while(int n = _session->send())
+			{
+				Console.WriteLn("Sending %d packets", n);
+				if(timeout_timestamp < shoryu::time_ms())
+				{
+					Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
+					EndSession();
+					return false;
+				}
+				shoryu::sleep(50);
+			}
+			return true;
 		}
 		return false;
 	}
@@ -299,6 +419,18 @@ public:
 							synchronized = _session->first_received_frame() > 0
 								&& _session->frame() > _session->first_received_frame()
 								&& _session->frame() <= _session->last_received_frame();
+
+							if(_session->first_received_frame() >= 0)
+							{
+								_session->get(1-_session->side(), f, _session->first_received_frame()+_session->delay());
+								if(f.end_session)
+								{
+									CoreThread.Reset();
+									Console.Warning("NETPLAY: Session ended.");
+									UI_EnableEverything();
+									_sessionEnded = true;
+								}
+							}
 						}
 						if(poller.pollCounter == 7)
 						{
@@ -325,15 +457,12 @@ public:
 				{
 					if(synchronized)
 					{
-						//if(!_session->get(poller.side, f, _session->delay()*100))
 						while(!_session->get(poller.side, f, _session->delay()*17))
 						{
 							_session->send();
-							/*using std::ios_base;
-							std::stringstream ss(ios_base::in + ios_base::out);
-							ss << "NETPLAY: timeout on frame "<<_session->frame()<<
-								" (last received frame - "<<_session->last_received_frame()<<").";
-							Console.Error(ss.str().c_str() );*/
+#ifdef CONNECTION_TEST
+							shoryu::sleep(3000);
+#endif
 						}
 					}
 					else
@@ -379,7 +508,7 @@ public:
 		{
 			if(!ready && port == 1)
 			{
-				if(_thread->timed_join(boost::posix_time::milliseconds(100)))
+				if(_thread->timed_join(boost::posix_time::milliseconds(1000)))
 				{
 					if(_session->state() == shoryu::Ready)
 					{
@@ -434,7 +563,7 @@ protected:
 			Console.Error("NETPLAY: You're trying to boot different games (%s != %s).", s1.discSerial, s2.discSerial);
 			return false;
 		}
-		if(s1.mcd1CRC != s2.mcd1CRC)
+		/*if(s1.mcd1CRC != s2.mcd1CRC)
 		{
 			Console.Warning("NETPLAY: Memory card 1 CRC mismatch. Memory cards will be disabled.",
 				s1.mcd1CRC, s2.mcd1CRC);
@@ -446,7 +575,7 @@ protected:
 				Console.Warning("NETPLAY: Memory card 2 CRC mismatch. Memory cards will be disabled.",
 					s1.mcd2CRC, s2.mcd2CRC);
 				CoreThread.CloseMcdPlugin();
-			}
+			}*/
 		return true;
 	}
 
@@ -484,6 +613,7 @@ protected:
 	bool first;
 	bool ready;
 	bool synchronized;
+	std::auto_ptr<u8> mcd_backup;
 
 
 

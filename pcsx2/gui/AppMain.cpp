@@ -30,6 +30,8 @@
 
 #include "Utilities/IniInterface.h"
 
+#include "Netplay\NetplayPlugin.h"
+
 #include <wx/stdpaths.h>
 
 #ifdef __WXMSW__
@@ -457,7 +459,8 @@ void Pcsx2App::LogicalVsync()
 			
 			if( gsRegionMode == Region_NTSC )
 			{
-				if (fps < 59.0f ) {
+				// Avoid frameskipping after packet loss during Netplay
+				if (!INetplayPlugin::GetInstance().IsEnabled() && fps < 59.0f) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 4 && last_enabled == true)
@@ -478,7 +481,7 @@ void Pcsx2App::LogicalVsync()
 			}
 			else
 			{
-				if (fps < 49.2f ) {
+				if (!INetplayPlugin::GetInstance().IsEnabled() && fps < 49.2f ) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 3 && last_enabled == true)

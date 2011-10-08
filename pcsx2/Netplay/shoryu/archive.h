@@ -28,7 +28,7 @@ namespace shoryu
 		inline void overflow_check(size_t size)
 		{
 			if( (size_t)(last_ - next_) < size)
-				throw std::exception("buffer overflow");
+				throw std::ios_base::failure("buffer overflow");
 		}
 		char* first_;
 		char* next_;
