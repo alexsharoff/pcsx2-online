@@ -495,7 +495,7 @@ protected:
 		if(DiscSerial.Len() == 0)
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Unable to obtain disc srerial.");
+			Console.Error("NETPLAY: Unable to obtain disc serial.");
 			UI_EnableEverything();
 			syncState.reset();
 			return syncState;

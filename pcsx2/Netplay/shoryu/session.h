@@ -714,7 +714,7 @@ namespace shoryu
 					_frame_cond.notify_all();
 				}
 				_counter++;
-				send(ep);
+				//send(ep);
 			}
 		}
 		void err_hdl(const error_code& error)

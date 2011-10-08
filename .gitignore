@@ -14,8 +14,6 @@
 /pcsx2/gui/Resources/Dualshock.h
 svnrev.h
 postBuild.cmd
-*.log
-*.tlog
 
 #directories
 Win32/
@@ -39,3 +37,9 @@ Release/
 *.ncb
 *.dll
 *.exe
+*.log
+*.tlog
+*.ini
+*.tmp
+*.ps2
+*.zip

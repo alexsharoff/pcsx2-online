@@ -732,7 +732,7 @@
     <ClInclude Include="..\..\Memory.h" />
     <ClInclude Include="..\..\vtlb.h" />
     <ClInclude Include="..\..\MTVU.h" />
-    <ClInclude Include="..\..\VU.h" />
+	<ClInclude Include="..\..\VU.h" />
     <ClInclude Include="..\..\VUmicro.h" />
     <ClInclude Include="..\..\x86\microVU.h" />
     <ClInclude Include="..\..\x86\microVU_IR.h" />
