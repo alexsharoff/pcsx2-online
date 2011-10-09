@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <bitset>
 
 
 
@@ -17,18 +18,18 @@ namespace shoryu
 		inline void set_defaults()
 		{
 			ack_first_id = 0;
-			ack_mask = 0;
+			ack_mask.reset();
 			rtt = 0;
 			time = time_ms();
 		}
-		inline bool is_acknoledged(uint64_t id) const 
+		inline bool is_acknoledged(uint64_t id) const
 		{
 			if(id < ack_first_id)
 				return false;
 			uint64_t offset = id - ack_first_id;
-			if(offset >= sizeof(ack_mask)*8)
+			if(offset >= ack_mask.size())
 				return false;
-			return (ack_mask & (1 << offset)) > 0;
+			return ack_mask[offset];
 		}
 		inline void acknoledge(int64_t id)
 		{
@@ -37,32 +38,36 @@ namespace shoryu
 			if(!ack_first_id)
 			{
 				ack_first_id = id;
-				ack_mask = 1;
+				ack_mask.set(0);
 			}
 			else
 			{
 				int64_t offset = id - ack_first_id;
 				if(offset >= 32)
 					throw std::exception("offset cannot exceed 32");
-				ack_mask |= 1 << offset;
+				ack_mask.set(offset);
 			}
 		}
 		inline void serialize(oarchive& a) const
 		{
 			a.write(PROTOCOL_ID, PROTOCOL_ID_LEN);
-			a << time << rtt << ack_first_id << ack_mask;
+			a << time << rtt << ack_first_id << ack_mask.to_ullong();
 		}
 		inline void deserialize(iarchive& a)
 		{
 			char pid[PROTOCOL_ID_LEN];
 			a.read(pid, PROTOCOL_ID_LEN);
+			uint64_t ack_mask_ull;
 			if(std::memcmp(PROTOCOL_ID, pid, PROTOCOL_ID_LEN) == 0)
-				a >> time >> rtt >> ack_first_id >> ack_mask;
+			{
+				a >> time >> rtt >> ack_first_id >> ack_mask_ull;
+				ack_mask = std::bitset<64>(ack_mask_ull);
+			}
 			else
 				throw std::exception("invalid protocol id");
 		}
 	protected:
 		uint64_t ack_first_id;
-		uint32_t ack_mask;
+		std::bitset<64> ack_mask;
 	};
 }

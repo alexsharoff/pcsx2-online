@@ -66,7 +66,7 @@ namespace shoryu
 			boost::mutex _mutex;
 		};
 
-	template<class DataType, int BufferQueueSize = 256, int BufferSize = 512>
+	template<class DataType, int BufferQueueSize = 256, int BufferSize = 1024>
 	class async_transport
 	{
 	public:
@@ -123,6 +123,12 @@ namespace shoryu
 		{
 			_recv_handler = f;
 		}
+		void clear_queue(const boost::asio::ip::udp::endpoint& ep)
+		{
+			//lock_type lock(_mutex);
+			if(_is_running)
+				clear_queue_impl(ep);
+		}
 		void queue(const boost::asio::ip::udp::endpoint& ep, const DataType& data)
 		{
 			//lock_type lock(_mutex);
@@ -141,6 +147,12 @@ namespace shoryu
 			//lock_type lock(_mutex);
 			if(_is_running)
 				return send_impl(ep);
+			return -1;
+		}
+		int send_sync(const boost::asio::ip::udp::endpoint& ep)
+		{
+			if(_is_running)
+				return send_impl(ep, true);
 			return -1;
 		}
 		inline const peer_list_type peers()
@@ -162,7 +174,7 @@ namespace shoryu
 			return _socket.local_endpoint().port();
 		}
 	private:
-		inline int send_impl(const boost::asio::ip::udp::endpoint& ep)
+		inline int send_impl(const boost::asio::ip::udp::endpoint& ep, bool sync = false)
 		{
 			transaction_data<Send,BufferSize>& t = _send_buffer.next();
 			t.ep = ep;
@@ -170,10 +182,26 @@ namespace shoryu
 			int send_n = find_peer(ep).serialize_datagram(oa);
 
 			t.buffer_length = oa.pos();
-			_socket.async_send_to(boost::asio::buffer(t.buffer, t.buffer_length), boost::ref(t.ep),
-				boost::bind(&async_transport::send_handler, this, boost::ref(t), 
-				boost::asio::placeholders::bytes_transferred,
-				boost::asio::placeholders::error));
+			if(sync)
+			{
+				//lock_type lock(_mutex);
+				try
+				{
+					_socket.send_to(boost::asio::buffer(t.buffer, t.buffer_length), t.ep);
+				}
+				catch(const boost::system::system_error& e)
+				{
+					if(_err_handler)
+						_err_handler(e.code());
+				}
+			}
+			else
+			{
+				_socket.async_send_to(boost::asio::buffer(t.buffer, t.buffer_length), boost::ref(t.ep),
+					boost::bind(&async_transport::send_handler, this, boost::ref(t), 
+					boost::asio::placeholders::bytes_transferred,
+					boost::asio::placeholders::error));
+			}
 			
 			return send_n;
 		}
@@ -217,6 +245,10 @@ namespace shoryu
 		inline uint64_t queue_impl(const boost::asio::ip::udp::endpoint& ep, const DataType& data)
 		{
 			return find_peer(ep).queue_msg(data);
+		}
+		inline void clear_queue_impl(const boost::asio::ip::udp::endpoint& ep)
+		{
+			find_peer(ep).clear_queue();
 		}
 		
 		inline peer_type& find_peer(const endpoint& ep)
@@ -262,9 +294,10 @@ namespace shoryu
 			//lock_type lock(_mutex);
 			if(_is_running)
 			{
-				if(!e)
+				/*if(!e)
 					finalize(t);
-				else
+				else*/
+				if(e)
 				{
 					if(_err_handler)
 						_err_handler(e);

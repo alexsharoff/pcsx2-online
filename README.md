@@ -30,7 +30,7 @@ During netplay, settings are changed to defaults with all speedhacks disabled, s
 Tested and working
 ------------------
 
-* Melty Blood Actress Again (Netplay was basically was made for this game alone)
+* Melty Blood Actress Again (Netplay was basically made for this game alone)
 * Guilty Gear XX Accent Core (US Release)
 
 Tested and not working (i.e. will be fixed soon)

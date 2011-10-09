@@ -4,6 +4,7 @@
 #include <boost/circular_buffer.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/recursive_mutex.hpp>
+#include <algorithm>
 
 #include "datagram_header.h"
 
@@ -60,6 +61,11 @@ namespace shoryu
 			m.data = msg;
 			msg_queue.push_back(m);
 			return m.id;
+		}
+		inline void clear_queue()
+		{
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			msg_queue.clear();
 		}
 
 		template<typename Pred>
@@ -118,17 +124,26 @@ namespace shoryu
 				header.rtt = data.remote_time + (time_ms() - data.recv_time);
 
 			header.serialize(oa);
-			container_type::size_type size = 0;
+			container_type::size_type size = msg_queue.size();
+			container_type::size_type i = 0;
+
+			std::vector<msg_wrapper*> msg_shuffle;
+			msg_shuffle.reserve(size);
 			foreach(msg_wrapper& msg, msg_queue)
+				msg_shuffle.push_back(&msg);
+			
+			std::random_shuffle(msg_shuffle.begin(), msg_shuffle.end());
+
+			foreach(msg_wrapper* msg, msg_shuffle)
 			{
 				try
 				{
-					msg.serialize(oa);
+					msg->serialize(oa);
 				}
 				catch(std::ios_base::failure&) { break; }
-				++size;
+				++i;
 			}
-			if(msg_queue.size() && !size)
+			if(size && !i)
 				throw std::runtime_error("Unable to serialize message: packet is too long.");
 
 			return size;

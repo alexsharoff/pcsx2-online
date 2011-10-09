@@ -21,7 +21,7 @@ namespace shoryu
 	struct message_data
 	{
 		boost::shared_array<char> p;
-		uint16_t data_length;
+		uint32_t data_length;
 	};
 
 	template<typename T, typename StateType>
@@ -57,7 +57,7 @@ namespace shoryu
 				a << state << host_ep.address().to_v4().to_ulong() << host_ep.port();
 				break;
 			case Data:
-				a << data.data_length;
+				a << frame_id << data.data_length;
 				a.write(data.p.get(), data.data_length);
 			case Deny:
 				a << state;
@@ -93,7 +93,7 @@ namespace shoryu
 				host_ep = endpoint(address_type(addr), port);
 				break;
 			case Data:
-				a >> data.data_length;
+				a >> frame_id >> data.data_length;
 				data.p.reset(new char[data.data_length]);
 				a.read(data.p.get(), data.data_length);
 			case Deny:
@@ -133,7 +133,7 @@ namespace shoryu
 		typedef boost::unordered_map<endpoint, int> side_map;
 		typedef std::vector<frame_map> frame_table;
 		typedef std::function<bool(const StateType&, const StateType&)> state_check_handler_type;
-		typedef std::vector<std::list<message_data>> data_table;
+		typedef std::vector<boost::unordered_map<int64_t, message_data>> data_table;
 	public:
 #ifdef SHORYU_ENABLE_LOG
 		std::stringstream log;
@@ -215,6 +215,15 @@ namespace shoryu
 			return connected;
 		}
 
+		inline void clear_queue()
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			foreach(auto ep, _eps)
+				_async.clear_queue(ep);
+		}
+
 		inline void queue_data(message_data& data)
 		{
 			if(_current_state == None)
@@ -222,9 +231,9 @@ namespace shoryu
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			message_type msg(Data);
 			msg.data = data;
+			msg.frame_id = _data_index++;
 			foreach(auto ep, _eps)
 				_async.queue(ep, msg);
-			send();
 		}
 
 		inline bool get_data(int side, message_data& data, int timeout = 0)
@@ -235,7 +244,7 @@ namespace shoryu
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			auto pred = [&]() -> bool {
 				if(_current_state != None)
-					return _data_table[side].begin() != _data_table[side].end();
+					return _data_table[side].find(_data_index) != _data_table[side].end();
 				else
 					return true;
 			};
@@ -249,8 +258,9 @@ namespace shoryu
 
 			if(_current_state == None)
 				throw std::exception("invalid state");
-			data = _data_table[side].front();
-			_data_table[side].pop_front();
+			data = _data_table[side][_data_index];
+			_data_table[side].erase(_data_index);
+			++_data_index;
 			return true;
 		}
 		
@@ -274,6 +284,18 @@ namespace shoryu
 				n += send(ep);
 			return n;
 		}
+		inline int send_sync()
+		{
+			int n = 0;
+			foreach(auto ep, _eps)
+				n += send_sync(ep);
+			return n;
+		}
+		inline int send_sync(const endpoint& ep)
+		{
+			return _async.send_sync(ep);
+		}
+
 		inline int send(const endpoint& ep)
 		{
 			if(_packet_loss == 0 && _send_delay_max == 0)
@@ -287,16 +309,16 @@ namespace shoryu
 				return _async.send(ep, delay, _packet_loss);
 			}
 		}
-		inline bool get(int side, FrameType& f, int64_t frame, int timeout = 0)
+		inline bool get(int side, FrameType& f, int64_t frame, int timeout)
 		{
 			if(_current_state == None)
 				throw std::exception("invalid state");
-			if(_frame < _delay)
+			if(frame < _delay)
 				return true;
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			auto pred = [&]() -> bool {
 				if(_current_state != None)
-					return _frame_table[side].find(_frame) != _frame_table[side].end();
+					return _frame_table[side].find(frame) != _frame_table[side].end();
 				else
 					return true;
 			};
@@ -310,11 +332,11 @@ namespace shoryu
 
 			if(_current_state == None)
 				throw std::exception("invalid state");
-			f = _frame_table[side][_frame];
+			f = _frame_table[side][frame];
 			return true;
 		}
 
-		inline bool get(int side, FrameType& f, int timeout = 0)
+		inline bool get(int side, FrameType& f, int timeout)
 		{
 			return get(side, f, _frame, timeout);
 		}
@@ -401,6 +423,16 @@ namespace shoryu
 		{
 			_packet_loss = ms;
 		}
+		const std::string& last_error()
+		{
+			boost::unique_lock<boost::mutex> lock(_error_mutex);
+			return _last_error;
+		}
+		void last_error(const std::string& err)
+		{
+			boost::unique_lock<boost::mutex> lock(_error_mutex);
+			_last_error = err;
+		}
 	protected:
 		void try_prepare()
 		{
@@ -413,10 +445,12 @@ namespace shoryu
 			_first_received_frame = -1;
 			_delay = _side = /*_players =*/ 0;
 			_frame = 0;
+			_data_index = 0;
 			_current_state = None;
 			//_host = false;
 			_eps.clear();
 			_frame_table.clear();
+			_last_error = "";
 			_data_table.clear();
 			_async.error_handler(std::function<void(const error_code&)>());
 			_async.receive_handler(std::function<void(const endpoint&, message_type&)>());
@@ -771,7 +805,7 @@ namespace shoryu
 				if(msg.cmd == Data)
 				{
 					boost::unique_lock<boost::mutex> lock(_mutex);
-					_data_table[side].push_back(msg.data);
+					_data_table[side][msg.frame_id] = msg.data;
 					_data_cond.notify_all();
 					send(ep);
 				}
@@ -779,21 +813,26 @@ namespace shoryu
 		}
 		void err_hdl(const error_code& error)
 		{
-			std::string str = error.message();
+			boost::unique_lock<boost::mutex> lock(_error_mutex);
+			_last_error = error.message();
 		}
 	private:
 		int _delay;
 		int64_t _frame;
+		int64_t _data_index;
 		int _side;
 		int _packet_loss;
 		int _send_delay_max;
 		int _send_delay_min;
+
+		std::string _last_error;
 
 		side_map _sides;
 		async_transport<message_type> _async;
 		endpoint_container _eps;
 		frame_table _frame_table;
 		boost::mutex _mutex;
+		boost::mutex _error_mutex;
 		boost::condition_variable _frame_cond;
 		boost::condition_variable _data_cond;
 		data_table _data_table;
