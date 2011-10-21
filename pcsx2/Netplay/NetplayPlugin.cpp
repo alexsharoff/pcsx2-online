@@ -8,10 +8,11 @@
 #include "CDVD/CDVD.h"
 #include "Netplay/NetplayPlugin.h"
 #include "Netplay/gui/NetplayDialog.h"
-#include "Netplay/gui/ConnectionStatusDialog.h"
 
 #include "shoryu/session.h"
 #include "Message.h"
+
+#include "NetplaySettings.h"
 
 #include "zlib\zlib.h"
 
@@ -118,21 +119,22 @@ public:
 	{
 		_error_string = "";
 		_info_string = "";
-		if( g_Conf->Net.MyPort <= 0 || g_Conf->Net.MyPort > 65535 )
+		NetplaySettings& settings = settings;
+		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Invalid local port: %u.", g_Conf->Net.MyPort);
+			Console.Error("NETPLAY: Invalid local port: %u.", settings.LocalPort);
 			UI_EnableEverything();
 			return;
 		}
-		if( g_Conf->Net.Connect && (g_Conf->Net.RemotePort <= 0 || g_Conf->Net.RemotePort > 65535) )
+		if( settings.Mode == ConnectMode && (settings.HostPort <= 0 || settings.HostPort > 65535) )
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Invalid remove port: %u.", g_Conf->Net.RemotePort);
+			Console.Error("NETPLAY: Invalid remove port: %u.", settings.HostPort);
 			UI_EnableEverything();
 			return;
 		}
-		if( g_Conf->Net.Connect && g_Conf->Net.RemoteIp.Len() == 0 )
+		if( settings.Mode == ConnectMode && settings.HostAddress.Len() == 0 )
 		{
 			CoreThread.Reset();
 			Console.Error("NETPLAY: Invalid hostname.");
@@ -146,7 +148,7 @@ public:
 		_session->send_delay_max(80);
 		_session->packet_loss(25);
 #endif
-		if(BindPort(g_Conf->Net.MyPort))
+		if(BindPort(settings.LocalPort))
 		{
 			EmuOptionsBackup = g_Conf->EmuOptions;
 			Mcd1EnabledBackup = g_Conf->Mcd[0].Enabled;
@@ -185,16 +187,16 @@ public:
 			first = true;
 			synchronized = false;
 			ready = false;
-			if(g_Conf->Net.Connect)
+			if(settings.Mode == ConnectMode)
 			{
 				Console.Warning("NETPLAY: Connecting to %s:%u using local port %u.",
-					g_Conf->Net.RemoteIp.ToAscii().data(), g_Conf->Net.RemotePort, g_Conf->Net.MyPort);
+					settings.HostAddress.ToAscii().data(), settings.HostPort, settings.LocalPort);
 				_thread.reset(new boost::thread(boost::bind(&NetplayPlugin::Connect,
-					this, g_Conf->Net.RemoteIp, g_Conf->Net.RemotePort, 0)));
+					this, settings.HostAddress, settings.HostPort, 0)));
 			}
 			else
 			{
-				Console.Warning("NETPLAY: Hosting on local port %u.", g_Conf->Net.MyPort);
+				Console.Warning("NETPLAY: Hosting on local port %u.", settings.LocalPort);
 				_thread.reset(new boost::thread(boost::bind(&NetplayPlugin::Host, this, 0)));
 			}
 			ReplaceHandlers();
@@ -202,7 +204,7 @@ public:
 		else
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Unable to bind port %u.", g_Conf->Net.MyPort);
+			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
 			UI_EnableEverything();
 		}
 	}
@@ -228,6 +230,10 @@ public:
 			mcd_backup.reset();
 		}
 		RestoreHandlers();
+	}
+	virtual void Enable(bool enabled)
+	{
+		_isEnabled = enabled;
 	}
 	virtual bool IsEnabled()
 	{
@@ -350,7 +356,12 @@ public:
 				ss << "NETPLAY: Connection from " << ip << ":" << port << ". Starting memory card synchronization.";
 				_info_string = ss.str();
 			}
-			
+
+			/*_session->delay(15);
+			_session->reannounce_delay();*/
+			// WAITING FOR INPUT DELAY HERE
+
+
 			PS2E_McdSizeInfo info;
 			SysPlugins.McdGetSizeInfo(0,0,info);
 			uLongf size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
@@ -450,17 +461,7 @@ public:
 		_session->shutdown();
 		_session->unbind();
 	}
-	
-	virtual void ShowNetplayDialog(AppConfig::NetOptions& options)
-	{
-		NetplayDialog dialog(options, (wxWindow*)GetMainFramePtr());
-		if(dialog.ShowModal() == wxID_OK)
-		{
-			_isEnabled = true;
-			sApp.SysExecute( g_Conf->CdvdSource );
-			UI_DisableEverything();
-		}
-	}
+
 	virtual s32 CALLBACK NETPADopen(void *pDsp)
 	{
 		return PADopenBackup(pDsp);
@@ -630,8 +631,10 @@ public:
 			first = false;
 			if(_session->last_error().length())
 			{
-				Console.Error("NETPLAY: %s.", _session->last_error().c_str());
-				_session->last_error("");
+				// 'The operation completed successfully' is a really strange error.
+				// Research it!
+				// Console.Error("NETPLAY: %s.", _session->last_error().c_str());
+				// _session->last_error("");
 			}
 		}
 		return PADsetSlotBackup(port, slot);

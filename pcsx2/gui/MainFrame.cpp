@@ -352,6 +352,7 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 	wxSize backsize( m_background.GetSize() );
 
 	wxString wintitle;
+	/*
 	if( PCSX2_VersionLo & 1 )
 	{
 		// Odd versions: beta / development editions, which feature revision number and compile date.
@@ -365,6 +366,8 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 			SVN_MODS ? _("(modded)") : wxEmptyString
 		);
 	}
+	*/
+	wintitle.Printf( _("PCSX2 Online 2011.10.09") );
 
 	SetTitle( wintitle );
 

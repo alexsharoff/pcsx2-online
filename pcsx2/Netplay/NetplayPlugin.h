@@ -16,11 +16,12 @@ protected:
 public:
 	static INetplayPlugin& GetInstance();
 
-	virtual void ShowNetplayDialog(AppConfig::NetOptions& options) = 0;
+	virtual void Enable(bool enabled) = 0;
+	virtual bool IsEnabled() = 0;
+
 	virtual void Open() = 0;
 	virtual void Init() = 0;
 	virtual void Close() = 0;
-	virtual bool IsEnabled() = 0;
 
 	virtual s32 CALLBACK NETPADopen(void *pDsp) = 0;
 	virtual u8 CALLBACK NETPADstartPoll(int pad) = 0;

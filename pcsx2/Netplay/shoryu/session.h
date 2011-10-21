@@ -224,6 +224,17 @@ namespace shoryu
 				_async.clear_queue(ep);
 		}
 
+		inline void reannounce_delay()
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			message_type msg(Delay);
+			msg.delay = delay();
+			foreach(auto ep, _eps)
+				_async.queue(ep, msg);
+		}
+
 		inline void queue_data(message_data& data)
 		{
 			if(_current_state == None)
@@ -460,6 +471,8 @@ namespace shoryu
 		}
 		void connection_established()
 		{
+			boost::unique_lock<boost::mutex> lock1(_connection_mutex);
+			boost::unique_lock<boost::mutex> lock2(_mutex);
 			_frame_table.resize(_eps.size() + 1);
 			_data_table.resize(_eps.size() + 1);
 			_async.error_handler(boost::bind(&session<FrameType, StateType>::err_hdl, this, _1));
@@ -667,7 +680,7 @@ namespace shoryu
 			if(_current_state == Deny)
 				return false;
 
-			int i = 250;
+			int i = 150;
 			while(i-->0)
 			{
 				if(_shutdown)
@@ -680,7 +693,7 @@ namespace shoryu
 					_async.queue(ep, message_type(Ping));
 					send(ep);
 				}
-				shoryu::sleep(17);
+				shoryu::sleep(50);
 			}
 
 			int rtt = 0;
@@ -761,9 +774,9 @@ namespace shoryu
 #ifdef SHORYU_ENABLE_LOG
 				log << "[" << time_ms() << "] In.Delay ";
 #endif
+				delay(msg.delay);
 				if(_current_state != Ready)
 				{
-					delay(msg.delay);
 					_current_state = Ready;
 				}
 				_async.queue(ep, message_type(Ready));
@@ -809,6 +822,12 @@ namespace shoryu
 					_data_cond.notify_all();
 					send(ep);
 				}
+				if(msg.cmd == Delay)
+				{
+					boost::unique_lock<boost::mutex> lock(_mutex);
+					delay(msg.delay);
+					send(ep);
+				}
 			}
 		}
 		void err_hdl(const error_code& error)
@@ -817,7 +836,7 @@ namespace shoryu
 			_last_error = error.message();
 		}
 	private:
-		int _delay;
+		volatile int _delay;
 		int64_t _frame;
 		int64_t _data_index;
 		int _side;

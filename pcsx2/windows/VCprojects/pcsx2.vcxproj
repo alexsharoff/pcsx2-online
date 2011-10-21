@@ -423,6 +423,7 @@
     <ClCompile Include="..\..\Netplay\gui\NetplayDialogBase.cpp" />
     <ClCompile Include="..\..\Netplay\Message.cpp" />
     <ClCompile Include="..\..\Netplay\NetplayPlugin.cpp" />
+    <ClCompile Include="..\..\Netplay\NetplaySettings.cpp" />
     <ClCompile Include="..\..\Patch.cpp" />
     <ClCompile Include="..\..\Patch_Memory.cpp" />
     <ClCompile Include="..\..\PrecompiledHeader.cpp">
@@ -695,8 +696,10 @@
     <ClInclude Include="..\..\Netplay\EmulatorState.h" />
     <ClInclude Include="..\..\Netplay\gui\NetplayDialog.h" />
     <ClInclude Include="..\..\Netplay\gui\NetplayDialogBase.h" />
+    <ClInclude Include="..\..\Netplay\INetplayDialog.h" />
     <ClInclude Include="..\..\Netplay\Message.h" />
     <ClInclude Include="..\..\Netplay\NetplayPlugin.h" />
+    <ClInclude Include="..\..\Netplay\NetplaySettings.h" />
     <ClInclude Include="..\..\Netplay\shoryu\archive.h" />
     <ClInclude Include="..\..\Netplay\shoryu\async_transport.h" />
     <ClInclude Include="..\..\Netplay\shoryu\boost_extensions.h" />
@@ -732,7 +735,7 @@
     <ClInclude Include="..\..\Memory.h" />
     <ClInclude Include="..\..\vtlb.h" />
     <ClInclude Include="..\..\MTVU.h" />
-	<ClInclude Include="..\..\VU.h" />
+    <ClInclude Include="..\..\VU.h" />
     <ClInclude Include="..\..\VUmicro.h" />
     <ClInclude Include="..\..\x86\microVU.h" />
     <ClInclude Include="..\..\x86\microVU_IR.h" />

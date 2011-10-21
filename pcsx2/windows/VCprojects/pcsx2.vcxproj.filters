@@ -841,6 +841,9 @@
     <ClCompile Include="..\..\Netplay\Message.cpp">
       <Filter>AppHost\Netplay</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Netplay\NetplaySettings.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Patch.h">
@@ -1259,6 +1262,12 @@
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Netplay\Message.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\INetplayDialog.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\NetplaySettings.h">
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
   </ItemGroup>

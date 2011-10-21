@@ -826,33 +826,6 @@ void AppConfig::FramerateOptions::LoadSave( IniInterface& ini )
 	IniEntry( SkipOnTurbo );
 }
 
-AppConfig::NetOptions::NetOptions()
-{
-	MyPort = RemotePort = 7500;
-	Connect = true;
-}
-
-void AppConfig::NetOptions::LoadSave( IniInterface& ini )
-{
-	NetOptions defaults;
-	ScopedIniGroup path( ini, L"Net" );
-
-	IniEntry( MyPort );
-	IniEntry( RemotePort );
-	IniEntry( RemoteIp );
-	IniEntry( Connect );
-
-	if( ini.IsLoading() ) SanityCheck();
-}
-void AppConfig::NetOptions::SanityCheck()
-{
-	if(MyPort > 65535 || MyPort < 1000)
-		MyPort = 7500;
-	if(RemotePort > 65535 || RemotePort < 1000)
-		RemotePort = 7500;
-	//sanitize IP
-}
-
 
 int AppConfig::GetMaxPresetIndex()
 {

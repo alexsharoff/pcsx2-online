@@ -410,7 +410,14 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		}
 	}
 
-	INetplayPlugin::GetInstance().ShowNetplayDialog(g_Conf->Net);
+	// TODO: Show netpaly dialog!!
+	/*NetplayDialog dialog(options, (wxWindow*)GetMainFramePtr());
+	if(dialog.ShowModal() == wxID_OK)
+	{
+		_isEnabled = true;
+		sApp.SysExecute( g_Conf->CdvdSource );
+		UI_DisableEverything();
+	}*/
 }
 
 

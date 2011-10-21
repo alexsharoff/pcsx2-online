@@ -18,6 +18,7 @@
 #include "AppForwardDefs.h"
 #include "PathDefs.h"
 #include "CDVD/CDVDaccess.h"
+#include "Netplay\NetplaySettings.h"
 
 enum DocsModeType
 {
@@ -225,17 +226,6 @@ public:
 		void SanityCheck();
 	};
 
-	struct NetOptions {
-		uint MyPort;
-		bool Connect;
-		uint RemotePort;
-		wxString RemoteIp;
-
-		NetOptions();
-		void LoadSave( IniInterface& conf );
-		void SanityCheck();
-	};
-
 public:
 	wxPoint		MainGuiPosition;
 
@@ -305,7 +295,7 @@ public:
 	FilenameOptions			BaseFilenames;
 	GSWindowOptions			GSWindow;
 	FramerateOptions		Framerate;
-	NetOptions				Net;
+	NetplaySettings			Net;
 
 	// PCSX2-core emulation options, which are passed to the emu core prior to initiating
 	// an emulation session.  Note these are the options saved into the GUI ini file and

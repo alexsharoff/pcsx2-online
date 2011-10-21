@@ -21,17 +21,17 @@ void NetplayDialog::UpdateOptions()
 {
 	long port;
 	if( !textBoxPort->GetValue().ToLong(&port, 10))
-		_options.MyPort = 7500;
+		_options.LocalPort = 7500;
 	else
-		_options.MyPort = port;
+		_options.LocalPort = port;
 
 	if(!textBoxHostPort->GetValue().ToLong(&port, 10))
-		_options.RemotePort = 7500;
+		_options.HostPort = 7500;
 	else
-		_options.RemotePort = port;
+		_options.HostPort = port;
 
-	_options.RemoteIp = textBoxHostIP->GetValue();
-	_options.Connect = !checkBoxHostGame->IsChecked();
+	_options.HostAddress = textBoxHostIP->GetValue();
+	_options.Mode = checkBoxHostGame->IsChecked() ? HostMode : ConnectMode;
 
 	_options.SanityCheck();
 	UpdateFromOptions();
@@ -40,16 +40,16 @@ void NetplayDialog::UpdateOptions()
 void NetplayDialog::UpdateFromOptions()
 {
 	textBoxPort->SetValue(
-		wxString::Format(wxT("%d"), (int)_options.MyPort));
+		wxString::Format(wxT("%d"), (int)_options.LocalPort));
 	textBoxHostPort->SetValue(
-		wxString::Format(wxT("%d"), (int)_options.RemotePort));
-	textBoxHostIP->SetValue(_options.RemoteIp);
-	checkBoxHostGame->SetValue(!_options.Connect);
+		wxString::Format(wxT("%d"), (int)_options.HostPort));
+	textBoxHostIP->SetValue(_options.HostAddress);
+	checkBoxHostGame->SetValue(_options.Mode != ConnectMode);
 
 	onCheckBoxClicked(wxCommandEvent());
 }
 
-NetplayDialog::NetplayDialog(AppConfig::NetOptions& options, wxWindow* parent) 
+NetplayDialog::NetplayDialog(NetplaySettings& options, wxWindow* parent) 
 :NetplayDialogBase(parent), _options(options)
 {
 	UpdateFromOptions();
