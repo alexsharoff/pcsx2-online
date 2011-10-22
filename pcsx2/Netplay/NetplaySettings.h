@@ -10,10 +10,12 @@ enum NetplayMode : int
 
 struct NetplaySettings
 {
+	wxString Username;
 	uint LocalPort;
 	NetplayMode Mode;
 	uint HostPort;
 	wxString HostAddress;
+	bool SaveReplay;
 	bool ReadonlyMemcard;
 	bool FinetuneDelay;
 	

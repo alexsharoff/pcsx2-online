@@ -1,57 +1,79 @@
 #include "PrecompiledHeader.h"
 #include "NetplayDialog.h"
+#include "NetplaySettingsPanel.h"
 
-
-void NetplayDialog::onCheckBoxClicked( wxCommandEvent& event )
+void NetplayDialog::OnClose( wxCloseEvent& event )
 {
-	textBoxHostIP->Enable(!checkBoxHostGame->IsChecked());
-	textBoxHostPort->Enable(!checkBoxHostGame->IsChecked());
+	if(m_close_handler)
+		m_close_handler();
 }
-void NetplayDialog::buttonCancel_Clicked( wxCommandEvent& event )
+void NetplayDialog::OnCancelButtonClick( wxCommandEvent& event )
 {
-	EndModal(wxID_CANCEL);
+	OnClose(wxCloseEvent());
 }
-void NetplayDialog::buttonOK_Clicked( wxCommandEvent& event )
+void NetplayDialog::OnOKButtonClick( wxCommandEvent& event )
 {
-	UpdateOptions();
-	EndModal(wxID_OK);
+	if(m_ok_handler)
+		m_ok_handler();
 }
-
-void NetplayDialog::UpdateOptions()
+void NetplayDialog::SetStatus(const wxString& status)
 {
-	long port;
-	if( !textBoxPort->GetValue().ToLong(&port, 10))
-		_options.LocalPort = 7500;
-	else
-		_options.LocalPort = port;
-
-	if(!textBoxHostPort->GetValue().ToLong(&port, 10))
-		_options.HostPort = 7500;
-	else
-		_options.HostPort = port;
-
-	_options.HostAddress = textBoxHostIP->GetValue();
-	_options.Mode = checkBoxHostGame->IsChecked() ? HostMode : ConnectMode;
-
-	_options.SanityCheck();
-	UpdateFromOptions();
+	this->m_statusText->SetLabel(status);
 }
-
-void NetplayDialog::UpdateFromOptions()
+void NetplayDialog::SetContent( wxPanel* content )
 {
-	textBoxPort->SetValue(
-		wxString::Format(wxT("%d"), (int)_options.LocalPort));
-	textBoxHostPort->SetValue(
-		wxString::Format(wxT("%d"), (int)_options.HostPort));
-	textBoxHostIP->SetValue(_options.HostAddress);
-	checkBoxHostGame->SetValue(_options.Mode != ConnectMode);
-
-	onCheckBoxClicked(wxCommandEvent());
-}
-
-NetplayDialog::NetplayDialog(NetplaySettings& options, wxWindow* parent) 
-:NetplayDialogBase(parent), _options(options)
-{
-	UpdateFromOptions();
+	if(m_content)
+		m_content->Hide();
+	m_contentSizer->Clear();
+	m_contentSizer->Add(content, 1, wxEXPAND, 5);
+	m_content = content;
+	m_content->Show();
 	Fit();
+}
+wxPanel* NetplayDialog::GetContent()
+{
+	return m_content;
+}
+void NetplayDialog::SetReadonly(bool readonly)
+{
+	if(m_content)
+		m_content->Enable(!readonly);
+}
+void NetplayDialog::EnableOK(bool enable)
+{
+	this->m_dialogButtonSizerOK->Enable(enable);
+}
+void NetplayDialog::EnableCancel(bool enable)
+{
+	this->m_dialogButtonSizerCancel->Enable(enable);
+}
+void NetplayDialog::SetOKHandler(const event_handler_type& handler)
+{
+	m_ok_handler = handler;
+}
+void NetplayDialog::SetCloseEventHandler(const event_handler_type& handler)
+{
+	m_close_handler = handler;
+}
+void NetplayDialog::SetSettings(const NetplaySettings& settings)
+{
+	m_settingsPanel.SetSettings(settings);
+}
+const NetplaySettings& NetplayDialog::GetSettings()
+{
+	return m_settingsPanel.GetSettings();
+}
+NetplayDialog::NetplayDialog(wxWindow* parent) 
+	: NetplayDialogBase(parent), m_content(0), m_settingsPanel(this), m_inputDelayPanel(this)
+{
+	m_inputDelayPanel.Hide();
+	SetContent(&m_settingsPanel);
+}
+NetplaySettingsPanel& NetplayDialog::GetSettingsPanel()
+{
+	return m_settingsPanel;
+}
+InputDelayPanel& NetplayDialog::GetInputDelayPanel()
+{
+	return m_inputDelayPanel;
 }

@@ -844,6 +844,15 @@
     <ClCompile Include="..\..\Netplay\NetplaySettings.cpp">
       <Filter>AppHost\Netplay</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Netplay\gui\NetplaySettingsPanel.cpp">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\INetplayDialog.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\gui\InputDelayPanel.cpp">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Patch.h">
@@ -1269,6 +1278,12 @@
     </ClInclude>
     <ClInclude Include="..\..\Netplay\NetplaySettings.h">
       <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\gui\NetplaySettingsPanel.h">
+      <Filter>AppHost\Netplay\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\gui\InputDelayPanel.h">
+      <Filter>AppHost\Netplay\gui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -28,6 +28,7 @@
 #include "Utilities/IniInterface.h"
 
 #include "Netplay/NetplayPlugin.h"
+#include "Netplay/INetplayDialog.h"
 
 using namespace Dialogs;
 
@@ -410,14 +411,30 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		}
 	}
 
-	// TODO: Show netpaly dialog!!
-	/*NetplayDialog dialog(options, (wxWindow*)GetMainFramePtr());
-	if(dialog.ShowModal() == wxID_OK)
-	{
-		_isEnabled = true;
+	INetplayDialog* dialog = INetplayDialog::GetInstance();
+	dialog->Initialize();
+	dialog->SetSettings(g_Conf->Net);
+	dialog->SetStatus(wxT("Please specify connection settings"));
+	dialog->Show();
+	UI_DisableEverything();
+
+	dialog->SetConnectionSettingsHandler([&]() {
+		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		dialog->SetStatus(wxT("Waiting for connection..."));
+		g_Conf->Net = dialog->GetSettings();
+		dialog->SetCloseEventHandler([&]() {
+			INetplayDialog::GetInstance()->Close();
+			CoreThread.Reset();
+			UI_EnableEverything();
+		});
+		INetplayPlugin::GetInstance().Enable(true);
 		sApp.SysExecute( g_Conf->CdvdSource );
 		UI_DisableEverything();
-	}*/
+	});
+	dialog->SetCloseEventHandler([&]() {
+		INetplayDialog::GetInstance()->Close();
+		UI_EnableEverything();
+	});
 }
 
 

@@ -1,7 +1,6 @@
 #include "PrecompiledHeader.h"
 #include "EmulatorState.h"
 
-
 EmulatorSyncState::EmulatorSyncState()
 {
 	memset(biosVersion, 0, sizeof(biosVersion));

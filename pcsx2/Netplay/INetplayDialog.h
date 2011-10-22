@@ -1,5 +1,5 @@
 #pragma once
-#include <boost/shared_ptr.hpp>
+#include <functional>
 #include "NetplaySettings.h"
 
 
@@ -8,15 +8,26 @@ class INetplayDialog
 protected:
 	static INetplayDialog* instance;
 public:
-	static INetplayDialog& GetInstance();
-	static void Create();
+	static INetplayDialog* GetInstance();
 
-	virtual boost::shared_ptr<NetplaySettings> WaitForConnectionSettings() = 0;
+	typedef std::function<void()> event_handler_type;
+
+	virtual void SetCloseEventHandler(const event_handler_type& handler) = 0;
+	virtual event_handler_type& GetCancelEventHandler() = 0;
+
+	virtual void SetSettings(const NetplaySettings& settings) = 0;
+	virtual const NetplaySettings& GetSettings() = 0;
+
+	virtual void Initialize() = 0;
+	virtual bool Show() = 0;
+	virtual bool IsShown() = 0;
+	virtual bool Close() = 0;
+
+	virtual void SetConnectionSettingsHandler(const event_handler_type& handler) = 0;
 	virtual int WaitForConfirmation() = 0;
 
 	virtual void OnConnectionEstablished(int input_delay) = 0;
-	virtual void SetStatus(const std::string& status) = 0;
-private:
-	virtual void Show() = 0;
-	virtual void Close() = 0;
+	virtual int GetInputDelay() = 0;
+	virtual void SetInputDelay(int input_delay) = 0;
+	virtual void SetStatus(const wxString& status) = 0;
 };

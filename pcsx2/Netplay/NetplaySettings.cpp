@@ -7,6 +7,7 @@ NetplaySettings::NetplaySettings()
 	Mode = ConnectMode;
 	ReadonlyMemcard = false;
 	FinetuneDelay = false;
+	SaveReplay = false;
 }
 
 void NetplaySettings::LoadSave( IniInterface& ini )
@@ -14,6 +15,7 @@ void NetplaySettings::LoadSave( IniInterface& ini )
 	NetplaySettings defaults;
 	ScopedIniGroup path( ini, L"Net" );
 
+	IniEntry( Username );
 	IniEntry( LocalPort );
 	IniEntry( HostPort );
 	IniEntry( HostAddress );

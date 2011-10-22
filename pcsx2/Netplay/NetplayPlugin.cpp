@@ -7,7 +7,7 @@
 #include "Elfheader.h"
 #include "CDVD/CDVD.h"
 #include "Netplay/NetplayPlugin.h"
-#include "Netplay/gui/NetplayDialog.h"
+#include "Netplay/INetplayDialog.h"
 
 #include "shoryu/session.h"
 #include "Message.h"
@@ -119,7 +119,7 @@ public:
 	{
 		_error_string = "";
 		_info_string = "";
-		NetplaySettings& settings = settings;
+		NetplaySettings& settings = g_Conf->Net;
 		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
 			CoreThread.Reset();
@@ -250,6 +250,9 @@ public:
 
 		SysPlugins.McdSave(port,slot, data, 0, size);
 	}
+	
+
+
 	virtual bool Connect(const wxString& ip, unsigned short port, int timeout)
 	{
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.ToAscii().data()));
@@ -260,10 +263,37 @@ public:
 			if(!_session->join(ep, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
+			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			std::string player_name;
 			{
 				boost::unique_lock<boost::mutex> lock(_string_mutex);
-				_info_string = "NETPLAY: Connection established. Starting memory card synchronization.";
+				{
+					std::stringstream ss(std::ios_base::in + std::ios_base::out);
+					std::string ip = _session->endpoints()[0].address().to_string();
+					int port = _session->endpoints()[0].port();
+					ss << ip << ":" << port;
+					player_name = ss.str();
+				}
+				{
+					std::stringstream ss(std::ios_base::in + std::ios_base::out);
+					ss << "NETPLAY: Connected to " << player_name << ". Starting memory card synchronization.";
+					_info_string = ss.str();
+				}
 			}
+			ExecuteOnMainThread([&]() {
+				dialog->OnConnectionEstablished(_session->delay());
+				dialog->SetStatus(wxString::Format(wxT(
+					"Connected to %s"), wxString::FromAscii(player_name.c_str())));
+			});
+
+			int delay = dialog->WaitForConfirmation();
+			if(delay <= 0)
+				return false;
+
+			ExecuteOnMainThread([&]() {
+				dialog->SetStatus(wxString::Format(wxT("Memory card synchronization...")));
+			});
+
 			PS2E_McdSizeInfo info;
 			SysPlugins.McdGetSizeInfo(0,0,info);
 			size_t size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
@@ -328,6 +358,10 @@ public:
 					}
 				}
 				_session->send();
+				ExecuteOnMainThread([&]() {
+					if(dialog->IsShown())
+						dialog->SetInputDelay(_session->delay());
+				});
 			}
 			timeout_timestamp = shoryu::time_ms() + 3000;
 			while(true)
@@ -348,20 +382,41 @@ public:
 			if(!_session->create(2, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
-			std::string ip = _session->endpoints()[0].address().to_string();
-			int port = _session->endpoints()[0].port();
+			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			ExecuteOnMainThread([&]() {
+				dialog->OnConnectionEstablished(_session->delay());
+			});
+			std::string player_name;
 			{
 				boost::unique_lock<boost::mutex> lock(_string_mutex);
-				std::stringstream ss(std::ios_base::in + std::ios_base::out);
-				ss << "NETPLAY: Connection from " << ip << ":" << port << ". Starting memory card synchronization.";
-				_info_string = ss.str();
+				{
+					std::stringstream ss(std::ios_base::in + std::ios_base::out);
+					std::string ip = _session->endpoints()[0].address().to_string();
+					int port = _session->endpoints()[0].port();
+					ss << ip << ":" << port;
+					player_name = ss.str();
+				}
+				{
+					std::stringstream ss(std::ios_base::in + std::ios_base::out);
+					ss << "NETPLAY: Connection from " << player_name << ". Starting memory card synchronization.";
+					_info_string = ss.str();
+				}
 			}
-
-			/*_session->delay(15);
-			_session->reannounce_delay();*/
-			// WAITING FOR INPUT DELAY HERE
-
-
+			ExecuteOnMainThread([&]() {
+				dialog->SetStatus(wxString::Format(wxT(
+					"Connection from %s"), wxString::FromAscii(player_name.c_str())));
+			});
+			int delay = dialog->WaitForConfirmation();
+			if(delay <= 0)
+				return false;
+			if(delay != _session->delay())
+			{
+				_session->delay(delay);
+				_session->reannounce_delay();
+			}
+			ExecuteOnMainThread([&]() {
+				dialog->SetStatus(wxString::Format(wxT("Memory card synchronization...")));
+			});
 			PS2E_McdSizeInfo info;
 			SysPlugins.McdGetSizeInfo(0,0,info);
 			uLongf size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
@@ -444,22 +499,28 @@ public:
 	}
 	virtual void EndSession()
 	{
-		if(_session->state() == shoryu::Ready)
+		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		if(dialog->IsShown())
+			dialog->Close();
+		if(_session)
 		{
-			_session->next_frame();
-			Message f;
-			f.end_session = true;
-			_session->set(f);
-			int try_count = _session->delay() * 4;
-			while(_session->send())
+			if(_session->state() == shoryu::Ready)
 			{
-				shoryu::sleep(17);
-				if(try_count-- == 0)
-					break;
+				_session->next_frame();
+				Message f;
+				f.end_session = true;
+				_session->set(f);
+				int try_count = _session->delay() * 4;
+				while(_session->send())
+				{
+					shoryu::sleep(17);
+					if(try_count-- == 0)
+						break;
+				}
 			}
+			_session->shutdown();
+			_session->unbind();
 		}
-		_session->shutdown();
-		_session->unbind();
 	}
 
 	virtual s32 CALLBACK NETPADopen(void *pDsp)
@@ -607,6 +668,10 @@ public:
 				{
 					if(_session->state() == shoryu::Ready)
 					{
+						ExecuteOnMainThread([&]() {
+							INetplayDialog* dialog = INetplayDialog::GetInstance();
+							dialog->Close();
+						});
 						Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
 						ready = true;
 					}
@@ -650,6 +715,22 @@ public:
 	}
 
 protected:
+	static std::function<void()> _dispatch_event;
+	static void DispatchEvent()
+	{
+		if(_dispatch_event)
+			_dispatch_event();
+	}
+	void ExecuteOnMainThread(const std::function<void()>& evt)
+	{
+		if(!_dispatch_event)
+			_dispatch_event = evt;
+		if (!wxGetApp().Rpc_TryInvoke( DispatchEvent ))
+			ExecuteOnMainThread(evt);
+		if(_dispatch_event)
+			_dispatch_event = std::function<void()>();
+	}
+
 	bool CheckSyncStates(const EmulatorSyncState& s1, const EmulatorSyncState& s2)
 	{
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
@@ -741,6 +822,8 @@ protected:
 		return syncState;
 	}
 };
+
+std::function<void()> NetplayPlugin::_dispatch_event = std::function<void()>();
 
 INetplayPlugin* INetplayPlugin::instance = 0;
 
