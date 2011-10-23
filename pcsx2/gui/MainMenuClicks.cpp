@@ -424,8 +424,6 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		g_Conf->Net = dialog->GetSettings();
 		dialog->SetCloseEventHandler([&]() {
 			INetplayDialog::GetInstance()->Close();
-			CoreThread.Reset();
-			UI_EnableEverything();
 		});
 		INetplayPlugin::GetInstance().Enable(true);
 		sApp.SysExecute( g_Conf->CdvdSource );
@@ -436,8 +434,6 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		UI_EnableEverything();
 	});
 }
-
-
 
 void MainEmuFrame::Menu_CdvdSource_Click( wxCommandEvent &event )
 {
@@ -472,7 +468,6 @@ void MainEmuFrame::Menu_BootNet_Click( wxCommandEvent &event )
 	_DoBootCdvdWithNetplay();
 }
 
-
 wxString GetMsg_IsoImageChanged()
 {
 	return _("You have selected the following ISO image into PCSX2:\n\n");
@@ -492,7 +487,6 @@ void MainEmuFrame::Menu_IsoBrowse_Click( wxCommandEvent &event )
 	SwapOrReset_Iso(this, core, isofile, GetMsg_IsoImageChanged());
 	AppSaveSettings();		// save the new iso selection; update menus!
 }
-
 
 void MainEmuFrame::Menu_MultitapToggle_Click( wxCommandEvent& )
 {

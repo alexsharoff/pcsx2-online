@@ -15,7 +15,8 @@ namespace shoryu
 		Info, //side, all endpoints, delay
 		Wait,
 		Delay, //set delay
-		Ready //send to eps, after all eps answered - start game
+		Ready, //send to eps, after all eps answered - start game
+		EndSession
 	};
 
 	struct message_data
@@ -224,6 +225,26 @@ namespace shoryu
 				_async.clear_queue(ep);
 		}
 
+		inline void send_end_session_request()
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			_end_session_request = true;
+			boost::unique_lock<boost::mutex> lock(_mutex);
+			message_type msg(EndSession);
+			foreach(auto ep, _eps)
+			{
+				_async.queue(ep, msg);
+				_async.send(ep);
+			}
+		}
+		inline bool end_session_request()
+		{
+			if(_current_state == None)
+				throw std::exception("invalid state");
+			return _end_session_request;
+		}
+
 		inline void reannounce_delay()
 		{
 			if(_current_state == None)
@@ -232,7 +253,10 @@ namespace shoryu
 			message_type msg(Delay);
 			msg.delay = delay();
 			foreach(auto ep, _eps)
+			{
 				_async.queue(ep, msg);
+				_async.send(ep);
+			}
 		}
 
 		inline void queue_data(message_data& data)
@@ -460,6 +484,7 @@ namespace shoryu
 			_current_state = None;
 			//_host = false;
 			_eps.clear();
+			_end_session_request = false;
 			_frame_table.clear();
 			_last_error = "";
 			_data_table.clear();
@@ -828,6 +853,12 @@ namespace shoryu
 					delay(msg.delay);
 					send(ep);
 				}
+				if(msg.cmd == EndSession)
+				{
+					boost::unique_lock<boost::mutex> lock(_mutex);
+					_end_session_request = true;
+					send(ep);
+				}
 			}
 		}
 		void err_hdl(const error_code& error)
@@ -843,6 +874,7 @@ namespace shoryu
 		int _packet_loss;
 		int _send_delay_max;
 		int _send_delay_min;
+		bool _end_session_request;
 
 		std::string _last_error;
 

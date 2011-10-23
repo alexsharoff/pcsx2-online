@@ -187,6 +187,7 @@ public:
 			first = true;
 			synchronized = false;
 			ready = false;
+			_connectionEstablished = false;
 			if(settings.Mode == ConnectMode)
 			{
 				Console.Warning("NETPLAY: Connecting to %s:%u using local port %u.",
@@ -250,8 +251,6 @@ public:
 
 		SysPlugins.McdSave(port,slot, data, 0, size);
 	}
-	
-
 
 	virtual bool Connect(const wxString& ip, unsigned short port, int timeout)
 	{
@@ -306,6 +305,8 @@ public:
 
 			while(true)
 			{
+				if(_session->end_session_request())
+					return false;
 				if(!_isEnabled)
 					return false;
 				shoryu::message_data data;
@@ -358,19 +359,26 @@ public:
 					}
 				}
 				_session->send();
-				ExecuteOnMainThread([&]() {
-					if(dialog->IsShown())
-						dialog->SetInputDelay(_session->delay());
-				});
+				if(delay != _session->delay())
+				{
+					ExecuteOnMainThread([&]() {
+						if(dialog->IsShown())
+							dialog->SetInputDelay(_session->delay());
+					});
+				}
 			}
 			timeout_timestamp = shoryu::time_ms() + 3000;
 			while(true)
 			{
+				if(_session->end_session_request())
+					return false;
 				_session->send();
 				if(timeout_timestamp < shoryu::time_ms())
 					break;
 				shoryu::sleep(50);
 			}
+			_connectionEstablished = true;
+			return true;
 		}
 		return false;
 	}
@@ -477,6 +485,8 @@ public:
 			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
 			while(int n = _session->send_sync())
 			{
+				if(_session->end_session_request())
+					return false;
 				if(_session->first_received_frame() != -1)
 				{
 					_session->clear_queue();
@@ -493,23 +503,23 @@ public:
 					return false;
 				}
 			}
+			_connectionEstablished = true;
 			return true;
 		}
 		return false;
 	}
-	virtual void EndSession()
+	void EndSession()
 	{
-		INetplayDialog* dialog = INetplayDialog::GetInstance();
-		if(dialog->IsShown())
-			dialog->Close();
+		ExecuteOnMainThread([&]() {
+			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			if(dialog->IsShown())
+				dialog->Close();
+		});
 		if(_session)
 		{
 			if(_session->state() == shoryu::Ready)
 			{
-				_session->next_frame();
-				Message f;
-				f.end_session = true;
-				_session->set(f);
+				_session->send_end_session_request();
 				int try_count = _session->delay() * 4;
 				while(_session->send())
 				{
@@ -538,6 +548,23 @@ public:
 			poller.cmd42Counter++;
 
 		u8 r = PADpollBackup(value);
+
+		if(_session && _session->end_session_request() && !_sessionEnded)
+		{
+			if(_thread)
+				_thread->join();
+			CoreThread.Reset();
+			Console.Warning("NETPLAY: Session ended.");
+			ExecuteOnMainThread([&]() {
+				INetplayDialog* dialog = INetplayDialog::GetInstance();
+				if(dialog->IsShown())
+					dialog->Close();
+			});
+			UI_EnableEverything();
+			_sessionEnded = true;
+		}
+		if(_sessionEnded)
+			return r;
 		Message f;
 		if(poller.cmd42Counter > 2 && poller.pollCounter > 1)
 		{
@@ -553,22 +580,6 @@ public:
 							synchronized = _session->first_received_frame() > 0
 								&& _session->frame() > _session->first_received_frame()
 								&& _session->frame() <= _session->last_received_frame();
-
-							for(int64_t i = _session->first_received_frame(); i<=_session->last_received_frame(); i++)
-							{
-								if(i>=0)
-								{
-									_session->get(1-_session->side(), f, i, 0);
-									if(f.end_session && !_sessionEnded)
-									{
-										CoreThread.Reset();
-										Console.Warning("NETPLAY: Session ended.");
-										UI_EnableEverything();
-										_sessionEnded = true;
-										break;
-									}
-								}
-							}
 						}
 						if(poller.pollCounter == 7)
 						{
@@ -595,9 +606,25 @@ public:
 				{
 					if(synchronized)
 					{
+						auto timeout = shoryu::time_ms() + 10000;
 						while(!_session->get(poller.side, f, _session->delay()*17))
 						{
 							_session->send();
+							if(_session->end_session_request())
+								break;
+							if(timeout <= shoryu::time_ms())
+							{
+								CoreThread.Reset();
+								Console.Warning("NETPLAY: Timeout.");
+								ExecuteOnMainThread([&]() {
+									INetplayDialog* dialog = INetplayDialog::GetInstance();
+									if(dialog->IsShown())
+										dialog->Close();
+								});
+								UI_EnableEverything();
+								_sessionEnded = true;
+								break;
+							}
 #ifdef CONNECTION_TEST
 							shoryu::sleep(3000);
 #endif
@@ -606,13 +633,6 @@ public:
 					else
 					{
 						_session->send();
-					}
-					if(f.end_session && !_sessionEnded)
-					{
-						CoreThread.Reset();
-						Console.Warning("NETPLAY: Session ended.");
-						UI_EnableEverything();
-						_sessionEnded = true;
 					}
 				}
 				catch(std::exception& e)
@@ -666,11 +686,19 @@ public:
 			{
 				if(_thread->timed_join(boost::posix_time::milliseconds(3000)))
 				{
-					if(_session->state() == shoryu::Ready)
+					if(_session->state() != shoryu::Ready)
+					{
+						CoreThread.Reset();
+						Console.Error("NETPLAY: Unable to establish connection.");
+						UI_EnableEverything();
+						return PADsetSlotBackup(port, slot);
+					}
+					if(_connectionEstablished)
 					{
 						ExecuteOnMainThread([&]() {
 							INetplayDialog* dialog = INetplayDialog::GetInstance();
-							dialog->Close();
+							if(dialog->IsShown())
+								dialog->Close();
 						});
 						Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
 						ready = true;
@@ -678,7 +706,7 @@ public:
 					else
 					{
 						CoreThread.Reset();
-						Console.Error("NETPLAY: Unable to establish connection.");
+						Console.Error("NETPLAY: Interrupted.");
 						UI_EnableEverything();
 						return PADsetSlotBackup(port, slot);
 					}
@@ -773,6 +801,7 @@ protected:
 
 	bool _isEnabled;
 	bool _sessionEnded;
+	bool _connectionEstablished;
 
 	Message myFrame;
 	Pcsx2Config EmuOptionsBackup;

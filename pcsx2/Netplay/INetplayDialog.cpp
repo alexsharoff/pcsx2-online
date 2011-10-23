@@ -52,10 +52,15 @@ public:
 				_cond.notify_one();
 		});
 		m_dialog->SetCloseEventHandler([&] () { 
-			_operation_success = false;
-			if(_close_handler)
-				_close_handler();
-			_cond.notify_one();
+			try
+			{
+				_operation_success = false;
+				if(IsShown())
+					_cond.notify_one();
+				if(_close_handler)
+					_close_handler();
+			}
+			catch(...){}
 		});
 	}
 	bool Show()

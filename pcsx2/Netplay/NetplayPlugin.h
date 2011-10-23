@@ -22,6 +22,7 @@ public:
 	virtual void Open() = 0;
 	virtual void Init() = 0;
 	virtual void Close() = 0;
+	virtual void EndSession() = 0;
 
 	virtual s32 CALLBACK NETPADopen(void *pDsp) = 0;
 	virtual u8 CALLBACK NETPADstartPoll(int pad) = 0;
