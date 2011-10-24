@@ -861,6 +861,10 @@ protected:
 			syncState.reset();
 			return syncState;
 		}
+		memset(syncState->biosVersion, 0, sizeof(syncState->biosVersion));
+		memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
+			biosDesc.length() > sizeof(syncState->biosVersion) ? 
+			sizeof(syncState->biosVersion) : biosDesc.length());
 		return syncState;
 	}
 };
