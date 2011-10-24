@@ -383,9 +383,10 @@ bool GSState::IsEnabled(int i)
 	return false;
 }
 
-int GSState::GetFPS()
+float GSState::GetFPS()
 {
-	return ((m_regs->SMODE1.CMOD & 1) ? 50 : 60) >> (1 - m_regs->SMODE2.INT);
+	float base_rate = ((m_regs->SMODE1.CMOD & 1) ? 25 : (30/1.001f));
+	return base_rate * (m_regs->SMODE2.INT ? 2 : 1);
 }
 
 // GIFPackedRegHandler*
@@ -3153,7 +3154,7 @@ bool GSC_Yakuza(const GSFrameInfo& fi, int& skip)
 		*/
 	)
 	{
-		skip=17;
+		skip=3;
 	}
 	return true;
 }

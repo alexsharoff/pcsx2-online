@@ -118,20 +118,9 @@ _vifT static __fi bool vifTransfer(u32 *data, int size, bool TTE) {
 	vifX.vifstalled = false;
 	vifX.stallontag = false;
 	vifX.vifpacketsize = size;
-	g_packetsizeonvu = size;
 	vifTransferLoop<idx>(data);
 
 	transferred += size - vifX.vifpacketsize;
-	g_vifCycles +=((transferred * BIAS) >> 2) ; /* guessing */
-
-	if(!idx && g_vu0Cycles > 0) {
-		if  (g_vifCycles <  g_vu0Cycles) g_vu0Cycles -= g_vifCycles;
-		elif(g_vifCycles >= g_vu0Cycles) g_vu0Cycles  = 0;
-	}
-	if (idx && g_vu1Cycles > 0) {
-		if  (g_vifCycles <  g_vu1Cycles) g_vu1Cycles -= g_vifCycles;
-		elif(g_vifCycles >= g_vu1Cycles) g_vu1Cycles  = 0;
-	}
 
 	vifX.irqoffset = transferred % 4; // cannot lose the offset
 

@@ -1240,6 +1240,7 @@
     <ClInclude Include="..\..\Gif_Unit.h">
       <Filter>System\Ps2\GS</Filter>
     </ClInclude>
+<<<<<<< .mine
     <ClInclude Include="..\..\Netplay\gui\NetplayDialog.h">
       <Filter>AppHost\Netplay\gui</Filter>
     </ClInclude>
@@ -1294,6 +1295,11 @@
     <ClInclude Include="..\..\Netplay\ReplayPlugin.h">
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
+=======
+    <ClInclude Include="..\..\x86\microVU_Profiler.h">
+      <Filter>System\Ps2\EmotionEngine\VU\Dynarec\microVU</Filter>
+    </ClInclude>
+>>>>>>> .r4943
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\3rdparty\wxWidgets\include\wx\msw\wx.rc">
