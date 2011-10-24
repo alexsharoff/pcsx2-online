@@ -188,6 +188,7 @@ public:
 			synchronized = false;
 			ready = false;
 			_connectionEstablished = false;
+			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 			if(settings.Mode == ConnectMode)
 			{
 				Console.Warning("NETPLAY: Connecting to %s:%u using local port %u.",
@@ -263,15 +264,21 @@ public:
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			ExecuteOnMainThread([&]() {
+				dialog->OnConnectionEstablished(_session->delay());
+			});
 			std::string player_name;
 			{
 				boost::unique_lock<boost::mutex> lock(_string_mutex);
 				{
-					std::stringstream ss(std::ios_base::in + std::ios_base::out);
-					std::string ip = _session->endpoints()[0].address().to_string();
-					int port = _session->endpoints()[0].port();
-					ss << ip << ":" << port;
-					player_name = ss.str();
+					auto ep = _session->endpoints()[0];
+					player_name = _session->username(ep);
+					if(!player_name.length())
+					{
+						std::stringstream ss(std::ios_base::in + std::ios_base::out);
+						ss << ep.address().to_string() << ":" << ep.port();
+						player_name = ss.str();
+					}
 				}
 				{
 					std::stringstream ss(std::ios_base::in + std::ios_base::out);
@@ -280,9 +287,8 @@ public:
 				}
 			}
 			ExecuteOnMainThread([&]() {
-				dialog->OnConnectionEstablished(_session->delay());
-				dialog->SetStatus(wxString::Format(wxT(
-					"Connected to %s"), wxString::FromAscii(player_name.c_str())));
+				dialog->SetStatus(wxT("Connected to ") + 
+					wxString(player_name.c_str(), wxConvUTF8));
 			});
 
 			int delay = dialog->WaitForConfirmation();
@@ -290,7 +296,7 @@ public:
 				return false;
 
 			ExecuteOnMainThread([&]() {
-				dialog->SetStatus(wxString::Format(wxT("Memory card synchronization...")));
+				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 
 			PS2E_McdSizeInfo info;
@@ -398,11 +404,14 @@ public:
 			{
 				boost::unique_lock<boost::mutex> lock(_string_mutex);
 				{
-					std::stringstream ss(std::ios_base::in + std::ios_base::out);
-					std::string ip = _session->endpoints()[0].address().to_string();
-					int port = _session->endpoints()[0].port();
-					ss << ip << ":" << port;
-					player_name = ss.str();
+					auto ep = _session->endpoints()[0];
+					player_name = _session->username(ep);
+					if(!player_name.length())
+					{
+						std::stringstream ss(std::ios_base::in + std::ios_base::out);
+						ss << ep.address().to_string() << ":" << ep.port();
+						player_name = ss.str();
+					}
 				}
 				{
 					std::stringstream ss(std::ios_base::in + std::ios_base::out);
@@ -411,8 +420,8 @@ public:
 				}
 			}
 			ExecuteOnMainThread([&]() {
-				dialog->SetStatus(wxString::Format(wxT(
-					"Connection from %s"), wxString::FromAscii(player_name.c_str())));
+				dialog->SetStatus(wxT("Connection from ") + 
+					wxString(player_name.c_str(), wxConvUTF8));
 			});
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
@@ -423,7 +432,7 @@ public:
 				_session->reannounce_delay();
 			}
 			ExecuteOnMainThread([&]() {
-				dialog->SetStatus(wxString::Format(wxT("Memory card synchronization...")));
+				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 			PS2E_McdSizeInfo info;
 			SysPlugins.McdGetSizeInfo(0,0,info);
@@ -433,6 +442,10 @@ public:
 			{
 				boost::shared_array<Bytef> mcd(new Bytef[size]);
 				SysPlugins.McdRead(0,0, (u8*) mcd.get(), 0, size);
+
+				if(g_Conf->Net.ReadonlyMemcard)
+					mcd_backup = mcd;
+
 				uLongf size_tmp = size;
 				int r = compress2(buffer.get(), &size, mcd.get(), size_tmp, Z_BEST_COMPRESSION);
 				if(r != Z_OK)
@@ -551,15 +564,15 @@ public:
 
 		if(_session && _session->end_session_request() && !_sessionEnded)
 		{
-			if(_thread)
-				_thread->join();
-			CoreThread.Reset();
-			Console.Warning("NETPLAY: Session ended.");
 			ExecuteOnMainThread([&]() {
 				INetplayDialog* dialog = INetplayDialog::GetInstance();
 				if(dialog->IsShown())
 					dialog->Close();
 			});
+			if(_thread)
+				_thread->join();
+			CoreThread.Reset();
+			Console.Warning("NETPLAY: Session ended.");
 			UI_EnableEverything();
 			_sessionEnded = true;
 		}

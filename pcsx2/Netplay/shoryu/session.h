@@ -40,6 +40,7 @@ namespace shoryu
 		StateType state;
 		int64_t frame_id;
 		std::vector<endpoint> eps;
+		std::vector<std::string> usernames;
 		endpoint host_ep;
 		uint32_t rand_seed;
 		uint8_t delay;
@@ -48,14 +49,20 @@ namespace shoryu
 		uint8_t peers_count;
 		T frame;
 		message_data data;
+		std::string username;
 		
 		inline void serialize(shoryu::oarchive& a) const
 		{
 			a << cmd;
+			size_t length;
 			switch(cmd)
 			{
 			case Join:
 				a << state << host_ep.address().to_v4().to_ulong() << host_ep.port();
+				length = username.length();
+				a << length;
+				if(length)
+					a.write((char*)username.c_str(), username.length());
 				break;
 			case Data:
 				a << frame_id << data.data_length;
@@ -72,8 +79,14 @@ namespace shoryu
 				break;
 			case Info:
 				a << rand_seed << side << eps.size();
-				foreach(const endpoint& ep, eps)
-					a << ep.address().to_v4().to_ulong() << ep.port();
+				for(size_t i = 0; i < eps.size(); i++)
+				{
+					a << eps[i].address().to_v4().to_ulong() << eps[i].port();
+					length = usernames[i].length();
+					a << length;
+					if(length)
+						a.write((char*)usernames[i].c_str(), usernames[i].length());
+				}
 				a << state;
 				break;
 			case Delay:
@@ -92,6 +105,14 @@ namespace shoryu
 			case Join:
 				a >> state >> addr >> port;
 				host_ep = endpoint(address_type(addr), port);
+				size_t length;
+				a >> length;
+				if(length > 0)
+				{
+					std::auto_ptr<char> str(new char[length]);
+					a.read(str.get(), length);
+					username.assign(str.get(), str.get()+length);
+				}
 				break;
 			case Data:
 				a >> frame_id >> data.data_length;
@@ -114,6 +135,16 @@ namespace shoryu
 				{
 					a >> addr >> port;
 					eps.push_back(endpoint(address_type(addr), port));
+					size_t length;
+					a >> length;
+					if(length > 0)
+					{
+						std::auto_ptr<char> str(new char[length]);
+						a.read(str.get(), length);
+						usernames.push_back(std::string(str.get(), str.get()+length));
+					}
+					else
+						usernames.push_back(std::string());
 				}
 				a >> state;
 				break;
@@ -227,8 +258,6 @@ namespace shoryu
 
 		inline void send_end_session_request()
 		{
-			if(_current_state == None)
-				throw std::exception("invalid state");
 			_end_session_request = true;
 			boost::unique_lock<boost::mutex> lock(_mutex);
 			message_type msg(EndSession);
@@ -240,8 +269,6 @@ namespace shoryu
 		}
 		inline bool end_session_request()
 		{
-			if(_current_state == None)
-				throw std::exception("invalid state");
 			return _end_session_request;
 		}
 
@@ -468,6 +495,18 @@ namespace shoryu
 			boost::unique_lock<boost::mutex> lock(_error_mutex);
 			_last_error = err;
 		}
+		const std::string& username(const endpoint& ep)
+		{
+			return _username_map[ep];
+		}
+		const std::string& username()
+		{
+			return _username;
+		}
+		void username(const std::string& name)
+		{
+			_username = name;
+		}
 	protected:
 		void try_prepare()
 		{
@@ -475,6 +514,7 @@ namespace shoryu
 		}
 		void clear()
 		{
+			_username_map.clear();
 			_connection_sem.clear();
 			_last_received_frame = -1;
 			_first_received_frame = -1;
@@ -569,6 +609,7 @@ namespace shoryu
 #ifdef SHORYU_ENABLE_LOG
 				log << "[" << time_ms() << "] In.Join ";
 #endif
+				_username_map[ep] = msg.username;
 				if(!_state_check_handler(_state, msg.state))
 				{
 					message_type msg(Deny);
@@ -608,7 +649,13 @@ namespace shoryu
 						msg.state = _state;
 						_eps = ready_list;
 						for(size_t i = 0; i < _eps.size(); i++)
+						{
 							_sides[_eps[i]] = i;
+							if(i != _side)
+								msg.usernames.push_back(_username_map[_eps[i]]);
+							else
+								msg.usernames.push_back(_username);
+						}
 
 						_eps.erase(std::find(_eps.begin(), _eps.end(), _eps[_side]));
 						srand(msg.rand_seed);
@@ -647,7 +694,6 @@ namespace shoryu
 #endif
 				peer_info pi = { Delay, 0, msg.delay };
 				_states[ep] = pi;
-
 				int ready = 0;
 				int d = 0;
 				foreach(auto kv, _states)
@@ -689,6 +735,7 @@ namespace shoryu
 				if(timeout > 0 && (time_ms() - start_time > timeout))
 					return false;
 				message_type msg(Join);
+				msg.username = _username;
 				msg.host_ep = host_ep;
 				msg.state = _state;
 				if(!send(host_ep))
@@ -778,7 +825,10 @@ namespace shoryu
 				_side = msg.side;
 				_eps = msg.eps;
 				for(size_t i = 0; i < _eps.size(); i++)
+				{
 					_sides[_eps[i]] = i;
+					_username_map[_eps[i]] = msg.usernames[i];
+				}
 				_eps.erase(std::find(_eps.begin(), _eps.end(), _eps[_side]));
 				std::srand(msg.rand_seed);
 				_current_state = Info;
@@ -875,7 +925,11 @@ namespace shoryu
 		int _send_delay_max;
 		int _send_delay_min;
 		bool _end_session_request;
+		
+		std::string _username;
+		typedef std::map<endpoint, std::string> username_map;
 
+		username_map _username_map;
 		std::string _last_error;
 
 		side_map _sides;

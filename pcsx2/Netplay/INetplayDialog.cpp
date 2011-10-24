@@ -49,14 +49,13 @@ public:
 					_settings_ready_handler();
 			}
 			else
-				_cond.notify_one();
+				_cond->notify_one();
 		});
 		m_dialog->SetCloseEventHandler([&] () { 
 			try
 			{
 				_operation_success = false;
-				if(IsShown())
-					_cond.notify_one();
+				_cond->notify_one();
 				if(_close_handler)
 					_close_handler();
 			}
@@ -65,6 +64,7 @@ public:
 	}
 	bool Show()
 	{
+		_cond.reset(new boost::condition_variable());
 		return m_dialog->Show();
 	}
 	bool IsShown()
@@ -78,6 +78,8 @@ public:
 	{
 		if(m_dialog)
 		{
+			_operation_success = false;
+			_cond->notify_one();
 			m_dialog.reset();
 			return true;
 		}
@@ -93,7 +95,7 @@ public:
 		if(_phase != Confirmation)
 			throw std::exception("invalid state");
 		boost::unique_lock<boost::mutex> lock(_mutex);
-		_cond.wait(lock);
+		_cond->wait(lock);
 		_phase = _operation_success ? Ready : None;
 		if(_operation_success)
 			return m_dialog->GetInputDelayPanel().GetInputDelay();
@@ -124,7 +126,7 @@ public:
 	}
 protected:
 	boost::shared_ptr<NetplayDialog> m_dialog;
-	boost::condition_variable _cond;
+	boost::shared_ptr<boost::condition_variable> _cond;
 	boost::mutex _mutex;
 	bool _operation_success;
 	NetplayConfigurationPhase _phase;
