@@ -27,6 +27,7 @@
 
 #include "Utilities/ScopedPtr.h"
 #include "Utilities/pxStreams.h"
+#include "IOPHook.h"
 
 #if _MSC_VER || defined(LINUX_PRINT_SVN_NUMBER)
 #	include "svnrev.h"
@@ -1198,8 +1199,11 @@ void SysCorePlugins::Open()
 		OpenPlugin_Mcd();
 	}
 	
+	HookIOP();
+
 	if(INetplayPlugin::GetInstance().IsEnabled())
 	{
+		g_IOPHook = &INetplayPlugin::GetInstance();
 		DbgCon.Indent().WriteLn( "Opening Netplay");
 		INetplayPlugin::GetInstance().Open();
 	}
@@ -1302,12 +1306,17 @@ void SysCorePlugins::Close()
 
 	Console.WriteLn( Color_StrongBlue, "Closing plugins..." );
 	
+
+	UnhookIOP();
+
 	if(INetplayPlugin::GetInstance().IsEnabled()) 
 	{
+		g_IOPHook = 0;
 		DbgCon.Indent().WriteLn( "Closing Netplay");
 		ScopedLock lock( m_mtx_PluginStatus );
 		INetplayPlugin::GetInstance().Close();
 	}
+
 
 	if( AtomicExchange( m_mcdOpen, false ) )
 	{

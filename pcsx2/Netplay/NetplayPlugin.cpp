@@ -29,84 +29,6 @@
 //#define CONNECTION_TEST
 
 using namespace std;
-namespace
-{
-	_PADupdate		   PADupdateBackup;
-	_PADopen           PADopenBackup;
-	_PADstartPoll      PADstartPollBackup;
-	_PADpoll           PADpollBackup;
-	_PADquery          PADqueryBackup;
-	_PADkeyEvent       PADkeyEventBackup;
-	_PADsetSlot        PADsetSlotBackup;
-	_PADqueryMtap      PADqueryMtapBackup;
-	
-	s32 CALLBACK NETPADopen(void *pDsp)
-	{
-		return INetplayPlugin::GetInstance().NETPADopen(pDsp);
-	}
-	u8 CALLBACK NETPADstartPoll(int pad)
-	{
-		return INetplayPlugin::GetInstance().NETPADstartPoll(pad);
-	}
-	u8 CALLBACK NETPADpoll(u8 value)
-	{
-		return INetplayPlugin::GetInstance().NETPADpoll(value);
-	}
-	u32 CALLBACK NETPADquery(int pad)
-	{
-		return INetplayPlugin::GetInstance().NETPADquery(pad);
-	}
-	keyEvent* CALLBACK NETPADkeyEvent()
-	{
-		return INetplayPlugin::GetInstance().NETPADkeyEvent();
-	}
-	s32 CALLBACK NETPADsetSlot(u8 port, u8 slot)
-	{
-		return INetplayPlugin::GetInstance().NETPADsetSlot(port, slot);
-	}
-	s32 CALLBACK NETPADqueryMtap(u8 port)
-	{
-		return INetplayPlugin::GetInstance().NETPADqueryMtap(port);
-	}
-	void CALLBACK NETPADupdate(int pad)
-	{
-		return INetplayPlugin::GetInstance().NETPADupdate(pad);
-	}
-
-	void ReplaceHandlers()
-	{
-		PADopenBackup = PADopen;
-		PADstartPollBackup = PADstartPoll;
-		PADpollBackup = PADpoll;
-		PADqueryBackup = PADquery;
-		PADkeyEventBackup = PADkeyEvent;
-		PADsetSlotBackup = PADsetSlot;
-		PADqueryMtapBackup = PADqueryMtap;
-		PADupdateBackup = PADupdate;
-		
-		PADopen = NETPADopen;
-		PADstartPoll = NETPADstartPoll;
-		PADpoll = NETPADpoll;
-		PADquery = NETPADquery;
-		PADkeyEvent = NETPADkeyEvent;
-		PADsetSlot = NETPADsetSlot;
-		PADqueryMtap = NETPADqueryMtap;
-		PADupdate = NETPADupdate;
-	}
-
-	void RestoreHandlers()
-	{
-		//PADinit = PADinitBackup;
-		PADopen = PADopenBackup;
-		PADstartPoll = PADstartPollBackup;
-		PADpoll = PADpollBackup;
-		PADquery = PADqueryBackup;
-		PADkeyEvent = PADkeyEventBackup;
-		PADsetSlot = PADsetSlotBackup;
-		PADqueryMtap = PADqueryMtapBackup;
-		PADupdate = PADupdateBackup;
-	}
-}
 
 class NetplayPlugin : public INetplayPlugin
 {
@@ -546,15 +468,7 @@ public:
 		}
 	}
 
-	virtual s32 CALLBACK NETPADopen(void *pDsp)
-	{
-		return PADopenBackup(pDsp);
-	}
-	virtual u8 CALLBACK NETPADstartPoll(int pad)
-	{
-		u8 r = PADstartPollBackup(pad);
-		return r;
-	}
+
 	virtual u8 CALLBACK NETPADpoll(u8 value)
 	{
 		if(poller.pollCounter == 0 && value == 0x42 && poller.side == 0)
@@ -663,14 +577,7 @@ public:
 		poller.pollCounter++;
 		return r;
 	}
-	virtual u32 CALLBACK NETPADquery(int pad)
-	{
-		return PADqueryBackup(pad);
-	}
-	virtual keyEvent* CALLBACK NETPADkeyEvent()
-	{
-		return PADkeyEventBackup();
-	}
+	
 	virtual s32 CALLBACK NETPADsetSlot(u8 port, u8 slot)
 	{
 		{
@@ -744,15 +651,6 @@ public:
 			}
 		}
 		return PADsetSlotBackup(port, slot);
-	}
-	virtual s32 CALLBACK NETPADqueryMtap(u8 port)
-	{
-		return PADqueryMtapBackup(port);
-	}
-	virtual void CALLBACK NETPADupdate(int pad)
-	{
-		if(PADupdateBackup)
-			PADupdateBackup(pad);
 	}
 
 protected:

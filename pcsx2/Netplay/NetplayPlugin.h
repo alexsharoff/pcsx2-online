@@ -2,14 +2,10 @@
 
 #include "IopCommon.h"
 #include "App.h"
-
-struct ConnectionEstimate
-{
-	int delay;
-};
+#include "IOPHook.h"
 
 
-class INetplayPlugin
+class INetplayPlugin : public IOPHook
 {
 protected:
 	static INetplayPlugin* instance;
@@ -22,8 +18,7 @@ public:
 	virtual void Open() = 0;
 	virtual void Init() = 0;
 	virtual void Close() = 0;
-	virtual void EndSession() = 0;
-
+	
 	virtual s32 CALLBACK NETPADopen(void *pDsp) = 0;
 	virtual u8 CALLBACK NETPADstartPoll(int pad) = 0;
 	virtual u8 CALLBACK NETPADpoll(u8 value) = 0;
