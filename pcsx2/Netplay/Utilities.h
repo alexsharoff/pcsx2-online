@@ -1,3 +1,4 @@
+#pragma once
 #include "App.h"
 #include <vector>
 

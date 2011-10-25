@@ -78,7 +78,7 @@ Dialogs::CreateMemoryCardDialog::CreateMemoryCardDialog( wxWindow* parent, const
 		s_filename += m_text_filenameInput;
 		s_filename += Heading( L".ps2" );
 
-		s_padding += s_filename | wxALIGN_LEFT;
+		s_padding += s_filename | wxSizerFlags(wxALIGN_LEFT);
 
 	}
 

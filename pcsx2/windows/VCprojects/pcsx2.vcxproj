@@ -428,7 +428,7 @@
     <ClCompile Include="..\..\Netplay\Message.cpp" />
     <ClCompile Include="..\..\Netplay\NetplayPlugin.cpp" />
     <ClCompile Include="..\..\Netplay\NetplaySettings.cpp" />
-    <ClCompile Include="..\..\Netplay\ReplayFile.cpp" />
+    <ClCompile Include="..\..\Netplay\Replay.cpp" />
     <ClCompile Include="..\..\Netplay\ReplayPlugin.cpp" />
     <ClCompile Include="..\..\Netplay\ReplaySettings.cpp" />
     <ClCompile Include="..\..\Netplay\Utilities.cpp" />
@@ -711,7 +711,7 @@
     <ClInclude Include="..\..\Netplay\Message.h" />
     <ClInclude Include="..\..\Netplay\NetplayPlugin.h" />
     <ClInclude Include="..\..\Netplay\NetplaySettings.h" />
-    <ClInclude Include="..\..\Netplay\ReplayFile.h" />
+    <ClInclude Include="..\..\Netplay\Replay.h" />
     <ClInclude Include="..\..\Netplay\ReplayPlugin.h" />
     <ClInclude Include="..\..\Netplay\ReplaySettings.h" />
     <ClInclude Include="..\..\Netplay\shoryu\archive.h" />

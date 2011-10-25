@@ -1,6 +1,7 @@
 #include "PrecompiledHeader.h"
 
 #include "AppConfig.h"
+#include <wx/stdpaths.h>
 #include <iostream>
 #include <fstream>
 #include "ps2/BiosTools.h"
@@ -11,10 +12,12 @@
 
 #include "shoryu/session.h"
 #include "Message.h"
+#include "Replay.h"
 
 #include "NetplaySettings.h"
 
 #include "Utilities.h"
+
 
 //#define CONNECTION_TEST
 
@@ -96,6 +99,13 @@ public:
 			synchronized = false;
 			_connectionEstablished = false;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
+
+			if(g_Conf->Net.SaveReplay)
+			{
+				_replay.reset(new Replay());
+				_replay->Mode(Recording);
+			}
+			_game_name.clear();
 			if(settings.Mode == ConnectMode)
 			{
 				Console.Warning("NETPLAY: Connecting to %s:%u using local port %u.",
@@ -132,6 +142,24 @@ public:
 			Utilities::WriteMCD(0,0,mcd_backup);
 			mcd_backup.clear();
 		}
+		if(_replay)
+		{
+			try
+			{
+				wxDirName dir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+				dir = dir.Combine(wxDirName("replays"));
+				wxString replayName = _game_name + wxT(".rep");
+				wxString file = ( dir + replayName ).GetFullPath();
+				Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
+				_replay->SaveToFile(file);
+			}
+			catch(std::exception& e)
+			{
+				Console.Error("REPLAY: %s", e.what());
+				Stop();
+			}
+			_replay.reset();
+		}
 	}
 	virtual bool BindPort(unsigned short port)
 	{
@@ -152,6 +180,8 @@ public:
 		auto state = GetSyncState();
 		if(state)
 		{
+			if(_replay)
+				_replay->SyncState(*state);
 			if(!_session->join(ep, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
@@ -164,7 +194,7 @@ public:
 			player_name = _session->username(ep);
 			if(!player_name.length())
 			{
-				std::stringstream ss(std::ios_base::in + std::ios_base::out);
+				std::stringstream ss;
 				ss << ep.address().to_string() << ":" << ep.port();
 				player_name = ss.str();
 			}
@@ -178,6 +208,13 @@ public:
 				dialog->SetStatus(wxT("Connected to ") + wxName);
 			});
 
+			{
+				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
+				if(!myName.Len())
+					myName = wxT("Me");
+				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + wxName + wxT("_vs_") + myName;
+			}
+
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
 				return false;
@@ -189,8 +226,8 @@ public:
 			mcd_backup = Utilities::ReadMCD(0,0);
 
 			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
-			Utilities::block_type compressed_mcd(Utilities::GetMCDSize(0,0));
-
+			size_t mcd_size = Utilities::GetMCDSize(0,0);
+			Utilities::block_type compressed_mcd(mcd_size);
 			size_t pos = 0;
 			while(true)
 			{
@@ -218,7 +255,7 @@ public:
 					else
 					{
 						compressed_mcd.resize(pos);
-						Utilities::block_type uncompressed_mcd(Utilities::GetMCDSize(0,0));
+						Utilities::block_type uncompressed_mcd(mcd_size);
 
 						if(!Utilities::Uncompress(compressed_mcd, uncompressed_mcd))
 						{
@@ -228,7 +265,7 @@ public:
 							RequestStop();
 							return false;
 						}
-						if(uncompressed_mcd.size() != Utilities::GetMCDSize(0,0))
+						if(uncompressed_mcd.size() != mcd_size)
 						{
 							ExecuteOnMainThread([&]() {
 								Console.Error("NETPLAY: Invalid MCD received from host.");
@@ -237,6 +274,8 @@ public:
 							return false;
 						}
 						Utilities::WriteMCD(0,0,uncompressed_mcd);
+						if(_replay)
+							_replay->Data(uncompressed_mcd);
 						break;
 					}
 				}
@@ -249,6 +288,7 @@ public:
 					});
 				}
 			}
+			/*
 			timeout_timestamp = shoryu::time_ms() + 3000;
 			while(true)
 			{
@@ -259,6 +299,7 @@ public:
 					break;
 				shoryu::sleep(50);
 			}
+			*/
 			_connectionEstablished = true;
 			return true;
 		}
@@ -271,6 +312,8 @@ public:
 		auto state = GetSyncState();
 		if(state)
 		{
+			if(_replay)
+				_replay->SyncState(*state);
 			if(!_session->create(2, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
@@ -283,7 +326,7 @@ public:
 			player_name = _session->username(ep);
 			if(!player_name.length())
 			{
-				std::stringstream ss(std::ios_base::in + std::ios_base::out);
+				std::stringstream ss;
 				ss << ep.address().to_string() << ":" << ep.port();
 				player_name = ss.str();
 			}
@@ -295,6 +338,13 @@ public:
 			ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Connection from ") + wxName);
 			});
+
+			{
+				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
+				if(!myName.Len())
+					myName = wxT("Me");
+				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + myName + wxT("_vs_") + wxName;
+			}
 
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
@@ -309,7 +359,10 @@ public:
 			});
 
 			auto uncompressed_mcd = Utilities::ReadMCD(0,0);
-			Utilities::block_type compressed_mcd(Utilities::GetMCDSize(0,0));
+			if(_replay)
+				_replay->Data(uncompressed_mcd);
+			size_t mcd_size = Utilities::GetMCDSize(0,0);
+			Utilities::block_type compressed_mcd(mcd_size);
 			if(g_Conf->Net.ReadonlyMemcard)
 				mcd_backup = uncompressed_mcd;
 			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
@@ -320,7 +373,6 @@ public:
 				RequestStop();
 				return false;
 			}
-
 			size_t blockSize = 128;
 			for(size_t i = 0; i < compressed_mcd.size(); i+=blockSize)
 			{
@@ -460,6 +512,14 @@ public:
 				Stop();
 			}
 		}
+		if(_replay)
+		{
+			Message f;
+			if(synchronized)
+				_session->get(side, f, 0);
+
+			_replay->Write(side, f);
+		}
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{
@@ -474,7 +534,6 @@ public:
 		Message f;
 		if(side == 0)
 		{
-			myFrame.input[index] = value;
 			if(_connectionEstablished)
 			{
 				if(!synchronized)
@@ -487,8 +546,10 @@ public:
 			if(!synchronized)
 			{
 				if(_session->frame() > _session->last_received_frame())
-						shoryu::sleep(1000);
+						shoryu::sleep(50);
 			}
+			else
+				myFrame.input[index] = value;
 		}
 		try
 		{
@@ -552,7 +613,7 @@ protected:
 		}
 		if(memcmp(s1.discSerial, s2.discSerial, sizeof(s1.discSerial)))
 		{
-			std::stringstream ss(std::ios_base::in + std::ios_base::out);
+			std::stringstream ss;
 			ss << "NETPLAY: You are trying to boot different games ("<<s1.discSerial<<" != "<<s2.discSerial<<").";
 			ExecuteOnMainThread([&]() {
 				Console.Error(ss.str().c_str());
@@ -565,6 +626,7 @@ protected:
 	bool _sessionEnded;
 	bool _connectionEstablished;
 
+	wxString _game_name;
 	Message myFrame;
 	Pcsx2Config EmuOptionsBackup;
 	bool Mcd1EnabledBackup;
@@ -574,6 +636,7 @@ protected:
 	bool replaced;
 	bool synchronized;
 	Utilities::block_type mcd_backup;
+	boost::shared_ptr<Replay> _replay;
 
 
 	boost::shared_ptr<EmulatorSyncState> GetSyncState()

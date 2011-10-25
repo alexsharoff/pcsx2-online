@@ -865,7 +865,7 @@
     <ClCompile Include="..\..\Netplay\Utilities.cpp">
       <Filter>AppHost\Netplay</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\Netplay\ReplayFile.cpp">
+    <ClCompile Include="..\..\Netplay\Replay.cpp">
       <Filter>AppHost\Netplay</Filter>
     </ClCompile>
   </ItemGroup>
@@ -1315,7 +1315,7 @@
     <ClInclude Include="..\..\Netplay\Utilities.h">
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\Netplay\ReplayFile.h">
+    <ClInclude Include="..\..\Netplay\Replay.h">
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
   </ItemGroup>

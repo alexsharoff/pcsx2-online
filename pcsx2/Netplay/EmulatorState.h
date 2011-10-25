@@ -1,3 +1,5 @@
+#pragma once
+
 #include "App.h"
 #include <cstdint>
 #include "shoryu\archive.h"
