@@ -69,10 +69,7 @@ public:
 	}
 	bool IsShown()
 	{
-		if(m_dialog)
-			return m_dialog->IsShown();
-		else
-			return m_dialog;
+		return m_dialog;
 	}
 	bool Close()
 	{

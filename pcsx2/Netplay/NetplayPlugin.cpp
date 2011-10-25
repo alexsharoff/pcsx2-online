@@ -149,6 +149,15 @@ public:
 				wxDirName dir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
 				dir = dir.Combine(wxDirName("replays"));
 				wxString replayName = _game_name + wxT(".rep");
+				replayName.Replace(wxT("<"),wxT("-"));
+				replayName.Replace(wxT(">"),wxT("-"));
+				replayName.Replace(wxT(":"),wxT("-"));
+				replayName.Replace(wxT("\""),wxT("-"));
+				replayName.Replace(wxT("/"),wxT("-"));
+				replayName.Replace(wxT("\\"),wxT("-"));
+				replayName.Replace(wxT("|"),wxT("-"));
+				replayName.Replace(wxT("?"),wxT("-"));
+				replayName.Replace(wxT("*"),wxT("-"));
 				wxString file = ( dir + replayName ).GetFullPath();
 				Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
 				_replay->SaveToFile(file);
@@ -418,11 +427,13 @@ public:
 	}
 	void EndSession()
 	{
-		ExecuteOnMainThread([&]() {
-			INetplayDialog* dialog = INetplayDialog::GetInstance();
-			if(dialog->IsShown())
+		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		if(dialog->IsShown())
+		{
+			ExecuteOnMainThread([&]() {
 				dialog->Close();
-		});
+			});
+		}
 		if(_session)
 		{
 			RequestStop();
@@ -446,11 +457,13 @@ public:
 	}
 	void Stop()
 	{
-		ExecuteOnMainThread([&]() {
-			INetplayDialog* dialog = INetplayDialog::GetInstance();
-			if(dialog->IsShown())
+		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		if(dialog->IsShown())
+		{
+			ExecuteOnMainThread([&]() {
 				dialog->Close();
-		});
+			});
+		}
 		if(_thread)
 			_thread->join();
 		CoreThread.Reset();
@@ -480,11 +493,13 @@ public:
 		if(_thread && _connectionEstablished)
 		{
 			_thread.reset();
-			ExecuteOnMainThread([&]() {
-				INetplayDialog* dialog = INetplayDialog::GetInstance();
-				if(dialog->IsShown())
+			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			if(dialog->IsShown())
+			{
+				ExecuteOnMainThread([&]() {
 					dialog->Close();
-			});
+				});
+			}
 			Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
 		}
 

@@ -27,9 +27,7 @@ bool Replay::LoadFromFile(const wxString& path)
 		if(!Utilities::Uncompress(compressed, uncompressed))
 			return false;
 
-		std::stringstream ss;
-		ss.rdbuf()->pubsetbuf((char*)uncompressed.data(), uncompressed.size());
-		
+		std::istringstream ss(std::string(uncompressed.begin(), uncompressed.end()));
 		char header_test[sizeof(Header)];
 		if(!ss.read(header_test, sizeof(Header)))
 			return false;
@@ -41,20 +39,33 @@ bool Replay::LoadFromFile(const wxString& path)
 			return false;
 		if(!ss.read((char*)&size, sizeof(size)))
 			return false;
+		_data.clear();
 		_data.resize(size);
-		if(!ss.read((char*)_data.data(), size))
-			return false;
+		if(size)
+		{
+			if(!ss.read((char*)_data.data(), size))
+				return false;
+		}
 		if(!ss.read((char*)&size, sizeof(size)))
 			return false;
+		_input.clear();
 		_input.resize(size);
-		for(size_t i = 0; i < _input.size(); i++)
+		if(size)
 		{
-			if(!ss.read((char*)&size, sizeof(size)))
-				return false;
-			for(size_t j = 0; j < size; j++)
+			for(size_t i = 0; i < _input.size(); i++)
 			{
-				if(!ss.read(_input[i][j].input, sizeof(_input[i][j].input)))
+				if(!ss.read((char*)&size, sizeof(size)))
 					return false;
+				if(size)
+				{
+					for(size_t j = 0; j < size; j++)
+					{
+						Message m;
+						if(!ss.read(m.input, sizeof(m.input)))
+							return false;
+						_input[i].push_back(m);
+					}
+				}
 			}
 		}
 	}
@@ -88,7 +99,7 @@ const Replay& Replay::SaveToFile(const wxString& path) const
 		block_type compressed;
 		if(!Utilities::Compress(uncompressed, compressed))
 			throw std::exception("Unable to compress data");
-		size = compressed.size();
+		size = uncompressed.size();
 		file.Write((char*)&size,sizeof(size));
 		file.Write(compressed.data(), compressed.size());
 	}
