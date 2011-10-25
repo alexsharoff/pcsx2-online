@@ -10,6 +10,8 @@ enum NetplayMode : int
 
 struct NetplaySettings
 {
+	bool IsEnabled;
+
 	wxString Username;
 	uint LocalPort;
 	NetplayMode Mode;

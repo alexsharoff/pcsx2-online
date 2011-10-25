@@ -3,6 +3,7 @@
 
 NetplaySettings::NetplaySettings()
 {
+	IsEnabled = false;
 	LocalPort = HostPort = 7500;
 	Mode = ConnectMode;
 	ReadonlyMemcard = false;

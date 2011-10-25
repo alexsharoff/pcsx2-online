@@ -427,7 +427,7 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 			CoreThread.Reset();
 			UI_EnableEverything();
 		});
-		INetplayPlugin::GetInstance().Enable(true);
+		g_Conf->Net.IsEnabled = true;
 		sApp.SysExecute( g_Conf->CdvdSource );
 		UI_DisableEverything();
 	});
@@ -613,7 +613,7 @@ void MainEmuFrame::Menu_SysReset_Click(wxCommandEvent &event)
 void MainEmuFrame::Menu_SysShutdown_Click(wxCommandEvent &event)
 {
 	//if( !SysHasValidState() && !CorePlugins.AreAnyInitialized() ) return;
-	if(INetplayPlugin::GetInstance().IsEnabled())
+	if(g_Conf->Net.IsEnabled)
 		UI_EnableEverything();
 	UI_DisableSysShutdown();
 	CoreThread.Reset();

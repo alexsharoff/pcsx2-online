@@ -586,7 +586,7 @@ void MainEmuFrame::ApplyCoreStatus()
 
 	bool vm = SysHasValidState();
 
-	if( susres && !INetplayPlugin::GetInstance().IsEnabled() )
+	if( susres && !g_Conf->Net.IsEnabled )
 	{
 		if( !CoreThread.IsClosing() )
 		{

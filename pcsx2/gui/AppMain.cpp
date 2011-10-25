@@ -460,7 +460,7 @@ void Pcsx2App::LogicalVsync()
 			if( gsRegionMode == Region_NTSC )
 			{
 				// Avoid frameskipping after packet loss during Netplay
-				if (!INetplayPlugin::GetInstance().IsEnabled() && fps < 59.0f) {
+				if (!g_Conf->Net.IsEnabled && fps < 59.0f) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 4 && last_enabled == true)
@@ -481,7 +481,7 @@ void Pcsx2App::LogicalVsync()
 			}
 			else
 			{
-				if (!INetplayPlugin::GetInstance().IsEnabled() && fps < 49.2f ) {
+				if (!g_Conf->Net.IsEnabled && fps < 49.2f ) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 3 && last_enabled == true)

@@ -14,17 +14,7 @@
 
 #include "NetplaySettings.h"
 
-#include "zlib\zlib.h"
-
-/*
- * TODO:
- * hook IO, but do not init netplay
- * log IO
- * replays
- * no-ip connection system
- * improve memory card handling
- * matchmaking
-*/
+#include "Utilities.h"
 
 //#define CONNECTION_TEST
 
@@ -36,23 +26,20 @@ class NetplayPlugin : public INetplayPlugin
 	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;
 public:
-	NetplayPlugin() : _isEnabled(false){}
 	virtual void Open()
 	{
-		_error_string = "";
-		_info_string = "";
 		NetplaySettings& settings = g_Conf->Net;
 		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Invalid local port: %u.", settings.LocalPort);
+			Console.Error("NETPLAY: Invalid port: %u.", settings.LocalPort);
 			UI_EnableEverything();
 			return;
 		}
 		if( settings.Mode == ConnectMode && (settings.HostPort <= 0 || settings.HostPort > 65535) )
 		{
 			CoreThread.Reset();
-			Console.Error("NETPLAY: Invalid remove port: %u.", settings.HostPort);
+			Console.Error("NETPLAY: Invalid port: %u.", settings.HostPort);
 			UI_EnableEverything();
 			return;
 		}
@@ -106,9 +93,7 @@ public:
 			g_Conf->EmuOptions.Trace.Enabled = false;
 
 			_sessionEnded = false;
-			first = true;
 			synchronized = false;
-			ready = false;
 			_connectionEstablished = false;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 			if(settings.Mode == ConnectMode)
@@ -123,13 +108,11 @@ public:
 				Console.Warning("NETPLAY: Hosting on local port %u.", settings.LocalPort);
 				_thread.reset(new boost::thread(boost::bind(&NetplayPlugin::Host, this, 0)));
 			}
-			ReplaceHandlers();
 		}
 		else
 		{
-			CoreThread.Reset();
 			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
-			UI_EnableEverything();
+			Stop();
 		}
 	}
 	virtual void Init()
@@ -139,29 +122,16 @@ public:
 	{
 		EndSession();
 		_session.reset();
-		_isEnabled = false;
 		g_Conf->EmuOptions = EmuOptionsBackup;
 		g_Conf->Mcd[0].Enabled = Mcd1EnabledBackup;
 		g_Conf->Mcd[1].Enabled = Mcd2EnabledBackup;
 		g_Conf->ProgLogBox = ProgLogBoxBackup;
 		g_Conf->EnableGameFixes = EnableGameFixesBackup;
-		if(mcd_backup.get())
+		if(mcd_backup.size())
 		{
-			PS2E_McdSizeInfo info;
-			SysPlugins.McdGetSizeInfo(0,0,info);
-			size_t size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
-			ResetMemoryCard(0,0,mcd_backup.get(), size);
-			mcd_backup.reset();
+			Utilities::WriteMCD(0,0,mcd_backup);
+			mcd_backup.clear();
 		}
-		RestoreHandlers();
-	}
-	virtual void Enable(bool enabled)
-	{
-		_isEnabled = enabled;
-	}
-	virtual bool IsEnabled()
-	{
-		return _isEnabled;
 	}
 	virtual bool BindPort(unsigned short port)
 	{
@@ -190,27 +160,22 @@ public:
 				dialog->OnConnectionEstablished(_session->delay());
 			});
 			std::string player_name;
+			auto ep = _session->endpoints()[0];
+			player_name = _session->username(ep);
+			if(!player_name.length())
 			{
-				boost::unique_lock<boost::mutex> lock(_string_mutex);
-				{
-					auto ep = _session->endpoints()[0];
-					player_name = _session->username(ep);
-					if(!player_name.length())
-					{
-						std::stringstream ss(std::ios_base::in + std::ios_base::out);
-						ss << ep.address().to_string() << ":" << ep.port();
-						player_name = ss.str();
-					}
-				}
-				{
-					std::stringstream ss(std::ios_base::in + std::ios_base::out);
-					ss << "NETPLAY: Connected to " << player_name << ". Starting memory card synchronization.";
-					_info_string = ss.str();
-				}
+				std::stringstream ss(std::ios_base::in + std::ios_base::out);
+				ss << ep.address().to_string() << ":" << ep.port();
+				player_name = ss.str();
 			}
+
+			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
 			ExecuteOnMainThread([&]() {
-				dialog->SetStatus(wxT("Connected to ") + 
-					wxString(player_name.c_str(), wxConvUTF8));
+				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connected to ") + wxName +
+					wxT(". Starting memory card synchronization."));
+			});
+			ExecuteOnMainThread([&]() {
+				dialog->SetStatus(wxT("Connected to ") + wxName);
 			});
 
 			int delay = dialog->WaitForConfirmation();
@@ -221,30 +186,25 @@ public:
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 
-			PS2E_McdSizeInfo info;
-			SysPlugins.McdGetSizeInfo(0,0,info);
-			size_t size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
-			//Console.WriteLn("MCD_SIZE=%d",size);
-			mcd_backup.reset(new u8[size]);
-			SysPlugins.McdRead(0,0, (u8*) mcd_backup.get(), 0, size);
-			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
-			boost::shared_array<u8> compressed_data(new u8[size]);
-			uLongf pos = 0;
+			mcd_backup = Utilities::ReadMCD(0,0);
 
+			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
+			Utilities::block_type compressed_mcd(Utilities::GetMCDSize(0,0));
+
+			size_t pos = 0;
 			while(true)
 			{
 				if(_session->end_session_request())
-					return false;
-				if(!_isEnabled)
 					return false;
 				shoryu::message_data data;
 				if(!_session->get_data(1-_session->side(), data, 50))
 				{
 					if(timeout_timestamp < shoryu::time_ms())
 					{
-						boost::unique_lock<boost::mutex> lock(_string_mutex);
-						_error_string = "NETPLAY: Timeout while synchonizing memory cards.";
-						EndSession();
+						ExecuteOnMainThread([&]() {
+							Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
+						});
+						RequestStop();
 						return false;
 					}
 				}
@@ -252,37 +212,31 @@ public:
 				{
 					if(data.data_length != 9 || memcmp(data.p.get(), "BLOCK_END", 9) != 0)
 					{
-						//Console.WriteLn("Receiving block of size %d",data.data_length);
-						std::copy(data.p.get(), data.p.get() + data.data_length, compressed_data.get()+pos);
+						std::copy(data.p.get(), data.p.get() + data.data_length, compressed_mcd.data()+pos);
 						pos += data.data_length;
 					}
 					else
 					{
-						boost::shared_array<u8> uncompressed_data(new u8[size]);
-						uLongf size_test = size;
-						/*Console.WriteLn("COMPRESSED_SIZE=%d",pos);
+						compressed_mcd.resize(pos);
+						Utilities::block_type uncompressed_mcd(Utilities::GetMCDSize(0,0));
+
+						if(!Utilities::Uncompress(compressed_mcd, uncompressed_mcd))
 						{
-							std::fstream fs("compressed.z", std::ios_base::out + std::ios_base::binary);
-							fs.write((char*)compressed_data.get(), pos);
-						}*/
-						int r = uncompress(uncompressed_data.get(), &size_test, compressed_data.get(), pos);
-						if(r != Z_OK)
-						{
-							boost::unique_lock<boost::mutex> lock(_string_mutex);
-							std::stringstream ss(std::ios_base::in + std::ios_base::out);
-							ss << "NETPLAY: Unable to decompress MCD buffer. Error: " << r;
-							_error_string = ss.str();
-							EndSession();
+							ExecuteOnMainThread([&]() {
+								Console.Error("NETPLAY: Unable to decompress MCD buffer.");
+							});
+							RequestStop();
 							return false;
 						}
-						if(size_test != size)
+						if(uncompressed_mcd.size() != Utilities::GetMCDSize(0,0))
 						{
-							boost::unique_lock<boost::mutex> lock(_string_mutex);
-							_error_string = "NETPLAY: Invalid MCD received from host.";
-							EndSession();
+							ExecuteOnMainThread([&]() {
+								Console.Error("NETPLAY: Invalid MCD received from host.");
+							});
+							RequestStop();
 							return false;
 						}
-						ResetMemoryCard(0,0,uncompressed_data.get(), size);
+						Utilities::WriteMCD(0,0,uncompressed_mcd);
 						break;
 					}
 				}
@@ -308,6 +262,8 @@ public:
 			_connectionEstablished = true;
 			return true;
 		}
+		else
+			RequestStop();
 		return false;
 	}
 	virtual bool Host(int timeout)
@@ -323,28 +279,23 @@ public:
 				dialog->OnConnectionEstablished(_session->delay());
 			});
 			std::string player_name;
+			auto ep = _session->endpoints()[0];
+			player_name = _session->username(ep);
+			if(!player_name.length())
 			{
-				boost::unique_lock<boost::mutex> lock(_string_mutex);
-				{
-					auto ep = _session->endpoints()[0];
-					player_name = _session->username(ep);
-					if(!player_name.length())
-					{
-						std::stringstream ss(std::ios_base::in + std::ios_base::out);
-						ss << ep.address().to_string() << ":" << ep.port();
-						player_name = ss.str();
-					}
-				}
-				{
-					std::stringstream ss(std::ios_base::in + std::ios_base::out);
-					ss << "NETPLAY: Connection from " << player_name << ". Starting memory card synchronization.";
-					_info_string = ss.str();
-				}
+				std::stringstream ss(std::ios_base::in + std::ios_base::out);
+				ss << ep.address().to_string() << ":" << ep.port();
+				player_name = ss.str();
 			}
+			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
 			ExecuteOnMainThread([&]() {
-				dialog->SetStatus(wxT("Connection from ") + 
-					wxString(player_name.c_str(), wxConvUTF8));
+				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connection from ") + wxName +
+					wxT(". Starting memory card synchronization."));
 			});
+			ExecuteOnMainThread([&]() {
+				dialog->SetStatus(wxT("Connection from ") + wxName);
+			});
+
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
 				return false;
@@ -356,57 +307,29 @@ public:
 			ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
-			PS2E_McdSizeInfo info;
-			SysPlugins.McdGetSizeInfo(0,0,info);
-			uLongf size = info.McdSizeInSectors*(info.SectorSize + info.EraseBlockSizeInSectors);
-			boost::shared_array<Bytef> buffer(new Bytef[size]);
-			//Console.WriteLn("MCD_SIZE=%d",size);
+
+			auto uncompressed_mcd = Utilities::ReadMCD(0,0);
+			Utilities::block_type compressed_mcd(Utilities::GetMCDSize(0,0));
+			if(g_Conf->Net.ReadonlyMemcard)
+				mcd_backup = uncompressed_mcd;
+			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
 			{
-				boost::shared_array<Bytef> mcd(new Bytef[size]);
-				SysPlugins.McdRead(0,0, (u8*) mcd.get(), 0, size);
-
-				if(g_Conf->Net.ReadonlyMemcard)
-					mcd_backup = mcd;
-
-				uLongf size_tmp = size;
-				int r = compress2(buffer.get(), &size, mcd.get(), size_tmp, Z_BEST_COMPRESSION);
-				if(r != Z_OK)
-				{
-					boost::unique_lock<boost::mutex> lock(_string_mutex);
-					std::stringstream ss(std::ios_base::in + std::ios_base::out);
-					ss << "NETPLAY: Unable to compress MCD buffer. Error: " << r;
-					_error_string = ss.str();
-					EndSession();
-					return false;
-				}
+				ExecuteOnMainThread([&]() {
+					Console.Error("NETPLAY: Unable to compress MCD buffer.");
+				});
+				RequestStop();
+				return false;
 			}
-			/*Console.WriteLn("COMPRESSED_SIZE=%d",size);
-			{
-				std::fstream fs("compressed.z", std::ios_base::out + std::ios_base::binary);
-				fs.write((char*)buffer.get(), size);
-				uLongf size_tmp = 9000000;
-				Bytef* d = new Bytef[size_tmp];
-				int r = uncompress(d, &size_tmp, buffer.get(), size);
-				if(r != Z_OK)
-				{
-					Console.Error("NETPLAY: Unable to decompress MCD buffer. Error: %d.", r);
-				}
-				else
-				{
-					Console.WriteLn("UNCOMPRESSED_SIZE=%d",size_tmp);
-				}
-				delete[] d;
-			}*/
+
 			size_t blockSize = 128;
-			for(size_t i = 0; i < size; i+=blockSize)
+			for(size_t i = 0; i < compressed_mcd.size(); i+=blockSize)
 			{
 				shoryu::message_data data;
-				data.data_length = size - i;
+				data.data_length = compressed_mcd.size() - i;
 				if(data.data_length > blockSize)
 					data.data_length = blockSize;
 				data.p.reset(new char[data.data_length]);
-				std::copy(buffer.get()+i, buffer.get()+i+data.data_length, data.p.get());
-				//Console.WriteLn("Pushing block of size %d",data.data_length);
+				std::copy(compressed_mcd.data()+i, compressed_mcd.data()+i+data.data_length, data.p.get());
 				_session->queue_data(data);
 			}
 			shoryu::message_data data;
@@ -414,7 +337,6 @@ public:
 			data.p.reset(new char[data.data_length]);
 			char* blockEndMsg = "BLOCK_END";
 			std::copy(blockEndMsg, blockEndMsg + data.data_length, data.p.get());
-			//Console.WriteLn("Pushing block of size %d",data.data_length);
 			_session->queue_data(data);
 
 			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
@@ -427,14 +349,13 @@ public:
 					_session->clear_queue();
 					break;
 				}
-				if(!_isEnabled)
-					return false;
 				//Console.WriteLn("Sending %d packets", n);
 				if(timeout_timestamp < shoryu::time_ms())
 				{
-					boost::unique_lock<boost::mutex> lock(_string_mutex);
-					_error_string = "NETPLAY: Timeout while synchonizing memory cards.";
-					EndSession();
+					ExecuteOnMainThread([&]() {
+						Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
+					});
+					RequestStop();
 					return false;
 				}
 			}
@@ -452,207 +373,157 @@ public:
 		});
 		if(_session)
 		{
-			if(_session->state() == shoryu::Ready)
-			{
-				_session->send_end_session_request();
-				int try_count = _session->delay() * 4;
-				while(_session->send())
-				{
-					shoryu::sleep(17);
-					if(try_count-- == 0)
-						break;
-				}
-			}
+			RequestStop();
 			_session->shutdown();
 			_session->unbind();
 		}
 	}
-
-
-	virtual u8 CALLBACK NETPADpoll(u8 value)
+	void RequestStop()
 	{
-		if(poller.pollCounter == 0 && value == 0x42 && poller.side == 0)
-			poller.cmd42Counter++;
-
-		u8 r = PADpollBackup(value);
-
-		if(_session && _session->end_session_request() && !_sessionEnded)
+		if(_session && _session->state() == shoryu::Ready)
 		{
+			_session->send_end_session_request();
+			int try_count = _session->delay() * 4;
+			while(_session->send())
+			{
+				shoryu::sleep(17);
+				if(try_count-- == 0)
+					break;
+			}
+		}
+	}
+	void Stop()
+	{
+		ExecuteOnMainThread([&]() {
+			INetplayDialog* dialog = INetplayDialog::GetInstance();
+			if(dialog->IsShown())
+				dialog->Close();
+		});
+		if(_thread)
+			_thread->join();
+		CoreThread.Reset();
+		UI_EnableEverything();
+		_sessionEnded = true;
+	}
+	void NextFrame()
+	{
+		if(!_connectionEstablished)
+		{
+			if(_thread->timed_join(boost::posix_time::milliseconds(3000)))
+			{
+				if(_session->state() != shoryu::Ready)
+				{
+					Console.Error("NETPLAY: Unable to establish connection.");
+					Stop();
+					return;
+				}
+				if(!_connectionEstablished)
+				{
+					Console.Error("NETPLAY: Interrupted.");
+					Stop();
+					return;
+				}
+			}
+		}
+		if(_thread && _connectionEstablished)
+		{
+			_thread.reset();
 			ExecuteOnMainThread([&]() {
 				INetplayDialog* dialog = INetplayDialog::GetInstance();
 				if(dialog->IsShown())
 					dialog->Close();
 			});
-			if(_thread)
-				_thread->join();
-			CoreThread.Reset();
+			Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
+		}
+
+		myFrame = Message();
+		_session->next_frame();
+		if(_session->last_error().length())
+		{
+			// 'The operation completed successfully' is a really strange error.
+			// Research it!
+			// Console.Error("NETPLAY: %s.", _session->last_error().c_str());
+			// _session->last_error("");
+		}
+	}
+	void AcceptInput(int side)
+	{
+		if(_connectionEstablished && side == 0)
+		{
+			try
+			{
+				_session->set(myFrame);
+			}
+			catch(std::exception& e)
+			{
+				Console.Error("NETPLAY: %s. Interrupting sessions.", e.what());
+				Stop();
+			}
+		}
+	}
+	u8 HandleIO(int side, int index, u8 value)
+	{
+		if(_session && _session->end_session_request() && !_sessionEnded)
+		{
 			Console.Warning("NETPLAY: Session ended.");
-			UI_EnableEverything();
-			_sessionEnded = true;
+			Stop();
 		}
 		if(_sessionEnded)
-			return r;
+			return value;
+
 		Message f;
-		if(poller.cmd42Counter > 2 && poller.pollCounter > 1)
+		if(side == 0)
 		{
-			if(poller.pollCounter <=7)
+			myFrame.input[index] = value;
+			if(_connectionEstablished)
 			{
-				if(poller.side == 0)
+				if(!synchronized)
 				{
-					myFrame.input[poller.pollCounter-2] = r;
-					if(ready)
-					{
-						if(!synchronized)
-						{
-							synchronized = _session->first_received_frame() > 0
-								&& _session->frame() > _session->first_received_frame()
-								&& _session->frame() <= _session->last_received_frame();
-						}
-						if(poller.pollCounter == 7)
-						{
-							try
-							{
-								_session->set(myFrame);
-							}
-							catch(std::exception& e)
-							{
-								Console.Error("NETPLAY: %s. Disabling netplay.", e.what());
-								this->Close();
-								return r;
-							}
-						}
-					}
-					if(!synchronized)
-					{
-						if(_session->frame() > _session->last_received_frame())
-								shoryu::sleep(17);
-						r = f.input[poller.pollCounter-2];
-					}
+					synchronized = _session->first_received_frame() > 0
+						&& _session->frame() > _session->first_received_frame()
+						&& _session->frame() <= _session->last_received_frame();
 				}
-				try
+			}
+			if(!synchronized)
+			{
+				if(_session->frame() > _session->last_received_frame())
+						shoryu::sleep(1000);
+			}
+		}
+		try
+		{
+			if(synchronized)
+			{
+				auto timeout = shoryu::time_ms() + 10000;
+				while(!_session->get(side, f, _session->delay()*17))
 				{
-					if(synchronized)
+					_session->send();
+					if(_session->end_session_request())
+						break;
+					if(timeout <= shoryu::time_ms())
 					{
-						auto timeout = shoryu::time_ms() + 10000;
-						while(!_session->get(poller.side, f, _session->delay()*17))
-						{
-							_session->send();
-							if(_session->end_session_request())
-								break;
-							if(timeout <= shoryu::time_ms())
-							{
-								CoreThread.Reset();
-								Console.Warning("NETPLAY: Timeout.");
-								ExecuteOnMainThread([&]() {
-									INetplayDialog* dialog = INetplayDialog::GetInstance();
-									if(dialog->IsShown())
-										dialog->Close();
-								});
-								UI_EnableEverything();
-								_sessionEnded = true;
-								break;
-							}
+						Console.Warning("NETPLAY: Timeout.");
+						Stop();
+						break;
+					}
 #ifdef CONNECTION_TEST
-							shoryu::sleep(3000);
+					shoryu::sleep(3000);
 #endif
-						}
-					}
-					else
-					{
-						_session->send();
-					}
 				}
-				catch(std::exception& e)
-				{
-					EndSession();
-					CoreThread.Reset();
-					Console.Error("NETPLAY: %s", e.what());
-					UI_EnableEverything();
-				}
-				r = f.input[poller.pollCounter-2];
 			}
 			else
-				r = 0xff;
+			{
+				_session->send();
+			}
 		}
-		poller.pollCounter++;
-		return r;
+		catch(std::exception& e)
+		{
+			Console.Error("NETPLAY: %s", e.what());
+			Stop();
+		}
+		value = f.input[index];
+		return value;
 	}
-	
-	virtual s32 CALLBACK NETPADsetSlot(u8 port, u8 slot)
-	{
-		{
-			boost::unique_lock<boost::mutex> lock(_string_mutex);
-			if(_info_string.length())
-			{
-				Console.WriteLn(Color_StrongGreen, _info_string.c_str());
-				_info_string = "";
-			}
-			if(_error_string.length())
-			{
-				Console.Error(_error_string.c_str());
-				_error_string = "";
-			}
-			
-		}
-		if(!IsEnabled())
-		{
-			RestoreHandlers();
-			CoreThread.Reset();
-			UI_EnableEverything();
-		}
-		else
-		{
-			if(!ready && port == 1)
-			{
-				if(_thread->timed_join(boost::posix_time::milliseconds(3000)))
-				{
-					if(_session->state() != shoryu::Ready)
-					{
-						CoreThread.Reset();
-						Console.Error("NETPLAY: Unable to establish connection.");
-						UI_EnableEverything();
-						return PADsetSlotBackup(port, slot);
-					}
-					if(_connectionEstablished)
-					{
-						ExecuteOnMainThread([&]() {
-							INetplayDialog* dialog = INetplayDialog::GetInstance();
-							if(dialog->IsShown())
-								dialog->Close();
-						});
-						Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
-						ready = true;
-					}
-					else
-					{
-						CoreThread.Reset();
-						Console.Error("NETPLAY: Interrupted.");
-						UI_EnableEverything();
-						return PADsetSlotBackup(port, slot);
-					}
-				}
-			}
-			if(!first && port == 1)
-			{
-				if(poller.cmd42Counter > 2)
-					_session->next_frame();
-			}
-			poller.pollCounter = 0;
-			poller.side = port-1;
-			if(poller.cmd42Counter >=2 && poller.side == 0)
-				myFrame = Message();
-			first = false;
-			if(_session->last_error().length())
-			{
-				// 'The operation completed successfully' is a really strange error.
-				// Research it!
-				// Console.Error("NETPLAY: %s.", _session->last_error().c_str());
-				// _session->last_error("");
-			}
-		}
-		return PADsetSlotBackup(port, slot);
-	}
-
 protected:
 	static std::function<void()> _dispatch_event;
 	static void DispatchEvent()
@@ -674,43 +545,23 @@ protected:
 	{
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
 		{
-			boost::unique_lock<boost::mutex> lock(_string_mutex);
-			_error_string = "NETPLAY: Bios version mismatch.";
+			ExecuteOnMainThread([&]() {
+				Console.Error("NETPLAY: Bios version mismatch.");
+			});
 			return false;
 		}
 		if(memcmp(s1.discSerial, s2.discSerial, sizeof(s1.discSerial)))
 		{
-			boost::unique_lock<boost::mutex> lock(_string_mutex);
 			std::stringstream ss(std::ios_base::in + std::ios_base::out);
 			ss << "NETPLAY: You are trying to boot different games ("<<s1.discSerial<<" != "<<s2.discSerial<<").";
-			_error_string = ss.str();
+			ExecuteOnMainThread([&]() {
+				Console.Error(ss.str().c_str());
+			});
 			return false;
 		}
 		return true;
 	}
-
-	//rename to InputStateMachine and remove excess fields
-	struct padPoller {
-	public:
-		padPoller() {
-			pollCounter = 0;
-			pressureMode = false;
-			frame = 0;
-			cmd42Counter = 0;
-			lastSent = -1;
-			side = 0;
-		}
-		int side;
-		int pollCounter;
-		bool pressureMode;
-		int frame;
-		int cmd42Counter;
-		bool delayBufferReady;
-		int lastSent;
-		int mySide;
-	} poller;
-
-	bool _isEnabled;
+	
 	bool _sessionEnded;
 	bool _connectionEstablished;
 
@@ -721,13 +572,9 @@ protected:
 	bool EnableGameFixesBackup;
 	AppConfig::ConsoleLogOptions ProgLogBoxBackup;
 	bool replaced;
-	bool first;
-	bool ready;
 	bool synchronized;
-	boost::shared_array<u8> mcd_backup;
-	std::string _error_string;
-	std::string _info_string;
-	boost::mutex _string_mutex;
+	Utilities::block_type mcd_backup;
+
 
 	boost::shared_ptr<EmulatorSyncState> GetSyncState()
 	{
@@ -736,10 +583,9 @@ protected:
 		cdvdReloadElfInfo();
 		if(DiscSerial.Len() == 0)
 		{
-			CoreThread.Reset();
-			boost::unique_lock<boost::mutex> lock(_string_mutex);
-			_error_string = "NETPLAY: Unable to obtain disc serial.";
-			UI_EnableEverything();
+			ExecuteOnMainThread([&]() {
+				Console.Error("NETPLAY: Unable to read disc serial.");
+			});
 			syncState.reset();
 			return syncState;
 		}
@@ -752,10 +598,9 @@ protected:
 		wxString biosDesc;
 		if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc))
 		{
-			CoreThread.Reset();
-			boost::unique_lock<boost::mutex> lock(_string_mutex);
-			_error_string = "NETPLAY: Unable to check BIOS.";
-			UI_EnableEverything();
+			ExecuteOnMainThread([&]() {
+				Console.Error("NETPLAY: Unable to read BIOS name.");
+			});
 			syncState.reset();
 			return syncState;
 		}

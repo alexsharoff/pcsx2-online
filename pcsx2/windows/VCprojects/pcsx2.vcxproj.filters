@@ -856,6 +856,18 @@
     <ClCompile Include="..\..\Netplay\ReplayPlugin.cpp">
       <Filter>AppHost\Netplay</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\Netplay\IOPHook.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\ReplaySettings.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\Utilities.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Netplay\ReplayFile.cpp">
+      <Filter>AppHost\Netplay</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Patch.h">
@@ -1240,7 +1252,6 @@
     <ClInclude Include="..\..\Gif_Unit.h">
       <Filter>System\Ps2\GS</Filter>
     </ClInclude>
-<<<<<<< .mine
     <ClInclude Include="..\..\Netplay\gui\NetplayDialog.h">
       <Filter>AppHost\Netplay\gui</Filter>
     </ClInclude>
@@ -1295,11 +1306,18 @@
     <ClInclude Include="..\..\Netplay\ReplayPlugin.h">
       <Filter>AppHost\Netplay</Filter>
     </ClInclude>
-=======
     <ClInclude Include="..\..\x86\microVU_Profiler.h">
       <Filter>System\Ps2\EmotionEngine\VU\Dynarec\microVU</Filter>
     </ClInclude>
->>>>>>> .r4943
+    <ClInclude Include="..\..\Netplay\ReplaySettings.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\Utilities.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Netplay\ReplayFile.h">
+      <Filter>AppHost\Netplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\3rdparty\wxWidgets\include\wx\msw\wx.rc">
