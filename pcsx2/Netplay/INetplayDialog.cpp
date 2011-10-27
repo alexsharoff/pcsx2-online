@@ -106,7 +106,8 @@ public:
 		m_dialog->EnableOK(true);
 		InputDelayPanel& p = m_dialog->GetInputDelayPanel();
 		p.SetInputDelay(input_delay);
-		p.Enable(GetSettings().FinetuneDelay && GetSettings().Mode == HostMode);
+		p.SetReadOnly(GetSettings().Mode == HostMode);
+
 		m_dialog->SetContent(&p);
 	}
 	int GetInputDelay()

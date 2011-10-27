@@ -77,7 +77,6 @@ class NetplaySettingsPanelBase : public wxPanel
 		wxSpinCtrl* m_hostPortSpinCtrl;
 		wxCheckBox* m_saveReplayCheckBox;
 		wxCheckBox* m_readOnlyMCDCheckBox;
-		wxCheckBox* m_finetuneDelayCheckBox;
 		
 		// Virtual event handlers, overide them in your derived class
 		virtual void UpdateUI( wxCommandEvent& event ) { event.Skip(); }

@@ -31,6 +31,7 @@
 #include "Utilities/IniInterface.h"
 
 #include "Netplay\NetplayPlugin.h"
+#include "Netplay\Utilities.h"
 
 #include <wx/stdpaths.h>
 
@@ -239,6 +240,10 @@ void Pcsx2App::PadKeyDispatch( const keyEvent& ev )
 #else
 #	error Unsupported Target Platform.
 #endif
+
+	keyEvent kevent = ev;
+	kevent.key = vkey? vkey : ev.key;
+	Utilities::DispatchKeyHandler(kevent);
 
 	switch (vkey)
 	{
@@ -459,8 +464,7 @@ void Pcsx2App::LogicalVsync()
 			
 			if( gsRegionMode == Region_NTSC )
 			{
-				// Avoid frameskipping after packet loss during Netplay
-				if (!g_Conf->Net.IsEnabled && fps < 59.0f) {
+				if ( !g_Conf->Net.IsEnabled && fps < 59.0f ) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 4 && last_enabled == true)
@@ -481,7 +485,7 @@ void Pcsx2App::LogicalVsync()
 			}
 			else
 			{
-				if (!g_Conf->Net.IsEnabled && fps < 49.2f ) {
+				if ( !g_Conf->Net.IsEnabled && fps < 49.2f ) {
 					too_slow++;
 					fast_enough = 0;
 					if (too_slow > 3 && last_enabled == true)

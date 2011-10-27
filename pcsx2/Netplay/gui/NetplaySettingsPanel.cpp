@@ -26,7 +26,6 @@ void NetplaySettingsPanel::FromSettings()
 	this->m_usernameTextCtrl->SetValue(m_settings.Username);
 	this->m_saveReplayCheckBox->SetValue(m_settings.SaveReplay);
 
-	this->m_finetuneDelayCheckBox->SetValue(m_settings.FinetuneDelay);
 	this->m_readOnlyMCDCheckBox->SetValue(m_settings.ReadonlyMemcard);
 
 	UpdateUI();
@@ -45,7 +44,6 @@ void NetplaySettingsPanel::ToSettings()
 	if(this->m_hostRadioButton->GetValue())
 		m_settings.Mode = HostMode;
 
-	m_settings.FinetuneDelay = this->m_finetuneDelayCheckBox->GetValue();
 	m_settings.ReadonlyMemcard = this->m_readOnlyMCDCheckBox->GetValue();
 
 	m_settings.SanityCheck();
@@ -59,7 +57,6 @@ void NetplaySettingsPanel::UpdateUI(wxCommandEvent& event)
 	this->m_hostAddressTextCtrl->Show(!host);
 	this->m_hostPortLabel->Show(!host);
 	this->m_hostPortSpinCtrl->Show(!host);
-	this->m_finetuneDelayCheckBox->Show(host);
 	this->m_readOnlyMCDCheckBox->Show(host);
 
 	this->GetParent()->Fit();

@@ -6,6 +6,68 @@
 #include "CDVD/CDVD.h"
 #include "AppGameDatabase.h"
 
+
+namespace boost
+{
+	inline std::size_t hash_value(const keyEvent& arr) 
+	{
+		return arr.evt ^ arr.key;
+	}
+}
+
+inline bool operator==(const keyEvent& k1, const keyEvent& k2)
+{
+	using boost::hash_value;
+	return k1.evt == k2.evt && k1.key == k2.key;
+}
+
+void Utilities::SaveSettings()
+{
+	_settingsBackup.reset(new AppConfig(*g_Conf));
+}
+void Utilities::ResetSettingsToSafeDefaults()
+{
+	g_Conf->EmuOptions.HostFs = false;
+	g_Conf->EmuOptions.McdEnableEjection = false;
+	g_Conf->EmuOptions.MultitapPort0_Enabled = false;
+	g_Conf->EmuOptions.MultitapPort1_Enabled = false;
+	g_Conf->EmuOptions.UseBOOT2Injection = true;
+	g_Conf->EmuOptions.EnablePatches = false;
+	g_Conf->EmuOptions.Speedhacks.bitset = 0;
+	g_Conf->EmuOptions.Speedhacks.DisableAll();
+	g_Conf->EmuOptions.Cpu = Pcsx2Config::CpuOptions();
+	g_Conf->EmuOptions.GS = Pcsx2Config::GSOptions();
+	g_Conf->EmuOptions.Gamefixes.bitset = 0;
+	g_Conf->EmuOptions.Gamefixes.SkipMPEGHack = 1;
+	g_Conf->EmuOptions.EnableCheats = false;
+	g_Conf->EmuOptions.CdvdDumpBlocks = false;
+	g_Conf->EmuOptions.CdvdVerboseReads = false;
+	g_Conf->EmuOptions.Profiler.bitset = 0;
+	g_Conf->EmuOptions.Trace.Enabled = false;
+
+	g_Conf->Mcd[0].Enabled = true;
+	g_Conf->Mcd[1].Enabled = false;
+	g_Conf->EnableGameFixes = true;
+}
+void Utilities::RestoreSettings()
+{
+	g_Conf->EmuOptions = _settingsBackup->EmuOptions;
+	g_Conf->Mcd[0].Enabled = _settingsBackup->Mcd[0].Enabled;
+	g_Conf->Mcd[1].Enabled = _settingsBackup->Mcd[1].Enabled;
+	g_Conf->EnableGameFixes = _settingsBackup->EnableGameFixes;
+}
+
+void Utilities::SetKeyHandler(const keyEvent& key, const std::function<void()>& handler)
+{
+	_keyMappings[key] = handler;
+}
+void Utilities::DispatchKeyHandler(const keyEvent& key)
+{
+	auto map = _keyMappings.find(key);
+	if(map != _keyMappings.end())
+		map->second();
+}
+
 size_t Utilities::GetMCDSize(uint port, uint slot)
 {
 	PS2E_McdSizeInfo info;
@@ -135,4 +197,6 @@ wxString Utilities::GetCurrentDiscName()
 
 //
 	
-std::function<void()> Utilities::_dispatch_event = std::function<void()>();
+std::function<void()> Utilities::_dispatch_event;
+boost::unordered_map<keyEvent, std::function<void()>> Utilities::_keyMappings;
+std::auto_ptr<AppConfig> Utilities::_settingsBackup;

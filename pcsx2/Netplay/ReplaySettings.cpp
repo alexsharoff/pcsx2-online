@@ -4,4 +4,5 @@
 ReplaySettings::ReplaySettings()
 {
 	IsEnabled = false;
+	FastForward = false;
 };

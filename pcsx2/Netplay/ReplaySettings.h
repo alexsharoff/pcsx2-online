@@ -4,6 +4,7 @@
 struct ReplaySettings
 {
 	bool IsEnabled;
+	bool FastForward;
 
 	wxString FilePath;
 	ReplaySettings();

@@ -117,9 +117,6 @@ NetplaySettingsPanelBase::NetplaySettingsPanelBase( wxWindow* parent, wxWindowID
 	m_readOnlyMCDCheckBox = new wxCheckBox( this, wxID_ANY, _("Read-only Memory Card"), wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer2->Add( m_readOnlyMCDCheckBox, 0, wxALL, 5 );
 	
-	m_finetuneDelayCheckBox = new wxCheckBox( this, wxID_ANY, _("Fine-tune Delay"), wxDefaultPosition, wxDefaultSize, 0 );
-	bSizer2->Add( m_finetuneDelayCheckBox, 0, wxALL, 5 );
-	
 	this->SetSizer( bSizer2 );
 	this->Layout();
 	

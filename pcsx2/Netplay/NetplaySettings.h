@@ -19,7 +19,6 @@ struct NetplaySettings
 	wxString HostAddress;
 	bool SaveReplay;
 	bool ReadonlyMemcard;
-	bool FinetuneDelay;
 	
 	NetplaySettings();
 	void LoadSave( IniInterface& conf );

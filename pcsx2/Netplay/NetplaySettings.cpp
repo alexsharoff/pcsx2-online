@@ -7,7 +7,6 @@ NetplaySettings::NetplaySettings()
 	LocalPort = HostPort = 7500;
 	Mode = ConnectMode;
 	ReadonlyMemcard = false;
-	FinetuneDelay = false;
 	SaveReplay = false;
 }
 
@@ -21,7 +20,6 @@ void NetplaySettings::LoadSave( IniInterface& ini )
 	IniEntry( HostPort );
 	IniEntry( HostAddress );
 	IniEntry( ReadonlyMemcard );
-	IniEntry( FinetuneDelay );
 
 	int mode = Mode;
 	ini.Entry(wxT("Mode"), mode, mode);

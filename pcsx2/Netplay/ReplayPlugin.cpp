@@ -2,6 +2,7 @@
 #include "ReplayPlugin.h"
 #include "Replay.h"
 #include "Utilities.h"
+#include "App.h"
 #include <sstream>
 
 class ReplayPlugin : public IReplayPlugin
@@ -14,6 +15,8 @@ public:
 	{
 		try
 		{
+			Utilities::SaveSettings();
+			Utilities::ResetSettingsToSafeDefaults();
 			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
 			{
 				_replay.Mode(Playback);
@@ -53,34 +56,32 @@ public:
 						wxString myDiscId(state->discId, wxConvUTF8, myDiscIdLen);
 						wxString replayDiscId(_replay.SyncState().discId, wxConvUTF8, replayDiscIdLen);
 
-						Utilities::ExecuteOnMainThread([&]() {
-							Console.Error(
-								wxString(wxT("REPLAY: Incompatible disc detected: ")) + 
-								Utilities::GetDiscNameById(myDiscId) + wxString(wxT(" instead of ")) + Utilities::GetDiscNameById(replayDiscId));
-						});
+						wxString msg = wxString(wxT("REPLAY: Incompatible disc detected: ")) + 
+								Utilities::GetDiscNameById(myDiscId) + wxString(wxT(" instead of ")) + Utilities::GetDiscNameById(replayDiscId);
 						Stop();
+						Console.Error(msg);
 						return;
 					}
 				}
 				_mcd_backup = Utilities::ReadMCD(0,0);
 				Utilities::WriteMCD(0,0,_replay.Data());
-				Console.WriteLn(Color_StrongGreen, "REPLAY: starting playback. Hold SHIFT to fast-forward.");
 			}
 			else
 			{
-				Console.Error("REPLAY: file is corrupted or of the older version.");
 				Stop();
+				Console.Error("REPLAY: file is corrupted or of the older version.");
 			}
 		}
 		catch(std::exception& e)
 		{
-			Console.Error("REPLAY: %s", e.what());
 			Stop();
+			Console.Error("REPLAY: %s", e.what());
 		}
 	}
 	void Close()
 	{
 		_replay = Replay();
+		Utilities::RestoreSettings();
 		if(_mcd_backup.size())
 		{
 			Utilities::WriteMCD(0,0,_mcd_backup);
@@ -96,10 +97,13 @@ public:
 	}
 	void NextFrame()
 	{
+		if(!_replay.Pos())
+			Console.WriteLn(Color_StrongGreen, "REPLAY: starting playback. Press F4 to fast-forward.");
+
 		if(_replay.Pos() >= _replay.Length())
 		{
-			Console.WriteLn(Color_StrongGreen, "REPLAY: end reached.");
 			Stop();
+			Console.WriteLn(Color_StrongGreen, "REPLAY: playback ended.");
 		}
 		else
 			_replay.NextFrame();

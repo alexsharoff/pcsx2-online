@@ -31,23 +31,20 @@ public:
 		NetplaySettings& settings = g_Conf->Net;
 		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
-			CoreThread.Reset();
+			Stop();
 			Console.Error("NETPLAY: Invalid port: %u.", settings.LocalPort);
-			UI_EnableEverything();
 			return;
 		}
 		if( settings.Mode == ConnectMode && (settings.HostPort <= 0 || settings.HostPort > 65535) )
 		{
-			CoreThread.Reset();
+			Stop();
 			Console.Error("NETPLAY: Invalid port: %u.", settings.HostPort);
-			UI_EnableEverything();
 			return;
 		}
 		if( settings.Mode == ConnectMode && settings.HostAddress.Len() == 0 )
 		{
-			CoreThread.Reset();
+			Stop();
 			Console.Error("NETPLAY: Invalid hostname.");
-			UI_EnableEverything();
 			return;
 		}
 		shoryu::prepare_io_service();
@@ -59,38 +56,8 @@ public:
 #endif
 		if(BindPort(settings.LocalPort))
 		{
-			EmuOptionsBackup = g_Conf->EmuOptions;
-			Mcd1EnabledBackup = g_Conf->Mcd[0].Enabled;
-			Mcd2EnabledBackup = g_Conf->Mcd[1].Enabled;
-			ProgLogBoxBackup = g_Conf->ProgLogBox;
-			EnableGameFixesBackup = g_Conf->EnableGameFixes;
-
-			g_Conf->Mcd[0].Enabled = true;
-			g_Conf->Mcd[1].Enabled = false;
-
-			g_Conf->ProgLogBox.Visible = true;
-
-			g_Conf->EmuOptions.HostFs = false;
-			g_Conf->EmuOptions.McdEnableEjection = false;
-			g_Conf->EmuOptions.Profiler.bitset = 0;
-			g_Conf->EmuOptions.UseBOOT2Injection = true;
-			g_Conf->EmuOptions.EnablePatches = false;
-			g_Conf->EmuOptions.Speedhacks.bitset = 0;
-			g_Conf->EmuOptions.Speedhacks.DisableAll();
-
-			g_Conf->EmuOptions.Cpu = Pcsx2Config::CpuOptions();
-			g_Conf->EmuOptions.GS = Pcsx2Config::GSOptions();
-
-			g_Conf->EnableGameFixes = true;
-			g_Conf->EmuOptions.Gamefixes.bitset = 0;
-			g_Conf->EmuOptions.Gamefixes.SkipMPEGHack = 1;
-
-			g_Conf->EmuOptions.EnableCheats = false;
-
-			g_Conf->EmuOptions.CdvdDumpBlocks = false;
-			g_Conf->EmuOptions.CdvdVerboseReads = false;
-			g_Conf->EmuOptions.Profiler.bitset = 0;
-			g_Conf->EmuOptions.Trace.Enabled = false;
+			Utilities::SaveSettings();
+			Utilities::ResetSettingsToSafeDefaults();
 
 			_sessionEnded = false;
 			synchronized = false;
@@ -118,8 +85,8 @@ public:
 		}
 		else
 		{
-			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
 			Stop();
+			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
 		}
 	}
 	virtual void Init()
@@ -129,11 +96,7 @@ public:
 	{
 		EndSession();
 		_session.reset();
-		g_Conf->EmuOptions = EmuOptionsBackup;
-		g_Conf->Mcd[0].Enabled = Mcd1EnabledBackup;
-		g_Conf->Mcd[1].Enabled = Mcd2EnabledBackup;
-		g_Conf->ProgLogBox = ProgLogBoxBackup;
-		g_Conf->EnableGameFixes = EnableGameFixesBackup;
+		Utilities::RestoreSettings();
 		if(mcd_backup.size())
 		{
 			Utilities::WriteMCD(0,0,mcd_backup);
@@ -161,8 +124,8 @@ public:
 			}
 			catch(std::exception& e)
 			{
-				Console.Error("REPLAY: %s", e.what());
 				Stop();
+				Console.Error("REPLAY: %s", e.what());
 			}
 			_replay.reset();
 		}
@@ -218,7 +181,8 @@ public:
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
 					myName = wxT("Me");
-				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + wxName + wxString(wxT("_vs_")) + myName;
+
+				_game_name = wxDateTime::Now().Format(wxT("[%Y.%m.%d %H-%M] "))  + wxT(" [") + Utilities::GetCurrentDiscName() + wxT("] ") + wxName + wxT(" vs ") + myName;
 			}
 
 			int delay = dialog->WaitForConfirmation();
@@ -244,10 +208,10 @@ public:
 				{
 					if(timeout_timestamp < shoryu::time_ms())
 					{
+						RequestStop();
 						Utilities::ExecuteOnMainThread([&]() {
 							Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
 						});
-						RequestStop();
 						return false;
 					}
 				}
@@ -265,18 +229,18 @@ public:
 
 						if(!Utilities::Uncompress(compressed_mcd, uncompressed_mcd))
 						{
+							RequestStop();
 							Utilities::ExecuteOnMainThread([&]() {
 								Console.Error("NETPLAY: Unable to decompress MCD buffer.");
 							});
-							RequestStop();
 							return false;
 						}
 						if(uncompressed_mcd.size() != mcd_size)
 						{
+							RequestStop();
 							Utilities::ExecuteOnMainThread([&]() {
 								Console.Error("NETPLAY: Invalid MCD received from host.");
 							});
-							RequestStop();
 							return false;
 						}
 						Utilities::WriteMCD(0,0,uncompressed_mcd);
@@ -349,7 +313,7 @@ public:
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
 					myName = wxT("Me");
-				_game_name = wxDateTime::Now().Format(wxT("[%Y.%m.%d %Hh%Mm] "))  + wxT(" [") + Utilities::GetCurrentDiscName() + wxT("] ") + myName + wxT(" vs ") + wxName;
+				_game_name = wxDateTime::Now().Format(wxT("[%Y.%m.%d %H-%M] "))  + wxT(" [") + Utilities::GetCurrentDiscName() + wxT("] ") + myName + wxT(" vs ") + wxName;
 			}
 
 			int delay = dialog->WaitForConfirmation();
@@ -373,10 +337,10 @@ public:
 				mcd_backup = uncompressed_mcd;
 			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
 			{
+				RequestStop();
 				Utilities::ExecuteOnMainThread([&]() {
 					Console.Error("NETPLAY: Unable to compress MCD buffer.");
 				});
-				RequestStop();
 				return false;
 			}
 			size_t blockSize = 128;
@@ -410,10 +374,10 @@ public:
 				//Console.WriteLn("Sending %d packets", n);
 				if(timeout_timestamp < shoryu::time_ms())
 				{
+					RequestStop();
 					Utilities::ExecuteOnMainThread([&]() {
 						Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
 					});
-					RequestStop();
 					return false;
 				}
 			}
@@ -454,6 +418,7 @@ public:
 	}
 	void Stop()
 	{
+		CoreThread.Reset();
 		INetplayDialog* dialog = INetplayDialog::GetInstance();
 		if(dialog->IsShown())
 		{
@@ -463,7 +428,6 @@ public:
 		}
 		if(_thread)
 			_thread->join();
-		CoreThread.Reset();
 		UI_EnableEverything();
 		_sessionEnded = true;
 	}
@@ -475,14 +439,14 @@ public:
 			{
 				if(_session->state() != shoryu::Ready)
 				{
-					Console.Error("NETPLAY: Unable to establish connection.");
 					Stop();
+					Console.Error("NETPLAY: Unable to establish connection.");
 					return;
 				}
 				if(!_connectionEstablished)
 				{
-					Console.Error("NETPLAY: Interrupted.");
 					Stop();
+					Console.Error("NETPLAY: Interrupted.");
 					return;
 				}
 			}
@@ -520,8 +484,8 @@ public:
 			}
 			catch(std::exception& e)
 			{
-				Console.Error("NETPLAY: %s. Interrupting sessions.", e.what());
 				Stop();
+				Console.Error("NETPLAY: %s. Interrupting sessions.", e.what());
 			}
 		}
 		if(_replay)
@@ -537,8 +501,8 @@ public:
 	{
 		if(_session && _session->end_session_request() && !_sessionEnded)
 		{
-			Console.Warning("NETPLAY: Session ended.");
 			Stop();
+			Console.Warning("NETPLAY: Session ended.");
 		}
 		if(_sessionEnded)
 			return value;
@@ -575,8 +539,8 @@ public:
 						break;
 					if(timeout <= shoryu::time_ms())
 					{
-						Console.Warning("NETPLAY: Timeout.");
 						Stop();
+						Console.Warning("NETPLAY: Timeout.");
 						break;
 					}
 #ifdef CONNECTION_TEST
@@ -591,8 +555,8 @@ public:
 		}
 		catch(std::exception& e)
 		{
-			Console.Error("NETPLAY: %s", e.what());
 			Stop();
+			Console.Error("NETPLAY: %s", e.what());
 		}
 		value = f.input[index];
 		return value;
