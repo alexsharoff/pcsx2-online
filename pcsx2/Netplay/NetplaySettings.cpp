@@ -20,6 +20,7 @@ void NetplaySettings::LoadSave( IniInterface& ini )
 	IniEntry( HostPort );
 	IniEntry( HostAddress );
 	IniEntry( ReadonlyMemcard );
+	IniEntry( SaveReplay );
 
 	int mode = Mode;
 	ini.Entry(wxT("Mode"), mode, mode);

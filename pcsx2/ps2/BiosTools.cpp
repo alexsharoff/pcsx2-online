@@ -123,7 +123,7 @@ static void LoadBiosVersion( pxInputStream& fp, u32& version, wxString& descript
 				romver[12], romver[13],	// day
 				romver[10], romver[11],	// month
 				romver[6], romver[7], romver[8], romver[9],	// year!
-				(romver[5]=='C') ? "Conseol" : (romver[5]=='D') ? "Devel" : ""
+				(romver[5]=='C') ? "Console" : (romver[5]=='D') ? "Devel" : ""
 			);
 
 			version = strtol(vermaj, (char**)NULL, 0) << 8;

@@ -111,8 +111,10 @@ public:
 	void AcceptInput(int){}
 	void Stop()
 	{
-		CoreThread.Reset();
-		UI_EnableEverything();
+		Utilities::ExecuteOnMainThread([&]() {
+			CoreThread.Reset();
+			UI_EnableEverything();
+		});
 	}
 protected:
 	Replay _replay;

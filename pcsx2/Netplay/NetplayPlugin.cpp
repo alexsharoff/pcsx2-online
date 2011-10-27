@@ -59,9 +59,9 @@ public:
 			Utilities::SaveSettings();
 			Utilities::ResetSettingsToSafeDefaults();
 
-			_sessionEnded = false;
-			synchronized = false;
-			_connectionEstablished = false;
+			_session_ended = false;
+			_synchronized = false;
+			_connection_established = false;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 
 			if(g_Conf->Net.SaveReplay)
@@ -104,28 +104,31 @@ public:
 		}
 		if(_replay)
 		{
-			try
+			if(_connection_established && _synchronized)
 			{
-				wxDirName dir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
-				dir = dir.Combine(wxDirName("replays"));
-				wxString replayName = _game_name + wxT(".rep");
-				replayName.Replace(wxT("<"),wxT("-"));
-				replayName.Replace(wxT(">"),wxT("-"));
-				replayName.Replace(wxT(":"),wxT("-"));
-				replayName.Replace(wxT("\""),wxT("-"));
-				replayName.Replace(wxT("/"),wxT("-"));
-				replayName.Replace(wxT("\\"),wxT("-"));
-				replayName.Replace(wxT("|"),wxT("-"));
-				replayName.Replace(wxT("?"),wxT("-"));
-				replayName.Replace(wxT("*"),wxT("-"));
-				wxString file = ( dir + replayName ).GetFullPath();
-				Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
-				_replay->SaveToFile(file);
-			}
-			catch(std::exception& e)
-			{
-				Stop();
-				Console.Error("REPLAY: %s", e.what());
+				try
+				{
+					wxDirName dir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+					dir = dir.Combine(wxDirName("replays"));
+					wxString replayName = _game_name + wxT(".rep");
+					replayName.Replace(wxT("<"),wxT("-"));
+					replayName.Replace(wxT(">"),wxT("-"));
+					replayName.Replace(wxT(":"),wxT("-"));
+					replayName.Replace(wxT("\""),wxT("-"));
+					replayName.Replace(wxT("/"),wxT("-"));
+					replayName.Replace(wxT("\\"),wxT("-"));
+					replayName.Replace(wxT("|"),wxT("-"));
+					replayName.Replace(wxT("?"),wxT("-"));
+					replayName.Replace(wxT("*"),wxT("-"));
+					wxString file = ( dir + replayName ).GetFullPath();
+					Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
+					_replay->SaveToFile(file);
+				}
+				catch(std::exception& e)
+				{
+					Stop();
+					Console.Error("REPLAY: %s", e.what());
+				}
 			}
 			_replay.reset();
 		}
@@ -258,19 +261,7 @@ public:
 					});
 				}
 			}
-			/*
-			timeout_timestamp = shoryu::time_ms() + 3000;
-			while(true)
-			{
-				if(_session->end_session_request())
-					return false;
-				_session->send();
-				if(timeout_timestamp < shoryu::time_ms())
-					break;
-				shoryu::sleep(50);
-			}
-			*/
-			_connectionEstablished = true;
+			_connection_established = true;
 			return true;
 		}
 		else
@@ -381,7 +372,7 @@ public:
 					return false;
 				}
 			}
-			_connectionEstablished = true;
+			_connection_established = true;
 			return true;
 		}
 		return false;
@@ -418,22 +409,24 @@ public:
 	}
 	void Stop()
 	{
-		CoreThread.Reset();
 		INetplayDialog* dialog = INetplayDialog::GetInstance();
-		if(dialog->IsShown())
-		{
-			Utilities::ExecuteOnMainThread([&]() {
+		Utilities::ExecuteOnMainThread([&]() {
+			CoreThread.Reset();
+			if(dialog->IsShown())
 				dialog->Close();
-			});
-		}
+			UI_EnableEverything();
+		});
+
 		if(_thread)
 			_thread->join();
-		UI_EnableEverything();
-		_sessionEnded = true;
+		
+		_session_ended = true;
 	}
 	void NextFrame()
 	{
-		if(!_connectionEstablished)
+		if(_session_ended)
+			return;
+		if(!_connection_established)
 		{
 			if(_thread->timed_join(boost::posix_time::milliseconds(3000)))
 			{
@@ -443,7 +436,7 @@ public:
 					Console.Error("NETPLAY: Unable to establish connection.");
 					return;
 				}
-				if(!_connectionEstablished)
+				if(!_connection_established)
 				{
 					Stop();
 					Console.Error("NETPLAY: Interrupted.");
@@ -451,7 +444,7 @@ public:
 				}
 			}
 		}
-		if(_thread && _connectionEstablished)
+		if(_thread && _connection_established)
 		{
 			_thread.reset();
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
@@ -464,7 +457,7 @@ public:
 			Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
 		}
 
-		myFrame = Message();
+		_my_frame = Message();
 		_session->next_frame();
 		if(_session->last_error().length())
 		{
@@ -476,11 +469,13 @@ public:
 	}
 	void AcceptInput(int side)
 	{
-		if(_connectionEstablished && side == 0)
+		if(_session_ended)
+			return;
+		if(_connection_established && side == 0)
 		{
 			try
 			{
-				_session->set(myFrame);
+				_session->set(_my_frame);
 			}
 			catch(std::exception& e)
 			{
@@ -491,7 +486,7 @@ public:
 		if(_replay)
 		{
 			Message f;
-			if(synchronized)
+			if(_synchronized)
 				_session->get(side, f, 0);
 
 			_replay->Write(side, f);
@@ -499,52 +494,53 @@ public:
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{
-		if(_session && _session->end_session_request() && !_sessionEnded)
+		if(_session && _session->end_session_request() && !_session_ended)
 		{
 			Stop();
-			Console.Warning("NETPLAY: Session ended.");
+			Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
 		}
-		if(_sessionEnded)
+		if(_session_ended)
 			return value;
 
 		Message f;
 		if(side == 0)
 		{
-			if(_connectionEstablished)
+			if(_connection_established)
 			{
-				if(!synchronized)
+				if(!_synchronized)
 				{
-					synchronized = _session->first_received_frame() > 0
+					_synchronized = _session->first_received_frame() > 0
 						&& _session->frame() > _session->first_received_frame()
 						&& _session->frame() <= _session->last_received_frame();
 				}
 			}
-			if(!synchronized)
+			if(!_synchronized)
 			{
 				if(_session->frame() > _session->last_received_frame())
 						shoryu::sleep(50);
 			}
 			else
-				myFrame.input[index] = value;
+				_my_frame.input[index] = value;
 		}
 		try
 		{
-			if(synchronized)
+			if(_synchronized)
 			{
 				auto timeout = shoryu::time_ms() + 10000;
 				while(!_session->get(side, f, _session->delay()*17))
 				{
+					
 					_session->send();
 					if(_session->end_session_request())
 						break;
 					if(timeout <= shoryu::time_ms())
 					{
 						Stop();
-						Console.Warning("NETPLAY: Timeout.");
+						Console.Warning("NETPLAY: Timeout on frame %d.", _session->frame());
 						break;
 					}
 #ifdef CONNECTION_TEST
-					shoryu::sleep(3000);
+					shoryu::sleep(500);
 #endif
 				}
 			}
@@ -604,18 +600,11 @@ protected:
 		return true;
 	}
 	
-	bool _sessionEnded;
-	bool _connectionEstablished;
-
+	bool _session_ended;
+	bool _connection_established;
+	bool _synchronized;
 	wxString _game_name;
-	Message myFrame;
-	Pcsx2Config EmuOptionsBackup;
-	bool Mcd1EnabledBackup;
-	bool Mcd2EnabledBackup;
-	bool EnableGameFixesBackup;
-	AppConfig::ConsoleLogOptions ProgLogBoxBackup;
-	bool replaced;
-	bool synchronized;
+	Message _my_frame;
 	Utilities::block_type mcd_backup;
 	boost::shared_ptr<Replay> _replay;
 };
