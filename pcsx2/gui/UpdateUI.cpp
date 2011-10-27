@@ -132,6 +132,7 @@ void UI_DisableEverything()
 	sMainFrame.EnableMenuItem( MenuId_Boot_CDVD, false );
 	sMainFrame.EnableMenuItem( MenuId_Boot_CDVD2, false );
 	sMainFrame.EnableMenuItem( MenuId_Boot_Net, false );
+	sMainFrame.EnableMenuItem( MenuId_Boot_Replay, false );
 	sMainFrame.EnableMenuItem( MenuId_Boot_ELF, false );
 	sMainFrame.EnableMenuItem( MenuId_IsoBrowse, false );
 	sMainFrame.EnableMenuItem( MenuId_EnableBackupStates, false );
@@ -172,6 +173,7 @@ void UI_EnableEverything()
 	sMainFrame.EnableMenuItem( MenuId_Boot_CDVD, true );
 	sMainFrame.EnableMenuItem( MenuId_Boot_CDVD2, true );
 	sMainFrame.EnableMenuItem( MenuId_Boot_Net, true );
+	sMainFrame.EnableMenuItem( MenuId_Boot_Replay, true );
 	sMainFrame.EnableMenuItem( MenuId_Boot_ELF, true );
 	sMainFrame.EnableMenuItem( MenuId_IsoBrowse, true );
 	sMainFrame.EnableMenuItem( MenuId_EnableBackupStates, true );

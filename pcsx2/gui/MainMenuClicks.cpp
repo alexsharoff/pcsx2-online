@@ -30,6 +30,7 @@
 #include "Netplay/NetplayPlugin.h"
 #include "Netplay/INetplayDialog.h"
 
+#include <wx/stdpaths.h>
 using namespace Dialogs;
 
 void MainEmuFrame::Menu_SysSettings_Click(wxCommandEvent &event)
@@ -286,6 +287,33 @@ bool MainEmuFrame::_DoSelectIsoBrowser( wxString& result )
 	return false;
 }
 
+bool MainEmuFrame::_DoSelectReplayBrowser( wxString& result )
+{
+	wxArrayString isoFilterTypes;
+	isoFilterTypes.Add(pxsFmt(_("Replays (%s)"), L".rep" ));
+	isoFilterTypes.Add(L"*.rep");
+
+	isoFilterTypes.Add(_("All Files (*.*)"));
+	isoFilterTypes.Add(L"*.*");
+	
+	wxDirName replayDir = (wxDirName)wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+	replayDir = replayDir.Combine(wxDirName("replays"));
+	if(!replayDir.Exists())
+		replayDir.Mkdir();
+
+	wxFileDialog ctrl( this, _("Select Replay file..."), replayDir.ToString(), wxEmptyString,
+		wxFileSelectorDefaultWildcardStr, wxFD_OPEN | wxFD_FILE_MUST_EXIST );
+
+	if( ctrl.ShowModal() != wxID_CANCEL )
+	{
+		result = ctrl.GetPath();
+		g_Conf->Folders.RunIso = wxFileName( result ).GetPath();
+		return true;
+	}
+
+	return false;
+}
+
 bool MainEmuFrame::_DoSelectELFBrowser()
 {
 	static const wxChar* elfFilterType = L"ELF Files (.elf)|*.elf;*.ELF";
@@ -359,6 +387,65 @@ void MainEmuFrame::_DoBootCdvd()
 void MainEmuFrame::EnableCdvdPluginSubmenu(bool isEnable)
 {
 	EnableMenuItem( GetPluginMenuId_Settings(PluginId_CDVD), isEnable );
+}
+
+void MainEmuFrame::_DoBootCdvdWithReplay()
+{
+	ScopedCoreThreadPause paused_core;
+
+	if( g_Conf->CdvdSource == CDVDsrc_Iso )
+	{
+		bool selector = g_Conf->CurrentIso.IsEmpty();
+
+		if( !selector && !wxFileExists(g_Conf->CurrentIso) )
+		{
+			// User has an iso selected from a previous run, but it doesn't exist anymore.
+			// Issue a courtesy popup and then an Iso Selector to choose a new one.
+
+			wxDialogWithHelpers dialog( this, _("ISO file not found!") );
+			dialog += dialog.Heading(
+				_("An error occurred while trying to open the file:\n\n") + g_Conf->CurrentIso + L"\n\n" +
+				_("Error: The configured ISO file does not exist.  Click OK to select a new ISO source for CDVD.")
+				);
+
+			pxIssueConfirmation( dialog, MsgButtons().OK() );
+
+			selector = true;
+		}
+
+		if( selector )
+		{
+			wxString result;
+			if( !_DoSelectIsoBrowser( result ) )
+			{
+				paused_core.AllowResume();
+				return;
+			}
+
+			SysUpdateIsoSrcFile( result );
+		}
+	}
+
+	if( SysHasValidState() )
+	{
+		wxDialogWithHelpers dialog( this, _("Confirm PS2 Reset") );
+		dialog += dialog.Heading( GetMsg_ConfirmSysReset() );
+		bool confirmed = (pxIssueConfirmation( dialog, MsgButtons().Yes().Cancel(), L"BootCdvd.ConfirmReset" ) != wxID_CANCEL);
+
+		if( !confirmed )
+		{
+			paused_core.AllowResume();
+			return;
+		}
+	}
+	wxString replayPath;
+	if(_DoSelectReplayBrowser(replayPath))
+	{
+		g_Conf->Replay.IsEnabled = true;
+		g_Conf->Replay.FilePath = replayPath;
+		sApp.SysExecute( g_Conf->CdvdSource );
+		UI_DisableEverything();
+	}
 }
 
 void MainEmuFrame::_DoBootCdvdWithNetplay()
@@ -468,6 +555,12 @@ void MainEmuFrame::Menu_BootNet_Click( wxCommandEvent &event )
 {
 	g_Conf->EmuOptions.UseBOOT2Injection = true;
 	_DoBootCdvdWithNetplay();
+}
+
+void MainEmuFrame::Menu_BootReplay_Click( wxCommandEvent &event )
+{
+	g_Conf->EmuOptions.UseBOOT2Injection = true;
+	_DoBootCdvdWithReplay();
 }
 
 wxString GetMsg_IsoImageChanged()
@@ -613,7 +706,7 @@ void MainEmuFrame::Menu_SysReset_Click(wxCommandEvent &event)
 void MainEmuFrame::Menu_SysShutdown_Click(wxCommandEvent &event)
 {
 	//if( !SysHasValidState() && !CorePlugins.AreAnyInitialized() ) return;
-	if(g_Conf->Net.IsEnabled)
+	if(g_Conf->Net.IsEnabled || g_Conf->Replay.IsEnabled)
 		UI_EnableEverything();
 	UI_DisableSysShutdown();
 	CoreThread.Reset();

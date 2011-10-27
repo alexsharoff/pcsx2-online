@@ -5,7 +5,7 @@
 #include <streambuf>
 #include <boost/shared_array.hpp>
 
-Replay::Replay() : _playback_frame(0), _mode(None) {}
+Replay::Replay() : _playback_frame(0), _mode(None), _length(0) {}
 
 static const char Header[] = "PCSX2REPV1";
 
@@ -13,6 +13,7 @@ bool Replay::LoadFromFile(const wxString& path)
 {
 	wxFile file(path);
 	bool validFile = false;
+	Mode(None);
 	if(file.IsOpened())
 	{
 		size_t size;
@@ -35,7 +36,7 @@ bool Replay::LoadFromFile(const wxString& path)
 			return false;
 		if(!ss.read(_state.biosVersion, sizeof(_state.biosVersion)))
 			return false;
-		if(!ss.read(_state.discSerial, sizeof(_state.discSerial)))
+		if(!ss.read(_state.discId, sizeof(_state.discId)))
 			return false;
 		if(!ss.read((char*)&size, sizeof(size)))
 			return false;
@@ -68,11 +69,18 @@ bool Replay::LoadFromFile(const wxString& path)
 				}
 			}
 		}
+		_length = Length();
 	}
 	else
 		throw std::exception("Cannot open file");
 	return true;
 }
+
+u64 Replay::Pos() const
+{
+	return _playback_frame;
+}
+
 const Replay& Replay::SaveToFile(const wxString& path) const
 {
 	wxFile file(path, wxFile::write);
@@ -81,7 +89,7 @@ const Replay& Replay::SaveToFile(const wxString& path) const
 		std::stringstream ss;
 		ss.write(Header, sizeof(Header));
 		ss.write(_state.biosVersion, sizeof(_state.biosVersion));
-		ss.write(_state.discSerial, sizeof(_state.discSerial));
+		ss.write(_state.discId, sizeof(_state.discId));
 		size_t size = _data.size();
 		ss.write((const char*)&size, sizeof(size));
 		ss.write((const char*)_data.data(), size);
@@ -153,16 +161,23 @@ Replay& Replay::Write(u8 side, const Message& msg)
 	_input[side].push_back(msg);
 	return *this;
 }
-u64 Replay::Length() const
+u64 Replay::Length()
 {
-	auto elem = std::min_element(_input.begin(), _input.end(), [&](const input_type& a, const input_type& b){
-		return a.size() < b.size();
-	});
-	input_container::iterator end;
-	if(elem != end)
-		return elem->size();
-	else
-		return 0;
+	if(_mode != Playback || !_length)
+	{
+		auto elem = std::min_element(_input.begin(), _input.end(), [&](const input_type& a, const input_type& b){
+			return a.size() < b.size();
+		});
+		if(elem != _input.end())
+		{
+			_length = elem->size();
+		}
+		else
+		{
+			_length = 0;
+		}
+	}
+	return _length;
 }
 int Replay::Sides() const
 {

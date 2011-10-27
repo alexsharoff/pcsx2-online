@@ -1,6 +1,10 @@
 #include "PrecompiledHeader.h"
 #include "Utilities.h"
 #include "zlib\zlib.h"
+#include "ps2/BiosTools.h"
+#include "Elfheader.h"
+#include "CDVD/CDVD.h"
+#include "AppGameDatabase.h"
 
 size_t Utilities::GetMCDSize(uint port, uint slot)
 {
@@ -50,3 +54,85 @@ bool Utilities::Uncompress(const Utilities::block_type& compressed,
 		uncompressed.resize(size);
 	return true;
 }
+
+void Utilities::DispatchEvent()
+{
+	if(_dispatch_event)
+		_dispatch_event();
+}
+void Utilities::ExecuteOnMainThread(const std::function<void()>& evt)
+{
+	if(!_dispatch_event)
+		_dispatch_event = evt;
+	if (!wxGetApp().Rpc_TryInvoke( DispatchEvent ))
+		ExecuteOnMainThread(evt);
+	if(_dispatch_event)
+		_dispatch_event = std::function<void()>();
+}
+
+wxString Utilities::GetCurrentDiscId()
+{
+	cdvdReloadElfInfo();
+	auto diskId = SysGetDiscID();
+	if(diskId.Len() == 0)
+	{
+		ExecuteOnMainThread([&]() {
+			Console.Error("Unable to get disc id.");
+		});
+	}
+	return diskId;
+}
+
+boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
+{
+	boost::shared_ptr<EmulatorSyncState> syncState(new EmulatorSyncState());
+
+	cdvdReloadElfInfo();
+	auto diskId = GetCurrentDiscId();
+	if(diskId.Len() == 0)
+	{
+		syncState.reset();
+		return syncState;
+	}
+
+	memset(syncState->discId, 0, sizeof(syncState->discId));
+	memcpy(syncState->discId, diskId.ToAscii().data(), 
+		diskId.length() > sizeof(syncState->discId) ? 
+		sizeof(syncState->discId) : diskId.length());
+
+	wxString biosDesc;
+	if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc))
+	{
+		ExecuteOnMainThread([&]() {
+			Console.Error("Unable to read BIOS information.");
+		});
+		syncState.reset();
+		return syncState;
+	}
+	memset(syncState->biosVersion, 0, sizeof(syncState->biosVersion));
+	memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
+		biosDesc.length() > sizeof(syncState->biosVersion) ? 
+		sizeof(syncState->biosVersion) : biosDesc.length());
+	return syncState;
+}
+
+
+wxString Utilities::GetDiscNameById(const wxString& id)
+{
+	wxString discName;
+	Game_Data game;
+	IGameDatabase* GameDB = AppHost_GetGameDatabase();
+	if(GameDB && GameDB->findGame(game, id))
+		discName = game.getString("Name") + wxT(" (") + game.getString("Region") + wxT(")");
+	else
+		discName = id;
+	return discName;
+}
+wxString Utilities::GetCurrentDiscName()
+{
+	return GetDiscNameById(GetCurrentDiscId());
+}
+
+//
+	
+std::function<void()> Utilities::_dispatch_event = std::function<void()>();

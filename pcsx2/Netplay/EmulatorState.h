@@ -6,8 +6,8 @@
 struct EmulatorSyncState
 {
 	EmulatorSyncState();
-	char biosVersion[32];
-	char discSerial[15];
+	char biosVersion[35];
+	char discId[15];
 	void serialize(shoryu::oarchive& a) const;
 	void deserialize(shoryu::iarchive& a);
 };

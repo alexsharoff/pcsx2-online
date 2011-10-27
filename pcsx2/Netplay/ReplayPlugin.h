@@ -1,6 +1,14 @@
 #pragma once
 #include "IOPHook.h"
 
-class ReplayPlugin : public IOPHook
+class IReplayPlugin : public IOPHook
 {
+protected:
+	static IReplayPlugin* instance;
+public:
+	static IReplayPlugin& GetInstance();
+
+	virtual void Open() = 0;
+	virtual void Init() = 0;
+	virtual void Close() = 0;
 };

@@ -91,6 +91,7 @@ enum MenuIdentifiers
 	MenuId_Boot_CDVD,
 	MenuId_Boot_CDVD2,
 	MenuId_Boot_Net,
+	MenuId_Boot_Replay,
 	MenuId_Boot_ELF,
 	//MenuId_Boot_Recent,			// Menu populated with recent source bootings
 

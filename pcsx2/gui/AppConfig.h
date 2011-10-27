@@ -19,6 +19,7 @@
 #include "PathDefs.h"
 #include "CDVD/CDVDaccess.h"
 #include "Netplay\NetplaySettings.h"
+#include "Netplay\ReplaySettings.h"
 
 enum DocsModeType
 {
@@ -296,6 +297,7 @@ public:
 	GSWindowOptions			GSWindow;
 	FramerateOptions		Framerate;
 	NetplaySettings			Net;
+	ReplaySettings			Replay;
 
 	// PCSX2-core emulation options, which are passed to the emu core prior to initiating
 	// an emulation session.  Note these are the options saved into the GUI ini file and

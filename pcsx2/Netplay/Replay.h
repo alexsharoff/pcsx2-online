@@ -31,7 +31,8 @@ public:
 	Replay& Data(const block_type&);
 	const Message& Read(int side) const;
 	Replay& Write(u8 side, const Message&);
-	u64 Length() const;
+	u64 Length();
+	u64 Pos() const;
 	int Sides() const;
 	Replay& Rewind();
 	Replay& Seek(u64 position);
@@ -42,4 +43,5 @@ protected:
 	block_type _data;
 	input_container _input;
 	u64 _playback_frame;
+	u64 _length;
 };

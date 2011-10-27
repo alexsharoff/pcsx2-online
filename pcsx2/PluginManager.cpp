@@ -24,6 +24,7 @@
 #include "CDVD/CDVDisoReader.h"
 
 #include "Netplay/NetplayPlugin.h"
+#include "Netplay/ReplayPlugin.h"
 
 #include "Utilities/ScopedPtr.h"
 #include "Utilities/pxStreams.h"
@@ -1199,7 +1200,13 @@ void SysCorePlugins::Open()
 		OpenPlugin_Mcd();
 	}
 
-	if(g_Conf->Net.IsEnabled)
+	if(g_Conf->Replay.IsEnabled)
+	{
+		HookIOP(&IReplayPlugin::GetInstance());
+		DbgCon.Indent().WriteLn( "Opening Replay" );
+		IReplayPlugin::GetInstance().Open();
+	}
+	else if(g_Conf->Net.IsEnabled)
 	{
 		HookIOP(&INetplayPlugin::GetInstance());
 		DbgCon.Indent().WriteLn( "Opening Netplay" );
@@ -1316,7 +1323,14 @@ void SysCorePlugins::Close()
 		INetplayPlugin::GetInstance().Close();
 		g_Conf->Net.IsEnabled = false;
 	}
-
+	
+	if(g_Conf->Replay.IsEnabled) 
+	{
+		DbgCon.Indent().WriteLn( "Closing Replay");
+		ScopedLock lock( m_mtx_PluginStatus );
+		IReplayPlugin::GetInstance().Close();
+		g_Conf->Replay.IsEnabled = false;
+	}
 
 	if( AtomicExchange( m_mcdOpen, false ) )
 	{
@@ -1374,6 +1388,11 @@ bool SysCorePlugins::Init()
 		INetplayPlugin::GetInstance().Init();
 	}
 
+	if(g_Conf->Replay.IsEnabled) 
+	{
+		DbgCon.Indent().WriteLn( "Init Replay");
+		IReplayPlugin::GetInstance().Init();
+	}
 
 	Console.WriteLn( Color_StrongBlue, "\nInitializing plugins..." );
 	const PluginInfo* pi = tbl_PluginInfo; do {

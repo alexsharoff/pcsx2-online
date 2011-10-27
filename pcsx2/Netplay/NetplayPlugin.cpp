@@ -4,9 +4,6 @@
 #include <wx/stdpaths.h>
 #include <iostream>
 #include <fstream>
-#include "ps2/BiosTools.h"
-#include "Elfheader.h"
-#include "CDVD/CDVD.h"
 #include "Netplay/NetplayPlugin.h"
 #include "Netplay/INetplayDialog.h"
 
@@ -186,7 +183,7 @@ public:
 	{
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.ToAscii().data()));
 		ep.port(port);
-		auto state = GetSyncState();
+		auto state = Utilities::GetSyncState();
 		if(state)
 		{
 			if(_replay)
@@ -195,7 +192,7 @@ public:
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->OnConnectionEstablished(_session->delay());
 			});
 			std::string player_name;
@@ -209,11 +206,11 @@ public:
 			}
 
 			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connected to ") + wxName +
 					wxT(". Starting memory card synchronization."));
 			});
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Connected to ") + wxName);
 			});
 
@@ -221,14 +218,14 @@ public:
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
 					myName = wxT("Me");
-				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + wxName + wxT("_vs_") + myName;
+				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + wxName + wxString(wxT("_vs_")) + myName;
 			}
 
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
 				return false;
 
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 
@@ -247,7 +244,7 @@ public:
 				{
 					if(timeout_timestamp < shoryu::time_ms())
 					{
-						ExecuteOnMainThread([&]() {
+						Utilities::ExecuteOnMainThread([&]() {
 							Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
 						});
 						RequestStop();
@@ -268,7 +265,7 @@ public:
 
 						if(!Utilities::Uncompress(compressed_mcd, uncompressed_mcd))
 						{
-							ExecuteOnMainThread([&]() {
+							Utilities::ExecuteOnMainThread([&]() {
 								Console.Error("NETPLAY: Unable to decompress MCD buffer.");
 							});
 							RequestStop();
@@ -276,7 +273,7 @@ public:
 						}
 						if(uncompressed_mcd.size() != mcd_size)
 						{
-							ExecuteOnMainThread([&]() {
+							Utilities::ExecuteOnMainThread([&]() {
 								Console.Error("NETPLAY: Invalid MCD received from host.");
 							});
 							RequestStop();
@@ -291,7 +288,7 @@ public:
 				_session->send();
 				if(delay != _session->delay())
 				{
-					ExecuteOnMainThread([&]() {
+					Utilities::ExecuteOnMainThread([&]() {
 						if(dialog->IsShown())
 							dialog->SetInputDelay(_session->delay());
 					});
@@ -318,7 +315,7 @@ public:
 	}
 	virtual bool Host(int timeout)
 	{
-		auto state = GetSyncState();
+		auto state = Utilities::GetSyncState();
 		if(state)
 		{
 			if(_replay)
@@ -327,7 +324,7 @@ public:
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
 				return false;
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->OnConnectionEstablished(_session->delay());
 			});
 			std::string player_name;
@@ -340,11 +337,11 @@ public:
 				player_name = ss.str();
 			}
 			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connection from ") + wxName +
 					wxT(". Starting memory card synchronization."));
 			});
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Connection from ") + wxName);
 			});
 
@@ -352,7 +349,7 @@ public:
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
 					myName = wxT("Me");
-				_game_name = wxDateTime::Now().Format(wxT("%Y.%m.%d_%Hh%Mm_")) + myName + wxT("_vs_") + wxName;
+				_game_name = wxDateTime::Now().Format(wxT("[%Y.%m.%d %Hh%Mm] "))  + wxT(" [") + Utilities::GetCurrentDiscName() + wxT("] ") + myName + wxT(" vs ") + wxName;
 			}
 
 			int delay = dialog->WaitForConfirmation();
@@ -363,7 +360,7 @@ public:
 				_session->delay(delay);
 				_session->reannounce_delay();
 			}
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 
@@ -376,7 +373,7 @@ public:
 				mcd_backup = uncompressed_mcd;
 			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
 			{
-				ExecuteOnMainThread([&]() {
+				Utilities::ExecuteOnMainThread([&]() {
 					Console.Error("NETPLAY: Unable to compress MCD buffer.");
 				});
 				RequestStop();
@@ -413,7 +410,7 @@ public:
 				//Console.WriteLn("Sending %d packets", n);
 				if(timeout_timestamp < shoryu::time_ms())
 				{
-					ExecuteOnMainThread([&]() {
+					Utilities::ExecuteOnMainThread([&]() {
 						Console.Error("NETPLAY: Timeout while synchonizing memory cards.");
 					});
 					RequestStop();
@@ -430,7 +427,7 @@ public:
 		INetplayDialog* dialog = INetplayDialog::GetInstance();
 		if(dialog->IsShown())
 		{
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->Close();
 			});
 		}
@@ -460,7 +457,7 @@ public:
 		INetplayDialog* dialog = INetplayDialog::GetInstance();
 		if(dialog->IsShown())
 		{
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				dialog->Close();
 			});
 		}
@@ -496,7 +493,7 @@ public:
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
 			if(dialog->IsShown())
 			{
-				ExecuteOnMainThread([&]() {
+				Utilities::ExecuteOnMainThread([&]() {
 					dialog->Close();
 				});
 			}
@@ -601,37 +598,42 @@ public:
 		return value;
 	}
 protected:
-	static std::function<void()> _dispatch_event;
-	static void DispatchEvent()
-	{
-		if(_dispatch_event)
-			_dispatch_event();
-	}
-	void ExecuteOnMainThread(const std::function<void()>& evt)
-	{
-		if(!_dispatch_event)
-			_dispatch_event = evt;
-		if (!wxGetApp().Rpc_TryInvoke( DispatchEvent ))
-			ExecuteOnMainThread(evt);
-		if(_dispatch_event)
-			_dispatch_event = std::function<void()>();
-	}
-
 	bool CheckSyncStates(const EmulatorSyncState& s1, const EmulatorSyncState& s2)
 	{
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
 		{
-			ExecuteOnMainThread([&]() {
+			Utilities::ExecuteOnMainThread([&]() {
 				Console.Error("NETPLAY: Bios version mismatch.");
 			});
 			return false;
 		}
-		if(memcmp(s1.discSerial, s2.discSerial, sizeof(s1.discSerial)))
+		if(memcmp(s1.discId, s2.discId, sizeof(s1.discId)))
 		{
-			std::stringstream ss;
-			ss << "NETPLAY: You are trying to boot different games ("<<s1.discSerial<<" != "<<s2.discSerial<<").";
-			ExecuteOnMainThread([&]() {
-				Console.Error(ss.str().c_str());
+			size_t s1discIdLen = sizeof(s1.discId);
+			size_t s2discIdLen = sizeof(s2.discId);
+			for(size_t i = 0; i < s1discIdLen; i++)
+			{
+				if(s1.discId[i] == 0)
+				{
+					s1discIdLen = i;
+					break;
+				}
+			}
+			for(size_t i = 0; i < s2discIdLen; i++)
+			{
+				if(s2.discId[i] == 0)
+				{
+					s2discIdLen = i;
+					break;
+				}
+			}
+			wxString s1discId(s1.discId, wxConvUTF8, s1discIdLen);
+			wxString s2discId(s2.discId, wxConvUTF8, s2discIdLen);
+
+			Utilities::ExecuteOnMainThread([&]() {
+				Console.Error(
+					wxString(wxT("NETPLAY: You are trying to boot different games: ")) + 
+					Utilities::GetDiscNameById(s1discId) + wxString(wxT(" and ")) + Utilities::GetDiscNameById(s2discId));
 			});
 			return false;
 		}
@@ -652,45 +654,7 @@ protected:
 	bool synchronized;
 	Utilities::block_type mcd_backup;
 	boost::shared_ptr<Replay> _replay;
-
-
-	boost::shared_ptr<EmulatorSyncState> GetSyncState()
-	{
-		boost::shared_ptr<EmulatorSyncState> syncState(new EmulatorSyncState());
-
-		cdvdReloadElfInfo();
-		if(DiscSerial.Len() == 0)
-		{
-			ExecuteOnMainThread([&]() {
-				Console.Error("NETPLAY: Unable to read disc serial.");
-			});
-			syncState.reset();
-			return syncState;
-		}
-
-		memset(syncState->discSerial, 0, sizeof(syncState->discSerial));
-		memcpy(syncState->discSerial, DiscSerial.ToAscii().data(), 
-			DiscSerial.length() > sizeof(syncState->discSerial) ? 
-			sizeof(syncState->discSerial) : DiscSerial.length());
-
-		wxString biosDesc;
-		if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc))
-		{
-			ExecuteOnMainThread([&]() {
-				Console.Error("NETPLAY: Unable to read BIOS name.");
-			});
-			syncState.reset();
-			return syncState;
-		}
-		memset(syncState->biosVersion, 0, sizeof(syncState->biosVersion));
-		memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
-			biosDesc.length() > sizeof(syncState->biosVersion) ? 
-			sizeof(syncState->biosVersion) : biosDesc.length());
-		return syncState;
-	}
 };
-
-std::function<void()> NetplayPlugin::_dispatch_event = std::function<void()>();
 
 INetplayPlugin* INetplayPlugin::instance = 0;
 
