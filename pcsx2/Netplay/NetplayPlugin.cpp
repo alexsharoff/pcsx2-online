@@ -480,7 +480,7 @@ public:
 			catch(std::exception& e)
 			{
 				Stop();
-				Console.Error("NETPLAY: %s. Interrupting sessions.", e.what());
+				Console.Error("NETPLAY: %s. Interrupting session.", e.what());
 			}
 		}
 		if(_replay)
@@ -509,9 +509,7 @@ public:
 			{
 				if(!_synchronized)
 				{
-					_synchronized = _session->first_received_frame() > 0
-						&& _session->frame() > _session->first_received_frame()
-						&& _session->frame() <= _session->last_received_frame();
+					_synchronized = _session->frame() == _session->last_received_frame();
 				}
 			}
 			if(!_synchronized)
