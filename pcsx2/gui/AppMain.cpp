@@ -30,9 +30,6 @@
 
 #include "Utilities/IniInterface.h"
 
-#include "Netplay\NetplayPlugin.h"
-#include "Netplay\Utilities.h"
-
 #include <wx/stdpaths.h>
 
 #ifdef __WXMSW__
@@ -240,10 +237,6 @@ void Pcsx2App::PadKeyDispatch( const keyEvent& ev )
 #else
 #	error Unsupported Target Platform.
 #endif
-
-	keyEvent kevent = ev;
-	kevent.key = vkey? vkey : ev.key;
-	Utilities::DispatchKeyHandler(kevent);
 
 	switch (vkey)
 	{

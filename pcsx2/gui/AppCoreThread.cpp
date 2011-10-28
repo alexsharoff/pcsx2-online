@@ -156,16 +156,6 @@ void AppCoreThread::Resume()
 	_parent::Resume();
 }
 
-void AppCoreThread::CloseMcdPlugin()
-{
-	if( !GetSysExecutorThread().IsSelf() )
-	{
-		GetSysExecutorThread().PostEvent( new SysExecEvent_InvokeCoreThreadMethod(&AppCoreThread::CloseMcdPlugin) );
-		return;
-	}
-	GetCorePlugins().Close(PluginId_Mcd);
-}
-
 void AppCoreThread::ChangeCdvdSource()
 {
 	if( !GetSysExecutorThread().IsSelf() )

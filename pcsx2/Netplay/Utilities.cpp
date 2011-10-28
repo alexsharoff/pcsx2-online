@@ -57,17 +57,6 @@ void Utilities::RestoreSettings()
 	g_Conf->EnableGameFixes = _settingsBackup->EnableGameFixes;
 }
 
-void Utilities::SetKeyHandler(const keyEvent& key, const std::function<void()>& handler)
-{
-	_keyMappings[key] = handler;
-}
-void Utilities::DispatchKeyHandler(const keyEvent& key)
-{
-	auto map = _keyMappings.find(key);
-	if(map != _keyMappings.end())
-		map->second();
-}
-
 size_t Utilities::GetMCDSize(uint port, uint slot)
 {
 	PS2E_McdSizeInfo info;
@@ -195,8 +184,5 @@ wxString Utilities::GetCurrentDiscName()
 	return GetDiscNameById(GetCurrentDiscId());
 }
 
-//
-	
 std::function<void()> Utilities::_dispatch_event;
-boost::unordered_map<keyEvent, std::function<void()>> Utilities::_keyMappings;
 std::auto_ptr<AppConfig> Utilities::_settingsBackup;

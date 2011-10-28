@@ -56,9 +56,6 @@ public:
 #endif
 		if(BindPort(settings.LocalPort))
 		{
-			Utilities::SaveSettings();
-			Utilities::ResetSettingsToSafeDefaults();
-
 			_session_ended = false;
 			_synchronized = false;
 			_connection_established = false;
@@ -91,6 +88,8 @@ public:
 	}
 	virtual void Init()
 	{
+		Utilities::SaveSettings();
+		Utilities::ResetSettingsToSafeDefaults();
 	}
 	virtual void Close()
 	{

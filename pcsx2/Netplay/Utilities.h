@@ -26,15 +26,11 @@ public:
 
 	static void ExecuteOnMainThread(const std::function<void()>& evt);
 
-	static void SetKeyHandler(const keyEvent& key, const std::function<void()>& handler);
-	static void DispatchKeyHandler(const keyEvent& key);
-	
 	static void SaveSettings();
 	static void ResetSettingsToSafeDefaults();
 	static void RestoreSettings();
 private:
 	static std::function<void()> _dispatch_event;
 	static void DispatchEvent();
-	static boost::unordered_map<keyEvent, std::function<void()> > _keyMappings;
 	static std::auto_ptr<AppConfig> _settingsBackup;
 };

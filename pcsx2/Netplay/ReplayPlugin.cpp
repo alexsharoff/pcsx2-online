@@ -10,13 +10,13 @@ class ReplayPlugin : public IReplayPlugin
 public:
 	void Init()
 	{
+		Utilities::SaveSettings();
+		Utilities::ResetSettingsToSafeDefaults();
 	}
 	void Open()
 	{
 		try
 		{
-			Utilities::SaveSettings();
-			Utilities::ResetSettingsToSafeDefaults();
 			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
 			{
 				_replay.Mode(Playback);
