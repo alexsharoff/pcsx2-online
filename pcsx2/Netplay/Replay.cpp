@@ -9,7 +9,7 @@ Replay::Replay() : _playback_frame(0), _mode(None), _length(0) {}
 
 static const char Header[] = "PCSX2REPV1";
 
-bool Replay::LoadFromFile(const wxString& path)
+bool Replay::LoadFromFile(const wxString& path, bool compressed)
 {
 	wxFile file(path);
 	bool validFile = false;
@@ -17,18 +17,29 @@ bool Replay::LoadFromFile(const wxString& path)
 	if(file.IsOpened())
 	{
 		size_t size;
-		if(file.Read((char*)&size,sizeof(size)) != sizeof(size))
-			return false;
-		block_type uncompressed(size);
-		size = file.Length() - sizeof(size);
-		block_type compressed(size);
-		if(file.Read(compressed.data(), size) != size)
-			return false;
+		std::istringstream ss;
+		if(compressed)
+		{
+			if(file.Read((char*)&size,sizeof(size)) != sizeof(size))
+				return false;
+			block_type uncompressed(size);
+			size = file.Length() - sizeof(size);
+			block_type compressed(size);
+			if(file.Read(compressed.data(), size) != size)
+				return false;
 
-		if(!Utilities::Uncompress(compressed, uncompressed))
-			return false;
-
-		std::istringstream ss(std::string(uncompressed.begin(), uncompressed.end()));
+			if(!Utilities::Uncompress(compressed, uncompressed))
+				return false;
+			ss.str(std::string(uncompressed.begin(), uncompressed.end()));
+		}
+		else
+		{
+			block_type block(file.Length());
+			if(file.Read(block.data(), file.Length()) != size)
+				return false;
+			ss.str(std::string(block.begin(), block.end()));
+		}
+		
 		char header_test[sizeof(Header)];
 		if(!ss.read(header_test, sizeof(Header)))
 			return false;
@@ -81,7 +92,7 @@ u64 Replay::Pos() const
 	return _playback_frame;
 }
 
-const Replay& Replay::SaveToFile(const wxString& path) const
+const Replay& Replay::SaveToFile(const wxString& path, bool compress) const
 {
 	wxFile file(path, wxFile::write);
 	if(file.IsOpened())
@@ -103,13 +114,22 @@ const Replay& Replay::SaveToFile(const wxString& path) const
 				ss.write(_input[i][j].input, sizeof(_input[i][j].input));
 		}
 		std::string data = ss.str();
-		block_type uncompressed(data.begin(), data.end());
-		block_type compressed;
-		if(!Utilities::Compress(uncompressed, compressed))
-			throw std::exception("Unable to compress data");
-		size = uncompressed.size();
-		file.Write((char*)&size,sizeof(size));
-		file.Write(compressed.data(), compressed.size());
+		if(compress)
+		{
+			block_type uncompressed(data.begin(), data.end());
+			block_type compressed;
+			if(!Utilities::Compress(uncompressed, compressed))
+				throw std::exception("Unable to compress data");
+			size = uncompressed.size();
+			file.Write((char*)&size,sizeof(size));
+			file.Write(compressed.data(), compressed.size());
+		}
+		else
+		{
+			size = data.length();
+			file.Write((char*)&size,sizeof(size));
+			file.Write(data.data(), data.length());
+		}
 	}
 	else
 		throw std::exception("Cannot open file");

@@ -138,7 +138,6 @@ boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
 {
 	boost::shared_ptr<EmulatorSyncState> syncState(new EmulatorSyncState());
 
-	cdvdReloadElfInfo();
 	auto diskId = GetCurrentDiscId();
 	if(diskId.Len() == 0)
 	{
@@ -152,10 +151,10 @@ boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
 		sizeof(syncState->discId) : diskId.length());
 
 	wxString biosDesc;
-	if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc))
+	if(!IsBIOS(g_Conf->EmuOptions.BiosFilename.GetFullPath(), biosDesc) || biosDesc.Len() == 0)
 	{
 		ExecuteOnMainThread([&]() {
-			Console.Error("Unable to read BIOS information.");
+			Console.Error("Unable to read BIOS version.");
 		});
 		syncState.reset();
 		return syncState;
@@ -164,6 +163,7 @@ boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
 	memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
 		biosDesc.length() > sizeof(syncState->biosVersion) ? 
 		sizeof(syncState->biosVersion) : biosDesc.length());
+
 	return syncState;
 }
 

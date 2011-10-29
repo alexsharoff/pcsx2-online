@@ -18,6 +18,8 @@
 
 //#define CONNECTION_TEST
 
+static const int64_t SyncFrame = 600LL;
+
 using namespace std;
 
 class NetplayPlugin : public INetplayPlugin
@@ -57,7 +59,6 @@ public:
 		if(BindPort(settings.LocalPort))
 		{
 			_session_ended = false;
-			_synchronized = false;
 			_connection_established = false;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 
@@ -103,7 +104,7 @@ public:
 		}
 		if(_replay)
 		{
-			if(_connection_established && _synchronized)
+			if(_connection_established)
 			{
 				try
 				{
@@ -121,7 +122,7 @@ public:
 					replayName.Replace(wxT("*"),wxT("-"));
 					wxString file = ( dir + replayName ).GetFullPath();
 					Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
-					_replay->SaveToFile(file);
+					_replay->SaveToFile(file, false);
 				}
 				catch(std::exception& e)
 				{
@@ -155,7 +156,10 @@ public:
 				_replay->SyncState(*state);
 			if(!_session->join(ep, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
+			{
+				RequestStop();
 				return false;
+			}
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
 			Utilities::ExecuteOnMainThread([&]() {
 				dialog->OnConnectionEstablished(_session->delay());
@@ -189,7 +193,10 @@ public:
 
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
+			{
+				RequestStop();
 				return false;
+			}
 
 			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Memory card synchronization..."));
@@ -264,8 +271,10 @@ public:
 			return true;
 		}
 		else
+		{
 			RequestStop();
-		return false;
+			return false;
+		}
 	}
 	virtual bool Host(int timeout)
 	{
@@ -276,7 +285,10 @@ public:
 				_replay->SyncState(*state);
 			if(!_session->create(2, *state,
 				boost::bind(&NetplayPlugin::CheckSyncStates, this, _1, _2), timeout))
+			{
+				RequestStop();
 				return false;
+			}
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
 			Utilities::ExecuteOnMainThread([&]() {
 				dialog->OnConnectionEstablished(_session->delay());
@@ -308,7 +320,10 @@ public:
 
 			int delay = dialog->WaitForConfirmation();
 			if(delay <= 0)
+			{
+				RequestStop();
 				return false;
+			}
 			if(delay != _session->delay())
 			{
 				_session->delay(delay);
@@ -361,7 +376,6 @@ public:
 					_session->clear_queue();
 					break;
 				}
-				//Console.WriteLn("Sending %d packets", n);
 				if(timeout_timestamp < shoryu::time_ms())
 				{
 					RequestStop();
@@ -374,7 +388,11 @@ public:
 			_connection_established = true;
 			return true;
 		}
-		return false;
+		else
+		{
+			RequestStop();
+			return false;
+		}
 	}
 	void EndSession()
 	{
@@ -394,7 +412,7 @@ public:
 	}
 	void RequestStop()
 	{
-		if(_session && _session->state() == shoryu::Ready)
+		if(_session)
 		{
 			_session->send_end_session_request();
 			int try_count = _session->delay() * 4;
@@ -425,27 +443,10 @@ public:
 	{
 		if(_session_ended)
 			return;
-		if(!_connection_established)
+		_my_frame = Message();
+		_session->next_frame();
+		if(_connection_established && _session->frame() == SyncFrame)
 		{
-			if(_thread->timed_join(boost::posix_time::milliseconds(3000)))
-			{
-				if(_session->state() != shoryu::Ready)
-				{
-					Stop();
-					Console.Error("NETPLAY: Unable to establish connection.");
-					return;
-				}
-				if(!_connection_established)
-				{
-					Stop();
-					Console.Error("NETPLAY: Interrupted.");
-					return;
-				}
-			}
-		}
-		if(_thread && _connection_established)
-		{
-			_thread.reset();
 			INetplayDialog* dialog = INetplayDialog::GetInstance();
 			if(dialog->IsShown())
 			{
@@ -455,9 +456,16 @@ public:
 			}
 			Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
 		}
-
-		_my_frame = Message();
-		_session->next_frame();
+		if(_thread && _connection_established)
+		{
+			if(_session->frame() > SyncFrame)
+			{
+				_connection_established = false;
+				Console.Error("NETPLAY: Connection timeout");
+				Stop();
+			}
+			_thread.reset();
+		}
 		if(_session->last_error().length())
 		{
 			// 'The operation completed successfully' is a really strange error.
@@ -485,7 +493,7 @@ public:
 		if(_replay)
 		{
 			Message f;
-			if(_synchronized)
+			if(_connection_established && _session->frame() >= SyncFrame)
 				_session->get(side, f, 0);
 
 			_replay->Write(side, f);
@@ -501,32 +509,19 @@ public:
 		if(_session_ended)
 			return value;
 
-		Message f;
-		if(side == 0)
+		Message frame;
+		if(!_connection_established)
+			shoryu::sleep(500);
+
+		if(_connection_established && _session->frame() >= SyncFrame)
 		{
-			if(_connection_established)
-			{
-				if(!_synchronized)
-				{
-					_synchronized = _session->frame() == _session->last_received_frame();
-				}
-			}
-			if(!_synchronized)
-			{
-				if(_session->frame() > _session->last_received_frame())
-						shoryu::sleep(50);
-			}
-			else
+			if(side == 0)
 				_my_frame.input[index] = value;
-		}
-		try
-		{
-			if(_synchronized)
+			auto timeout = shoryu::time_ms() + 10000;
+			try
 			{
-				auto timeout = shoryu::time_ms() + 10000;
-				while(!_session->get(side, f, _session->delay()*17))
+				while(!_session->get(side, frame, _session->delay()*17))
 				{
-					
 					_session->send();
 					if(_session->end_session_request())
 						break;
@@ -541,17 +536,13 @@ public:
 #endif
 				}
 			}
-			else
+			catch(std::exception& e)
 			{
-				_session->send();
+				Stop();
+				Console.Error("NETPLAY: %s", e.what());
 			}
 		}
-		catch(std::exception& e)
-		{
-			Stop();
-			Console.Error("NETPLAY: %s", e.what());
-		}
-		value = f.input[index];
+		value = frame.input[index];
 		return value;
 	}
 protected:
@@ -599,7 +590,6 @@ protected:
 	
 	bool _session_ended;
 	bool _connection_established;
-	bool _synchronized;
 	wxString _game_name;
 	Message _my_frame;
 	Utilities::block_type mcd_backup;

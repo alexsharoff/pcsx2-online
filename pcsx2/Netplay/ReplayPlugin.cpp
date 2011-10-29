@@ -17,7 +17,7 @@ public:
 	{
 		try
 		{
-			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
+			if(_replay.LoadFromFile(g_Conf->Replay.FilePath, false))
 			{
 				_replay.Mode(Playback);
 				auto state = Utilities::GetSyncState();

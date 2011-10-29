@@ -615,7 +615,13 @@ namespace shoryu
 					message_type msg(Deny);
 					msg.state = _state;
 					_async.queue(ep, msg);
-					send(ep);
+					int t = 5;
+					while(t --> 0)
+					{
+						send(ep);
+						sleep(50);
+					}
+					_connection_sem.post();
 #ifdef SHORYU_ENABLE_LOG
 					log << "[" << time_ms() << "] Out.Deny ";
 #endif
@@ -832,7 +838,8 @@ namespace shoryu
 				_eps.erase(std::find(_eps.begin(), _eps.end(), _eps[_side]));
 				std::srand(msg.rand_seed);
 				_current_state = Info;
-				_state_check_handler(_state, msg.state);
+				if(!_state_check_handler(_state, msg.state))
+					_current_state = Deny;
 				_connection_sem.post();
 			}
 			if(msg.cmd == Deny)

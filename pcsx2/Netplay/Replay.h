@@ -21,8 +21,8 @@ public:
 
 	Replay();
 
-	bool LoadFromFile(const wxString& path);
-	const Replay& SaveToFile(const wxString& path) const;
+	bool LoadFromFile(const wxString& path, bool compressed = true);
+	const Replay& SaveToFile(const wxString& path, bool compress = true) const;
 	ReplayMode Mode() const;
 	Replay& Mode(ReplayMode mode);
 	const EmulatorSyncState& SyncState() const;
