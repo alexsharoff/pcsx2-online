@@ -19,6 +19,7 @@ public:
 	static bool Uncompress(const Utilities::block_type& compressed,
 		Utilities::block_type& uncompressed);
 	static size_t GetMCDSize(uint port, uint slot);
+	static bool IsSyncStateReady();
 	static boost::shared_ptr<EmulatorSyncState> GetSyncState();
 	static wxString GetDiscNameById(const wxString& id);
 	static wxString GetCurrentDiscId();

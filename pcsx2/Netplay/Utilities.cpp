@@ -6,21 +6,6 @@
 #include "CDVD/CDVD.h"
 #include "AppGameDatabase.h"
 
-
-namespace boost
-{
-	inline std::size_t hash_value(const keyEvent& arr) 
-	{
-		return arr.evt ^ arr.key;
-	}
-}
-
-inline bool operator==(const keyEvent& k1, const keyEvent& k2)
-{
-	using boost::hash_value;
-	return k1.evt == k2.evt && k1.key == k2.key;
-}
-
 void Utilities::SaveSettings()
 {
 	_settingsBackup.reset(new AppConfig(*g_Conf));
@@ -44,7 +29,7 @@ void Utilities::ResetSettingsToSafeDefaults()
 	g_Conf->EmuOptions.CdvdVerboseReads = false;
 	g_Conf->EmuOptions.Profiler.bitset = 0;
 	g_Conf->EmuOptions.Trace.Enabled = false;
-
+	
 	g_Conf->Mcd[0].Enabled = true;
 	g_Conf->Mcd[1].Enabled = false;
 	g_Conf->EnableGameFixes = true;
@@ -132,6 +117,12 @@ wxString Utilities::GetCurrentDiscId()
 		});
 	}
 	return diskId;
+}
+
+bool Utilities::IsSyncStateReady()
+{
+	cdvdReloadElfInfo();
+	return !DiscSerial.IsEmpty();
 }
 
 boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()

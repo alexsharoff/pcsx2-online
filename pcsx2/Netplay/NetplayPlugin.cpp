@@ -122,7 +122,7 @@ public:
 					replayName.Replace(wxT("*"),wxT("-"));
 					wxString file = ( dir + replayName ).GetFullPath();
 					Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
-					_replay->SaveToFile(file, false);
+					_replay->SaveToFile(file);
 				}
 				catch(std::exception& e)
 				{
@@ -147,10 +147,17 @@ public:
 
 	virtual bool Connect(const wxString& ip, unsigned short port, int timeout)
 	{
+		int try_count = 15;
+		while(try_count-->0)
+		{
+			if(Utilities::IsSyncStateReady())
+				break;
+			shoryu::sleep(500);
+		}
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.ToAscii().data()));
 		ep.port(port);
 		auto state = Utilities::GetSyncState();
-		if(state)
+		if(state && try_count)
 		{
 			if(_replay)
 				_replay->SyncState(*state);
@@ -278,8 +285,15 @@ public:
 	}
 	virtual bool Host(int timeout)
 	{
+		int try_count = 15;
+		while(try_count-->0)
+		{
+			if(Utilities::IsSyncStateReady())
+				break;
+			shoryu::sleep(500);
+		}
 		auto state = Utilities::GetSyncState();
-		if(state)
+		if(state && try_count)
 		{
 			if(_replay)
 				_replay->SyncState(*state);

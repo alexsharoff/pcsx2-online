@@ -34,8 +34,10 @@ bool Replay::LoadFromFile(const wxString& path, bool compressed)
 		}
 		else
 		{
-			block_type block(file.Length());
-			if(file.Read(block.data(), file.Length()) != size)
+			if(file.Read((char*)&size,sizeof(size)) != sizeof(size))
+				return false;
+			block_type block(size);
+			if(file.Read(block.data(), size) != size)
 				return false;
 			ss.str(std::string(block.begin(), block.end()));
 		}

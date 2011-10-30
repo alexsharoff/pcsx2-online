@@ -17,7 +17,7 @@ public:
 	{
 		try
 		{
-			if(_replay.LoadFromFile(g_Conf->Replay.FilePath, false))
+			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
 			{
 				_replay.Mode(Playback);
 				auto state = Utilities::GetSyncState();
@@ -28,8 +28,8 @@ public:
 						std::stringstream ss;
 						ss << "REPLAY: Incompatible BIOS detected. Please use ";
 						ss.write(_replay.SyncState().biosVersion, sizeof(state->biosVersion));
-						Console.Error(ss.str().c_str());
 						Stop();
+						Console.Error(ss.str().c_str());
 						return;
 					}
 					if(memcmp(_replay.SyncState().discId, state->discId, sizeof(state->discId)))
@@ -62,6 +62,11 @@ public:
 						Console.Error(msg);
 						return;
 					}
+				}
+				else
+				{
+					Stop();
+					return;
 				}
 				_mcd_backup = Utilities::ReadMCD(0,0);
 				Utilities::WriteMCD(0,0,_replay.Data());
