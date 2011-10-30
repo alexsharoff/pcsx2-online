@@ -24,19 +24,6 @@ Notes
 
 During netplay, settings are temporarily reset to defaults with all speedhacks disabled, so performance may drop a bit. 'Skip Mpeg' hack is enabled during netplay, so there won't be unexpected desyncs.
 
-Tested and working
-------------------
+Troubleshooting
+---------------
 
-* Melty Blood Actress Again
-* Guilty Gear XX Accent Core
-
-Tested and not working (i.e. will be fixed soon)
-------------------------------------------------
-
-* Tekken 5
-
-Testing soon
-------------
-
-* Hokuto no Ken
-* Fate Unlimited Codes

@@ -6,7 +6,6 @@
 
 namespace shoryu
 {
-	//make it more safe
 	class archive : boost::noncopyable
 	{
 	public:

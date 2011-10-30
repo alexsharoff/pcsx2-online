@@ -15,7 +15,7 @@ namespace shoryu
 		Info, //side, all endpoints, delay
 		Wait,
 		Delay, //set delay
-		Ready, //send to eps, after all eps answered - start game
+		Ready, //send to eps, after all eps answered - start the game
 		EndSession
 	};
 
@@ -170,7 +170,6 @@ namespace shoryu
 #ifdef SHORYU_ENABLE_LOG
 		std::stringstream log;
 #endif
-		// pcsx2 does not compile if log's initialized the other way
 		session() : 
 #ifdef SHORYU_ENABLE_LOG
 			log(std::ios_base::in + std::ios_base::out),

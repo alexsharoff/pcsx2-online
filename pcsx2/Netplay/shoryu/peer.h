@@ -27,11 +27,9 @@ namespace shoryu
 	};
 
 	template<typename MsgType>
-	class peer
+	class peer : boost::noncopyable
 	{
-	private:  // emphasize the following members are private
-      peer( const peer& );
-      const peer& operator=( const peer& );
+	private:
 		struct msg_wrapper
 		{
 			int64_t id;

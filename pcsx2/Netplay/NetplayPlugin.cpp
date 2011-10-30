@@ -10,20 +10,15 @@
 #include "shoryu/session.h"
 #include "Message.h"
 #include "Replay.h"
-
 #include "NetplaySettings.h"
-
 #include "Utilities.h"
 
 
 //#define CONNECTION_TEST
 
-static const int64_t SyncFrame = 600LL;
-
-using namespace std;
-
 class NetplayPlugin : public INetplayPlugin
 {
+	static const int64_t SyncFrame = 600LL;
 	typedef shoryu::session<Message, EmulatorSyncState> session_type;
 	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;

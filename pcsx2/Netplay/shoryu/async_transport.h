@@ -21,7 +21,6 @@
 /*IMPROVE:
  * exception handling
  * architecture
- * lock mutexes only when changing data!
  */
 
 namespace shoryu
@@ -125,26 +124,22 @@ namespace shoryu
 		}
 		void clear_queue(const boost::asio::ip::udp::endpoint& ep)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 				clear_queue_impl(ep);
 		}
 		void queue(const boost::asio::ip::udp::endpoint& ep, const DataType& data)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 				queue_impl(ep, data);
 		}
 		int send(const boost::asio::ip::udp::endpoint& ep, int delay_ms, int loss_percentage)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 				return send_impl(ep, delay_ms, loss_percentage);
 			return -1;
 		}
 		int send(const boost::asio::ip::udp::endpoint& ep)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 				return send_impl(ep);
 			return -1;
@@ -157,7 +152,6 @@ namespace shoryu
 		}
 		inline const peer_list_type peers()
 		{
-			//lock_type lock(_mutex);
 			peer_list_type list;
 			foreach(peer_map_type::value_type& kv, _peers)
 				list.push_back(kv.second->data);
@@ -165,12 +159,10 @@ namespace shoryu
 		}
 		inline const peer_data_type& peer(const endpoint& ep)
 		{
-			//lock_type lock(_mutex); 
 			return _peers[ep]->data;
 		}
 		inline int port()
 		{
-			//lock_type lock(_mutex); 
 			return _socket.local_endpoint().port();
 		}
 	private:
@@ -184,7 +176,6 @@ namespace shoryu
 			t.buffer_length = oa.pos();
 			if(sync)
 			{
-				//lock_type lock(_mutex);
 				try
 				{
 					_socket.send_to(boost::asio::buffer(t.buffer, t.buffer_length), t.ep);
@@ -273,7 +264,6 @@ namespace shoryu
 		}
 		void receive_handler( transaction_data<Recv,BufferSize>& t, size_t bytes_recvd, const boost::system::error_code& e)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 			{
 				receive_loop();
@@ -291,12 +281,8 @@ namespace shoryu
 		}
 		void send_handler(const transaction_data<Send,BufferSize>& t, size_t bytes_sent, const boost::system::error_code& e)
 		{
-			//lock_type lock(_mutex);
 			if(_is_running)
 			{
-				/*if(!e)
-					finalize(t);
-				else*/
 				if(e)
 				{
 					if(_err_handler)
@@ -304,7 +290,6 @@ namespace shoryu
 				}
 			}
 		}
-		// This method is not thread-safe by itself. It should be mutex-guarded.
 		void finalize(const transaction_data<Send,BufferSize>& transaction)
 		{
 			//Outgoing transaction finalization is omitted for better performance
