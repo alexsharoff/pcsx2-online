@@ -36,10 +36,13 @@ void Utilities::ResetSettingsToSafeDefaults()
 }
 void Utilities::RestoreSettings()
 {
+	if(!_settingsBackup.get())
+		return;
 	g_Conf->EmuOptions = _settingsBackup->EmuOptions;
 	g_Conf->Mcd[0].Enabled = _settingsBackup->Mcd[0].Enabled;
 	g_Conf->Mcd[1].Enabled = _settingsBackup->Mcd[1].Enabled;
 	g_Conf->EnableGameFixes = _settingsBackup->EnableGameFixes;
+	_settingsBackup.reset();
 }
 
 size_t Utilities::GetMCDSize(uint port, uint slot)

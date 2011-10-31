@@ -23,6 +23,7 @@ class NetplayPlugin : public INetplayPlugin
 	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;
 public:
+	NetplayPlugin() : _is_init(false) {}
 	virtual void Open()
 	{
 		NetplaySettings& settings = g_Conf->Net;
@@ -82,13 +83,19 @@ public:
 			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
 		}
 	}
-	virtual void Init()
+	bool IsInit()
 	{
+		return _is_init;
+	}
+	void Init()
+	{
+		_is_init = true;
 		Utilities::SaveSettings();
 		Utilities::ResetSettingsToSafeDefaults();
 	}
-	virtual void Close()
+	void Close()
 	{
+		_is_init = false;
 		EndSession();
 		_session.reset();
 		Utilities::RestoreSettings();
@@ -597,6 +604,7 @@ protected:
 		return true;
 	}
 	
+	bool _is_init;
 	bool _session_ended;
 	bool _connection_established;
 	wxString _game_name;

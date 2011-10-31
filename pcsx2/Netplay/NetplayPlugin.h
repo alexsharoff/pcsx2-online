@@ -13,5 +13,6 @@ public:
 
 	virtual void Open() = 0;
 	virtual void Init() = 0;
+	virtual bool IsInit() = 0;
 	virtual void Close() = 0;
 };

@@ -8,8 +8,10 @@
 class ReplayPlugin : public IReplayPlugin
 {
 public:
+	ReplayPlugin() : _is_init(false) {}
 	void Init()
 	{
+		_is_init = true;
 		Utilities::SaveSettings();
 		Utilities::ResetSettingsToSafeDefaults();
 	}
@@ -85,6 +87,7 @@ public:
 	}
 	void Close()
 	{
+		_is_init = false;
 		_replay = Replay();
 		Utilities::RestoreSettings();
 		if(_mcd_backup.size())
@@ -121,7 +124,12 @@ public:
 			UI_EnableEverything();
 		});
 	}
+	bool IsInit()
+	{
+		return _is_init;
+	}
 protected:
+	bool _is_init;
 	Replay _replay;
 	Utilities::block_type _mcd_backup;
 };
