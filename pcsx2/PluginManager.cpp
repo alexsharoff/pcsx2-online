@@ -1168,6 +1168,39 @@ void SysCorePlugins::Open( PluginsEnum_t pid )
 
 void SysCorePlugins::Open()
 {
+	if(g_Conf->Net.IsEnabled)
+	{
+		if(!NeedsInit())
+		{
+			wxMessageBox(
+				wxT("It is advised to start Netplay only on clean emulator boot. Restart emulator and try again."),
+				wxT("Netplay"),
+				wxOK, (wxWindow*)GetMainFramePtr());
+			CoreThread.Reset();
+			return;
+		}
+		Console.Indent().WriteLn( "Init Net" );
+		INetplayPlugin::GetInstance().Init();
+	}
+
+	if(g_Conf->Replay.IsEnabled) 
+	{
+		if(!NeedsInit())
+		{
+			if(!NeedsInit())
+			{
+				wxMessageBox(
+					wxT("It is advised to start Replay playback only on clean emulator boot. Restart emulator and try again."),
+					wxT("Replay"),
+					wxOK, (wxWindow*)GetMainFramePtr());
+				CoreThread.Reset();
+				return;
+			}
+		}
+		DbgCon.Indent().WriteLn( "Init Replay");
+		IReplayPlugin::GetInstance().Init();
+	}
+
 	Init();
 
 	if( !NeedsOpen() ) return;		// Spam stopper:  returns before writing any logs. >_<
@@ -1376,18 +1409,6 @@ void SysCorePlugins::Shutdown( PluginsEnum_t pid )
 //
 bool SysCorePlugins::Init()
 {
-	if(g_Conf->Net.IsEnabled)
-	{
-		Console.Indent().WriteLn( "Init Net" );
-		INetplayPlugin::GetInstance().Init();
-	}
-
-	if(g_Conf->Replay.IsEnabled) 
-	{
-		DbgCon.Indent().WriteLn( "Init Replay");
-		IReplayPlugin::GetInstance().Init();
-	}
-
 	if( !NeedsInit() ) return false;
 
 	Console.WriteLn( Color_StrongBlue, "\nInitializing plugins..." );

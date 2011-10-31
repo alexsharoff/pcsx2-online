@@ -368,7 +368,7 @@ MainEmuFrame::MainEmuFrame(wxWindow* parent, const wxString& title)
 		);
 	}
 	*/
-	wintitle.Printf( _("PCSX2 Online 2011.10.27") );
+	wintitle.Printf( _("PCSX2 Online 2011.10.31") );
 
 	SetTitle( wintitle );
 
