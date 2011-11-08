@@ -18,7 +18,6 @@
 
 class NetplayPlugin : public INetplayPlugin
 {
-	static const int64_t SyncFrame = 600LL;
 	typedef shoryu::session<Message, EmulatorSyncState> session_type;
 	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;
@@ -54,8 +53,7 @@ public:
 #endif
 		if(BindPort(settings.LocalPort))
 		{
-			_session_ended = false;
-			_connection_established = false;
+			_state = None;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 
 			if(g_Conf->Net.SaveReplay)
@@ -64,18 +62,23 @@ public:
 				_replay->Mode(Recording);
 			}
 			_game_name.clear();
+			std::function<bool()> connection_func;
 			if(settings.Mode == ConnectMode)
-			{
-				Console.Warning("NETPLAY: Connecting to %s:%u using local port %u.",
-					settings.HostAddress.ToAscii().data(), settings.HostPort, settings.LocalPort);
-				_thread.reset(new boost::thread(boost::bind(&NetplayPlugin::Connect,
-					this, settings.HostAddress, settings.HostPort, 0)));
-			}
+				connection_func = [this, settings]() { return Connect(settings.HostAddress,settings.HostPort, 0); };
 			else
-			{
-				Console.Warning("NETPLAY: Hosting on local port %u.", settings.LocalPort);
-				_thread.reset(new boost::thread(boost::bind(&NetplayPlugin::Host, this, 0)));
-			}
+				connection_func = [this]() { return Host(0); };
+
+			_thread.reset(new boost::thread([this, connection_func]() {
+				_state = connection_func() ? Ready : Cancelled;
+				_session->send();
+				INetplayDialog* dialog = INetplayDialog::GetInstance();
+				if(dialog->IsShown())
+				{
+					Utilities::ExecuteOnMainThread([&]() {
+						dialog->Close();
+					});
+				}
+			}));
 		}
 		else
 		{
@@ -97,16 +100,15 @@ public:
 	{
 		_is_init = false;
 		EndSession();
-		_session.reset();
 		Utilities::RestoreSettings();
-		if(mcd_backup.size())
+		if(_mcd_backup.size())
 		{
-			Utilities::WriteMCD(0,0,mcd_backup);
-			mcd_backup.clear();
+			Utilities::WriteMCD(0,0,_mcd_backup);
+			_mcd_backup.clear();
 		}
 		if(_replay)
 		{
-			if(_connection_established)
+			if(_state == Running)
 			{
 				try
 				{
@@ -185,13 +187,8 @@ public:
 
 			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
 			Utilities::ExecuteOnMainThread([&]() {
-				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connected to ") + wxName +
-					wxT(". Starting memory card synchronization."));
-			});
-			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Connected to ") + wxName);
 			});
-
 			{
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
@@ -211,7 +208,7 @@ public:
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
 
-			mcd_backup = Utilities::ReadMCD(0,0);
+			_mcd_backup = Utilities::ReadMCD(0,0);
 
 			shoryu::msec timeout_timestamp = shoryu::time_ms() + 30000;
 			size_t mcd_size = Utilities::GetMCDSize(0,0);
@@ -276,7 +273,6 @@ public:
 					});
 				}
 			}
-			_connection_established = true;
 			return true;
 		}
 		else
@@ -320,13 +316,8 @@ public:
 			}
 			wxString wxName = wxString(player_name.c_str(), wxConvUTF8);
 			Utilities::ExecuteOnMainThread([&]() {
-				Console.WriteLn(Color_StrongGreen, wxT("NETPLAY: Connection from ") + wxName +
-					wxT(". Starting memory card synchronization."));
-			});
-			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Connection from ") + wxName);
 			});
-
 			{
 				wxString myName = wxString(_session->username().c_str(), wxConvUTF8);
 				if(!myName.Len())
@@ -348,14 +339,13 @@ public:
 			Utilities::ExecuteOnMainThread([&]() {
 				dialog->SetStatus(wxT("Memory card synchronization..."));
 			});
-
 			auto uncompressed_mcd = Utilities::ReadMCD(0,0);
 			if(_replay)
 				_replay->Data(uncompressed_mcd);
 			size_t mcd_size = Utilities::GetMCDSize(0,0);
 			Utilities::block_type compressed_mcd(mcd_size);
 			if(g_Conf->Net.ReadonlyMemcard)
-				mcd_backup = uncompressed_mcd;
+				_mcd_backup = uncompressed_mcd;
 			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
 			{
 				RequestStop();
@@ -401,7 +391,6 @@ public:
 					return false;
 				}
 			}
-			_connection_established = true;
 			return true;
 		}
 		else
@@ -424,6 +413,7 @@ public:
 			RequestStop();
 			_session->shutdown();
 			_session->unbind();
+			_session.reset();
 		}
 	}
 	void RequestStop()
@@ -442,45 +432,24 @@ public:
 	}
 	void Stop()
 	{
-		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		EndSession();
 		Utilities::ExecuteOnMainThread([&]() {
 			CoreThread.Reset();
-			if(dialog->IsShown())
-				dialog->Close();
 			UI_EnableEverything();
 		});
-
 		if(_thread)
 			_thread->join();
-		
-		_session_ended = true;
 	}
 	void NextFrame()
 	{
-		if(_session_ended)
+		if(!_session)
 			return;
 		_my_frame = Message();
 		_session->next_frame();
-		if(_connection_established && _session->frame() == SyncFrame)
+		if(_state == Ready)
 		{
-			INetplayDialog* dialog = INetplayDialog::GetInstance();
-			if(dialog->IsShown())
-			{
-				Utilities::ExecuteOnMainThread([&]() {
-					dialog->Close();
-				});
-			}
-			Console.WriteLn(Color_StrongGreen, "NETPLAY: Delay %d. Starting netplay.", _session->delay());
-		}
-		if(_thread && _connection_established)
-		{
-			if(_session->frame() > SyncFrame)
-			{
-				_connection_established = false;
-				Console.Error("NETPLAY: Connection timeout");
-				Stop();
-			}
-			_thread.reset();
+			if(_thread) _thread.reset();
+			_state = Running;
 		}
 		if(_session->last_error().length())
 		{
@@ -492,71 +461,65 @@ public:
 	}
 	void AcceptInput(int side)
 	{
-		if(_session_ended)
+		if(!_session)
 			return;
-		if(_connection_established && side == 0)
+		try
 		{
-			try
-			{
-				_session->set(_my_frame);
-			}
-			catch(std::exception& e)
-			{
-				Stop();
-				Console.Error("NETPLAY: %s. Interrupting session.", e.what());
-			}
+			_session->set(_my_frame);
+		}
+		catch(std::exception& e)
+		{
+			Stop();
+			Console.Error("NETPLAY: %s. Interrupting session.", e.what());
 		}
 		if(_replay)
 		{
 			Message f;
-			if(_connection_established && _session->frame() >= SyncFrame)
-				_session->get(side, f, 0);
-
+			_session->get(side, f, 0);
 			_replay->Write(side, f);
 		}
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{
-		if(_session && _session->end_session_request() && !_session_ended)
+		if(_session)
 		{
-			Stop();
-			Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
-		}
-		if(_session_ended)
-			return value;
+			while(_state == None) shoryu::sleep(35);
 
-		Message frame;
-		if(!_connection_established)
-			shoryu::sleep(500);
-
-		if(_connection_established && _session->frame() >= SyncFrame)
-		{
-			if(side == 0)
-				_my_frame.input[index] = value;
-			auto timeout = shoryu::time_ms() + 10000;
-			try
-			{
-				while(!_session->get(side, frame, _session->delay()*17))
-				{
-					_session->send();
-					if(_session->end_session_request())
-						break;
-					if(timeout <= shoryu::time_ms())
-					{
-						Stop();
-						Console.Warning("NETPLAY: Timeout on frame %d.", _session->frame());
-						break;
-					}
-#ifdef CONNECTION_TEST
-					shoryu::sleep(500);
-#endif
-				}
-			}
-			catch(std::exception& e)
+			if(_session->end_session_request() || _state == Cancelled)
 			{
 				Stop();
-				Console.Error("NETPLAY: %s", e.what());
+				Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
 			}
+		}
+
+		if(!_session) return value;
+
+		Message frame;
+		if(side == 0)
+			_my_frame.input[index] = value;
+		auto timeout = shoryu::time_ms() + 10000;
+		try
+		{
+			while(!_session->get(side, frame, _session->delay()*17))
+			{
+				_session->send();
+				if(_session->end_session_request())
+					break;
+				if(timeout <= shoryu::time_ms())
+				{
+					Stop();
+					Console.Error("NETPLAY: Timeout on frame %d.", _session->frame());
+					break;
+				}
+#ifdef CONNECTION_TEST
+				shoryu::sleep(500);
+#endif
+			}
+		}
+		catch(std::exception& e)
+		{
+			Stop();
+			Console.Error("NETPLAY: %s", e.what());
 		}
 		value = frame.input[index];
 		return value;
@@ -604,12 +567,17 @@ protected:
 		return true;
 	}
 	
+	enum NetplayState
+	{
+		None,
+		Cancelled,
+		Ready,
+		Running
+	} _state;
 	bool _is_init;
-	bool _session_ended;
-	bool _connection_established;
 	wxString _game_name;
 	Message _my_frame;
-	Utilities::block_type mcd_backup;
+	Utilities::block_type _mcd_backup;
 	boost::shared_ptr<Replay> _replay;
 };
 
