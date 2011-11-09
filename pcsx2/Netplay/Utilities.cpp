@@ -101,10 +101,12 @@ void Utilities::DispatchEvent()
 }
 void Utilities::ExecuteOnMainThread(const std::function<void()>& evt)
 {
+	if(!evt)
+		return;
 	if(!_dispatch_event)
 		_dispatch_event = evt;
 	if (!wxGetApp().Rpc_TryInvoke( DispatchEvent ))
-		ExecuteOnMainThread(evt);
+		evt();
 	if(_dispatch_event)
 		_dispatch_event = std::function<void()>();
 }
@@ -160,7 +162,6 @@ boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
 
 	return syncState;
 }
-
 
 wxString Utilities::GetDiscNameById(const wxString& id)
 {

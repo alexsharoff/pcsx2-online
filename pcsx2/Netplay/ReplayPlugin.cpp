@@ -95,6 +95,9 @@ public:
 			Utilities::WriteMCD(0,0,_mcd_backup);
 			_mcd_backup.clear();
 		}
+		Utilities::ExecuteOnMainThread([&]() {
+			UI_EnableEverything();
+		});
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{

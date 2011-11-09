@@ -510,13 +510,11 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		dialog->SetStatus(wxT("Waiting for connection..."));
 		g_Conf->Net = dialog->GetSettings();
 		dialog->SetCloseEventHandler([&]() {
-			INetplayDialog::GetInstance()->Close();
+			INetplayPlugin::GetInstance().Interrupt();
 			CoreThread.Reset();
-			UI_EnableEverything();
 		});
 		g_Conf->Net.IsEnabled = true;
 		sApp.SysExecute( g_Conf->CdvdSource );
-		UI_DisableEverything();
 	});
 	dialog->SetCloseEventHandler([&]() {
 		INetplayDialog::GetInstance()->Close();
@@ -705,9 +703,6 @@ void MainEmuFrame::Menu_SysReset_Click(wxCommandEvent &event)
 
 void MainEmuFrame::Menu_SysShutdown_Click(wxCommandEvent &event)
 {
-	//if( !SysHasValidState() && !CorePlugins.AreAnyInitialized() ) return;
-	if(g_Conf->Net.IsEnabled || g_Conf->Replay.IsEnabled)
-		UI_EnableEverything();
 	UI_DisableSysShutdown();
 	CoreThread.Reset();
 }

@@ -4,6 +4,7 @@
 #include "INetplayDialog.h"
 #include "gui/NetplayDialog.h"
 #include "App.h"
+#include "Utilities.h"
 
 enum NetplayConfigurationPhase
 {
@@ -18,7 +19,9 @@ class ConcreteNetplayDialog: public INetplayDialog
 public:
 	void SetCloseEventHandler(const event_handler_type& handler)
 	{
-		_close_handler = handler;
+		Utilities::ExecuteOnMainThread([&]() {
+			_close_handler = handler;
+		});
 	}
 	event_handler_type& GetCancelEventHandler()
 	{
@@ -26,19 +29,21 @@ public:
 	}
 	void SetSettings(const NetplaySettings& settings)
 	{
-		m_dialog->SetSettings(settings);
+		Utilities::ExecuteOnMainThread([&]() {
+			m_dialog->SetSettings(settings);
+		});
 	}
-	const NetplaySettings& GetSettings()
+	NetplaySettings GetSettings()
 	{
-		return m_dialog->GetSettings();
+		NetplaySettings settings;
+		Utilities::ExecuteOnMainThread([&]() {
+			settings = m_dialog->GetSettings();
+		});
+		return settings;
 	}
 	void Initialize()
 	{
-		if(m_dialog)
-			m_dialog.reset();
-		m_dialog.reset(new NetplayDialog((wxWindow*)GetMainFramePtr()));
-		_phase = Settings;
-		m_dialog->SetOKHandler([&] () {
+		auto ok_hdl = [&]() {
 			m_dialog->GetContent()->Disable();
 			m_dialog->EnableOK(false);
 			_operation_success = true;
@@ -50,8 +55,8 @@ public:
 			}
 			else
 				_cond->notify_one();
-		});
-		m_dialog->SetCloseEventHandler([&] () { 
+		};
+		auto close_hdl = [&]() { 
 			try
 			{
 				_operation_success = false;
@@ -60,41 +65,54 @@ public:
 					_close_handler();
 			}
 			catch(...){}
+		};
+		Utilities::ExecuteOnMainThread([&]() {
+			if(m_dialog)
+				m_dialog.reset();
+			m_dialog.reset(new NetplayDialog((wxWindow*)GetMainFramePtr()));
+			_phase = Settings;
+			m_dialog->SetOKHandler(ok_hdl);
+			m_dialog->SetCloseEventHandler(close_hdl);
 		});
 	}
-	bool Show()
+	void Show()
 	{
-		_cond.reset(new boost::condition_variable());
-		return m_dialog->Show();
+		Utilities::ExecuteOnMainThread([&]() {
+			_cond.reset(new boost::condition_variable());
+			m_dialog->Show();
+		});
 	}
 	bool IsShown()
 	{
 		return m_dialog;
 	}
-	bool Close()
+	void Close()
 	{
-		if(m_dialog)
-		{
-			_operation_success = false;
-			_cond->notify_one();
-			m_dialog.reset();
-			return true;
-		}
-		else
-			return false;
+		Utilities::ExecuteOnMainThread([&]() {
+			if(m_dialog)
+			{
+				_operation_success = false;
+				_cond->notify_one();
+				m_dialog.reset();
+			}
+		});
 	}
 	void SetConnectionSettingsHandler(const event_handler_type& handler)
 	{
-		_settings_ready_handler = handler;
+		Utilities::ExecuteOnMainThread([&]() {
+			_settings_ready_handler = handler;
+		});
 	}
 	int WaitForConfirmation()
 	{
+		if(!m_dialog)
+			return -1;
 		if(_phase != Confirmation)
 			throw std::exception("invalid state");
 		boost::unique_lock<boost::mutex> lock(_mutex);
 		_cond->wait(lock);
 		_phase = _operation_success ? Ready : None;
-		if(_operation_success)
+		if(m_dialog && _operation_success)
 			return m_dialog->GetInputDelayPanel().GetInputDelay();
 		else
 			return -1;
@@ -103,24 +121,36 @@ public:
 	{
 		if(_phase != Confirmation)
 			throw std::exception("invalid state");
-		m_dialog->EnableOK(true);
-		InputDelayPanel& p = m_dialog->GetInputDelayPanel();
-		p.SetInputDelay(input_delay);
-		p.SetReadOnly(GetSettings().Mode != HostMode);
+		Utilities::ExecuteOnMainThread([&]() {
+			if(!m_dialog)
+				return;
+			m_dialog->EnableOK(true);
+			InputDelayPanel& p = m_dialog->GetInputDelayPanel();
+			p.SetInputDelay(input_delay);
+			p.SetReadOnly(GetSettings().Mode != HostMode);
 
-		m_dialog->SetContent(&p);
+			m_dialog->SetContent(&p);
+		});
 	}
 	int GetInputDelay()
 	{
-		return m_dialog->GetInputDelayPanel().GetInputDelay();
+		if(m_dialog)
+			return m_dialog->GetInputDelayPanel().GetInputDelay();
+		else
+			return -1;
 	}
 	void SetInputDelay(int input_delay)
 	{
-		m_dialog->GetInputDelayPanel().SetInputDelay(input_delay);
+		Utilities::ExecuteOnMainThread([&]() {
+			if(m_dialog)
+				m_dialog->GetInputDelayPanel().SetInputDelay(input_delay);
+		});
 	}
 	void SetStatus(const wxString& status)
 	{
-		m_dialog->SetStatus(status);
+		Utilities::ExecuteOnMainThread([&]() {
+			if(m_dialog) m_dialog->SetStatus(status);
+		});
 	}
 protected:
 	boost::shared_ptr<NetplayDialog> m_dialog;

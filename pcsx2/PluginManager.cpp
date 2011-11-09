@@ -1182,7 +1182,6 @@ void SysCorePlugins::Open()
 				wxT("It is advised to start Netplay only on clean emulator boot. Restart emulator and try again."),
 				wxT("Netplay"),
 				wxOK, (wxWindow*)GetMainFramePtr());
-			UI_EnableEverything();
 			CoreThread.Reset();
 		});
 	}
@@ -1194,7 +1193,6 @@ void SysCorePlugins::Open()
 				wxT("It is advised to start Replay playback only on clean emulator boot. Restart emulator and try again."),
 				wxT("Replay"),
 				wxOK, (wxWindow*)GetMainFramePtr());
-			UI_EnableEverything();
 			CoreThread.Reset();
 		});
 	}
