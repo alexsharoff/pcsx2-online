@@ -103,12 +103,15 @@ void Utilities::ExecuteOnMainThread(const std::function<void()>& evt)
 {
 	if(!evt)
 		return;
-	if(!_dispatch_event)
+	if(!wxThread::IsMain())
+	{
+		boost::lock_guard<boost::recursive_mutex> lock(_mutex);
 		_dispatch_event = evt;
-	if (!wxGetApp().Rpc_TryInvoke( DispatchEvent ))
-		evt();
-	if(_dispatch_event)
+		wxGetApp().Rpc_TryInvoke( DispatchEvent );
 		_dispatch_event = std::function<void()>();
+	}
+	else
+		evt();
 }
 
 wxString Utilities::GetCurrentDiscId()
@@ -181,3 +184,4 @@ wxString Utilities::GetCurrentDiscName()
 
 std::function<void()> Utilities::_dispatch_event;
 std::auto_ptr<AppConfig> Utilities::_settingsBackup;
+boost::recursive_mutex Utilities::_mutex;

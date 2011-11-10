@@ -27,6 +27,7 @@ public:
 	{
 		_dialog = INetplayDialog::GetInstance();
 		_is_stopped = false;
+		_is_session_ended = false;
 		NetplaySettings& settings = g_Conf->Net;
 		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
@@ -46,7 +47,7 @@ public:
 			Console.Error("NETPLAY: Invalid hostname.");
 			return;
 		}
-		boost::unique_lock<boost::mutex> lock(_mutex);
+		recursive_lock lock(_mutex);
 		if(!_dialog->IsShown())
 			return;
 
@@ -59,7 +60,7 @@ public:
 #endif
 		if(_session->bind(settings.LocalPort))
 		{
-			_state = None;
+			_state = SSNone;
 			_session->username(std::string((const char*)settings.Username.mb_str(wxConvUTF8)));
 
 			if(g_Conf->Net.SaveReplay)
@@ -75,15 +76,16 @@ public:
 				connection_func = [this]() { return Host(0); };
 
 			_thread.reset(new boost::thread([this, connection_func]() {
-				_state = connection_func() ? Ready : Cancelled;
+				_state = connection_func() ? SSReady : SSCancelled;
 				if(_dialog)
 					_dialog->Close();
-				boost::unique_lock<boost::mutex> lock(_mutex);
+				recursive_lock lock(_mutex);
 				if(_session) _session->send();
 			}));
 		}
 		else
 		{
+			lock.unlock();
 			Stop();
 			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
 		}
@@ -110,7 +112,7 @@ public:
 		}
 		if(_replay)
 		{
-			if(_state == Running)
+			if(_state == SSRunning)
 			{
 				try
 				{
@@ -181,8 +183,8 @@ public:
 				return false;
 
 			{
-				boost::unique_lock<boost::mutex> lock(_mutex);
-				if(!_session)
+				recursive_lock lock(_mutex);
+				if(!_session || _session->state() != shoryu::Ready)
 					return false;
 				_dialog->OnConnectionEstablished(_session->delay());
 				auto ep = _session->endpoints()[0];
@@ -218,7 +220,7 @@ public:
 				bool ready;
 				shoryu::message_data data;
 				{
-					boost::unique_lock<boost::mutex> lock(_mutex);
+					recursive_lock lock(_mutex);
 					if(!_session || _session->end_session_request())
 						return false;
 					_session->send();
@@ -283,8 +285,8 @@ public:
 				return false;
 			
 			{
-				boost::unique_lock<boost::mutex> lock(_mutex);
-				if(!_session)
+				recursive_lock lock(_mutex);
+				if(!_session || _session->state() != shoryu::Ready)
 					return false;
 				_dialog->OnConnectionEstablished(_session->delay());
 				auto ep = _session->endpoints()[0];
@@ -308,8 +310,8 @@ public:
 				return false;
 
 			{
-				boost::unique_lock<boost::mutex> lock(_mutex);
-				if(!_session)
+				recursive_lock lock(_mutex);
+				if(!_session || _session->state() != shoryu::Ready)
 					return false;
 				if(delay != _session->delay())
 				{
@@ -334,8 +336,8 @@ public:
 			}
 
 			{
-				boost::unique_lock<boost::mutex> lock(_mutex);
-				if(!_session)
+				recursive_lock lock(_mutex);
+				if(!_session || _session->state() != shoryu::Ready)
 					return false;
 				size_t blockSize = 128;
 				for(size_t i = 0; i < compressed_mcd.size(); i+=blockSize)
@@ -360,8 +362,8 @@ public:
 			while(true)
 			{
 				{
-					boost::unique_lock<boost::mutex> lock(_mutex);
-					if(!_session)
+					recursive_lock lock(_mutex);
+					if(!_session || _session->state() != shoryu::Ready)
 						return false;
 					if(!_session->send_sync())
 						break;
@@ -385,16 +387,23 @@ public:
 	}
 	void EndSession()
 	{
+		{
+			recursive_lock lock(_mutex);
+			if(!_is_session_ended)
+				_is_session_ended = true;
+			else
+				return;
+		}
 		if(_dialog)
 		{
 			_dialog->Close();
 			_dialog = 0;
 		}
 		{
-			boost::unique_lock<boost::mutex> lock(_mutex);
+			recursive_lock lock(_mutex);
 			if(_session)
 			{
-				if(_session->state() == Ready)
+				if(_session->state() == shoryu::Ready)
 				{
 					_session->send_end_session_request();
 					int try_count = _session->delay() * 4;
@@ -415,7 +424,7 @@ public:
 			_thread.reset();
 		}
 		{
-			boost::unique_lock<boost::mutex> lock(_mutex);
+			recursive_lock lock(_mutex);
 			_session.reset();
 		}
 	}
@@ -425,7 +434,14 @@ public:
 	}
 	void Stop()
 	{
-		_is_stopped = true;
+		{
+			recursive_lock lock(_mutex);
+			if(!_is_stopped)
+				_is_stopped = true;
+			else
+				return;
+		}
+
 		EndSession();
 		Utilities::ExecuteOnMainThread([&]() {
 			CoreThread.Reset();
@@ -443,10 +459,10 @@ public:
 			// Console.Error("NETPLAY: %s.", _session->last_error().c_str());
 			// _session->last_error("");
 		}
-		if(_state == Ready)
+		if(_state == SSReady)
 		{
 			if(_thread) _thread.reset();
-			_state = Running;
+			_state = SSRunning;
 		}
 	}
 	void AcceptInput(int side)
@@ -473,29 +489,39 @@ public:
 		if(_is_stopped || !_session) return value;
 		{
 			int delay = _session->delay();
-			while(_state == None)
+			while(_state == SSNone)
 			{
 				{
-					boost::unique_lock<boost::mutex> lock(_mutex);
+					recursive_lock lock(_mutex);
 					if(!_session)
 					{
+						lock.unlock();
+						Stop();
+						break;
+					}
+					if(_session->end_session_request())
+					{
+						lock.unlock();
 						Stop();
 						break;
 					}
 					if(delay != _session->delay())
-						_dialog->SetInputDelay(_session->delay());
+					{
+						delay = _session->delay();
+						_dialog->SetInputDelay(delay);
+					}
 				}
 				shoryu::sleep(150);
 			}
 		}
-		if( _state == Cancelled && !_is_stopped )
+		if( _state == SSCancelled && !_is_stopped )
 		{
 			Stop();
 		}
 		if( _session && _session->end_session_request() && !_is_stopped )
 		{
-			Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
 			Stop();
+			Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
 		}
 		if(_is_stopped || !_session) return value;
 
@@ -570,19 +596,21 @@ protected:
 	
 	enum SessionState
 	{
-		None,
-		Cancelled,
-		Ready,
-		Running
+		SSNone,
+		SSCancelled,
+		SSReady,
+		SSRunning
 	} _state;
 	bool _is_initialized;
 	bool _is_stopped;
+	bool _is_session_ended;
 	wxString _game_name;
 	Message _my_frame;
 	Utilities::block_type _mcd_backup;
 	boost::shared_ptr<Replay> _replay;
 	INetplayDialog* _dialog;
-	boost::mutex _mutex;
+	boost::recursive_mutex _mutex;
+	typedef boost::unique_lock<boost::recursive_mutex> recursive_lock;
 };
 
 INetplayPlugin* INetplayPlugin::instance = 0;

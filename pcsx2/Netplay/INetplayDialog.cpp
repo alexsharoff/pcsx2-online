@@ -77,6 +77,7 @@ public:
 	}
 	void Show()
 	{
+		_is_closed = false;
 		Utilities::ExecuteOnMainThread([&]() {
 			_cond.reset(new boost::condition_variable());
 			m_dialog->Show();
@@ -88,13 +89,17 @@ public:
 	}
 	void Close()
 	{
+		{
+			boost::mutex::scoped_lock lock(_close_mutex);
+			if(!_is_closed)
+				_is_closed = true;
+			else
+				return;
+		}
+		_operation_success = false;
+		_cond->notify_one();
 		Utilities::ExecuteOnMainThread([&]() {
-			if(m_dialog)
-			{
-				_operation_success = false;
-				_cond->notify_one();
-				m_dialog.reset();
-			}
+			if(m_dialog) m_dialog.reset();
 		});
 	}
 	void SetConnectionSettingsHandler(const event_handler_type& handler)
@@ -109,7 +114,7 @@ public:
 			return -1;
 		if(_phase != Confirmation)
 			throw std::exception("invalid state");
-		boost::unique_lock<boost::mutex> lock(_mutex);
+		boost::mutex::scoped_lock lock(_cond_mutex);
 		_cond->wait(lock);
 		_phase = _operation_success ? Ready : None;
 		if(m_dialog && _operation_success)
@@ -153,9 +158,11 @@ public:
 		});
 	}
 protected:
+	bool _is_closed;
 	boost::shared_ptr<NetplayDialog> m_dialog;
 	boost::shared_ptr<boost::condition_variable> _cond;
-	boost::mutex _mutex;
+	boost::mutex _cond_mutex;
+	boost::mutex _close_mutex;;
 	bool _operation_success;
 	NetplayConfigurationPhase _phase;
 	event_handler_type _close_handler;

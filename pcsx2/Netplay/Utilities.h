@@ -5,6 +5,7 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/recursive_mutex.hpp>
 #include "PS2Edefs.h"
 
 class Utilities
@@ -31,6 +32,7 @@ public:
 	static void ResetSettingsToSafeDefaults();
 	static void RestoreSettings();
 private:
+	static boost::recursive_mutex _mutex;
 	static std::function<void()> _dispatch_event;
 	static void DispatchEvent();
 	static std::auto_ptr<AppConfig> _settingsBackup;
