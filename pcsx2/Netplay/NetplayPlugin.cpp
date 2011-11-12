@@ -22,34 +22,41 @@ class NetplayPlugin : public INetplayPlugin
 	boost::shared_ptr<session_type> _session;
 	boost::shared_ptr<boost::thread> _thread;
 public:
-	NetplayPlugin() : _is_initialized(false), _dialog(0){}
-	virtual void Open()
+	NetplayPlugin()
+		: _is_initialized(false), _is_stopped(false), _dialog(0)
+	{
+	}
+	void Open()
 	{
 		_dialog = INetplayDialog::GetInstance();
 		_is_stopped = false;
-		_is_session_ended = false;
+		_ready_to_print_error_check = [&]() { return !_is_initialized; };
 		NetplaySettings& settings = g_Conf->Net;
 		if( settings.LocalPort <= 0 || settings.LocalPort > 65535 )
 		{
 			Stop();
-			Console.Error("NETPLAY: Invalid port: %u.", settings.LocalPort);
+			ConsoleErrorMT(wxString::Format(wxT("NETPLAY: Invalid port: %u."), settings.LocalPort), _ready_to_print_error_check);
 			return;
 		}
 		if( settings.Mode == ConnectMode && (settings.HostPort <= 0 || settings.HostPort > 65535) )
 		{
 			Stop();
-			Console.Error("NETPLAY: Invalid port: %u.", settings.HostPort);
+			ConsoleErrorMT(wxString::Format(wxT("NETPLAY: Invalid port: %u."), settings.HostPort), _ready_to_print_error_check);
 			return;
 		}
 		if( settings.Mode == ConnectMode && settings.HostAddress.Len() == 0 )
 		{
 			Stop();
-			Console.Error("NETPLAY: Invalid hostname.");
+			ConsoleErrorMT(wxT("NETPLAY: Invalid hostname."), _ready_to_print_error_check);
 			return;
 		}
 		recursive_lock lock(_mutex);
 		if(!_dialog->IsShown())
+		{
+			lock.unlock();
+			Stop();
 			return;
+		}
 
 		shoryu::prepare_io_service();
 		_session.reset(new session_type());
@@ -79,15 +86,13 @@ public:
 				_state = connection_func() ? SSReady : SSCancelled;
 				if(_dialog)
 					_dialog->Close();
-				recursive_lock lock(_mutex);
-				if(_session) _session->send();
 			}));
 		}
 		else
 		{
 			lock.unlock();
 			Stop();
-			Console.Error("NETPLAY: Unable to bind port %u.", settings.LocalPort);
+			ConsoleErrorMT(wxString::Format(wxT("NETPLAY: Unable to bind port %u."), settings.LocalPort), _ready_to_print_error_check);
 		}
 	}
 	bool IsInit()
@@ -97,6 +102,7 @@ public:
 	void Init()
 	{
 		_is_initialized = true;
+		_is_stopped = false;
 		Utilities::SaveSettings();
 		Utilities::ResetSettingsToSafeDefaults();
 	}
@@ -129,13 +135,13 @@ public:
 					replayName.Replace(wxT("?"),wxT("-"));
 					replayName.Replace(wxT("*"),wxT("-"));
 					wxString file = ( dir + replayName ).GetFullPath();
-					Console.WriteLn(Color_StrongGreen, wxT("Saving replay to ") + file);
+					ConsoleInfoMT(wxT("Saving replay to ") + file);
 					_replay->SaveToFile(file);
 				}
 				catch(std::exception& e)
 				{
 					Stop();
-					Console.Error("REPLAY: %s", e.what());
+					ConsoleErrorMT(wxT("REPLAY: ") + wxString(e.what(), wxConvLocal));
 				}
 			}
 			_replay.reset();
@@ -144,38 +150,56 @@ public:
 			UI_EnableEverything();
 		});
 	}
-	void ResetMemoryCard(int port, int slot, const u8* data, size_t size)
+	void ConsoleInfoMT(const wxString& message, std::function<bool()> check = std::function<bool()>())
 	{
-		for(size_t p = 0; p < size; p+= 528*16)
-			SysPlugins.McdEraseBlock(0,0,p);
-
-		SysPlugins.McdSave(port,slot, data, 0, size);
-	}
-	void ConsoleErrorMT(const wxString& message)
-	{
-		Utilities::ExecuteOnMainThread([&]() {
-			Console.Error(message);
-		});
-	}
-	void ConsoleWarningMT(const wxString& message)
-	{
-		Utilities::ExecuteOnMainThread([&]() {
-			Console.Warning(message);
-		});
-	}
-	virtual bool Connect(const wxString& ip, unsigned short port, int timeout)
-	{
-		int try_count = 15;
-		while(try_count-->0)
+		if(!check)
 		{
-			if(Utilities::IsSyncStateReady())
-				break;
-			shoryu::sleep(500);
+			Utilities::ExecuteOnMainThread([&]() {
+				Console.WriteLn(Color_StrongGreen, message);
+			});
 		}
+		else
+			boost::thread t([=]() {
+				while(!check()) shoryu::sleep(100);
+				ConsoleInfoMT(message);
+		});
+	}
+	void ConsoleErrorMT(const wxString& message, std::function<bool()> check = std::function<bool()>())
+	{
+		if(!check)
+		{
+			Utilities::ExecuteOnMainThread([&]() {
+				Console.Error(message);
+			});
+		}
+		else
+			boost::thread t([=]() {
+				while(!check()) shoryu::sleep(100);
+				ConsoleErrorMT(message);
+		});
+	}
+	void ConsoleWarningMT(const wxString& message, std::function<bool()> check = std::function<bool()>())
+	{
+		if(!check)
+		{
+			Utilities::ExecuteOnMainThread([&]() {
+				Console.Warning(message);
+			});
+		}
+		else
+			boost::thread t([=]() {
+				while(!check()) shoryu::sleep(100);
+				ConsoleWarningMT(message);
+		});
+	}
+	bool Connect(const wxString& ip, unsigned short port, int timeout)
+	{
+		boost::mutex::scoped_lock connection_lock(_connection_mutex);
+		_ready_to_connect_cond.wait(connection_lock);
 		shoryu::endpoint ep = shoryu::resolve_hostname(std::string(ip.ToAscii().data()));
 		ep.port(port);
 		auto state = Utilities::GetSyncState();
-		if(state && try_count)
+		if(state)
 		{
 			if(_replay)
 				_replay->SyncState(*state);
@@ -230,7 +254,7 @@ public:
 				{
 					if(timeout_timestamp < shoryu::time_ms())
 					{
-						ConsoleErrorMT(wxT("NETPLAY: Timeout while synchonizing memory cards."));
+						ConsoleErrorMT(wxT("NETPLAY: Timeout while synchonizing memory cards."), _ready_to_print_error_check);
 						return false;
 					}
 				}
@@ -248,12 +272,12 @@ public:
 
 						if(!Utilities::Uncompress(compressed_mcd, uncompressed_mcd))
 						{
-							ConsoleErrorMT(wxT("NETPLAY: Unable to decompress MCD buffer."));
+							ConsoleErrorMT(wxT("NETPLAY: Unable to decompress MCD buffer."), _ready_to_print_error_check);
 							return false;
 						}
 						if(uncompressed_mcd.size() != mcd_size)
 						{
-							ConsoleErrorMT(wxT("NETPLAY: Invalid MCD received from host."));
+							ConsoleErrorMT(wxT("NETPLAY: Invalid MCD received from host."), _ready_to_print_error_check);
 							return false;
 						}
 						Utilities::WriteMCD(0,0,uncompressed_mcd);
@@ -267,17 +291,12 @@ public:
 		}
 		return false;
 	}
-	virtual bool Host(int timeout)
+	bool Host(int timeout)
 	{
-		int try_count = 15;
-		while(try_count-->0)
-		{
-			if(Utilities::IsSyncStateReady())
-				break;
-			shoryu::sleep(500);
-		}
+		boost::mutex::scoped_lock connection_lock(_connection_mutex);
+		_ready_to_connect_cond.wait(connection_lock);
 		auto state = Utilities::GetSyncState();
-		if(state && try_count)
+		if(state)
 		{
 			if(_replay)
 				_replay->SyncState(*state);
@@ -331,7 +350,7 @@ public:
 				_mcd_backup = uncompressed_mcd;
 			if(!Utilities::Compress(uncompressed_mcd, compressed_mcd))
 			{
-				ConsoleErrorMT(wxT("NETPLAY: Unable to compress MCD buffer."));
+				ConsoleErrorMT(wxT("NETPLAY: Unable to compress MCD buffer."), _ready_to_print_error_check);
 				return false;
 			}
 
@@ -377,7 +396,7 @@ public:
 				}
 				if(timeout_timestamp < shoryu::time_ms())
 				{
-					ConsoleErrorMT(wxT("NETPLAY: Timeout while synchonizing memory cards."));
+					ConsoleErrorMT(wxT("NETPLAY: Timeout while synchonizing memory cards."), _ready_to_print_error_check);
 					return false;
 				}
 			}
@@ -387,20 +406,14 @@ public:
 	}
 	void EndSession()
 	{
+		recursive_lock lock(_mutex);
+		INetplayDialog* dialog = INetplayDialog::GetInstance();
+		if(dialog->IsShown())
 		{
-			recursive_lock lock(_mutex);
-			if(!_is_session_ended)
-				_is_session_ended = true;
-			else
-				return;
-		}
-		if(_dialog)
-		{
-			_dialog->Close();
+			dialog->Close();
 			_dialog = 0;
 		}
 		{
-			recursive_lock lock(_mutex);
 			if(_session)
 			{
 				if(_session->state() == shoryu::Ready)
@@ -420,13 +433,11 @@ public:
 		}
 		if(_thread)
 		{
+			_ready_to_connect_cond.notify_all();
 			_thread->join();
 			_thread.reset();
 		}
-		{
-			recursive_lock lock(_mutex);
-			_session.reset();
-		}
+		_session.reset();
 	}
 	void Interrupt()
 	{
@@ -434,14 +445,7 @@ public:
 	}
 	void Stop()
 	{
-		{
-			recursive_lock lock(_mutex);
-			if(!_is_stopped)
-				_is_stopped = true;
-			else
-				return;
-		}
-
+		_is_stopped = true;
 		EndSession();
 		Utilities::ExecuteOnMainThread([&]() {
 			CoreThread.Reset();
@@ -452,13 +456,11 @@ public:
 		if(_is_stopped || !_session) return;
 		_my_frame = Message();
 		_session->next_frame();
-		if(_session->last_error().length())
+		/*if(_session->last_error().length())
 		{
-			// 'The operation completed successfully' is a really strange error.
-			// Research it!
-			// Console.Error("NETPLAY: %s.", _session->last_error().c_str());
-			// _session->last_error("");
-		}
+			ConsoleErrorMT(wxT("NETPLAY: ") + wxString(_session->last_error().c_str(), wxConvLocal), _ready_to_print_error_check);
+			_session->last_error("");
+		}*/
 		if(_state == SSReady)
 		{
 			if(_thread) _thread.reset();
@@ -475,7 +477,7 @@ public:
 		catch(std::exception& e)
 		{
 			Stop();
-			Console.Error("NETPLAY: %s. Interrupting session.", e.what());
+			ConsoleErrorMT(wxT("NETPLAY: ") + wxString(e.what(), wxConvLocal) + wxT(". Interrupting session."), _ready_to_print_error_check);
 		}
 		if(_replay)
 		{
@@ -489,6 +491,8 @@ public:
 		if(_is_stopped || !_session) return value;
 		{
 			int delay = _session->delay();
+			if(_state == SSNone)
+				_ready_to_connect_cond.notify_one();
 			while(_state == SSNone)
 			{
 				{
@@ -520,8 +524,9 @@ public:
 		}
 		if( _session && _session->end_session_request() && !_is_stopped )
 		{
+			auto frame = _session->frame();
 			Stop();
-			Console.Warning("NETPLAY: Session ended on frame %d.", _session->frame());
+			ConsoleWarningMT(wxString::Format(wxT("NETPLAY: Session ended on frame %d."), frame), _ready_to_print_error_check);
 		}
 		if(_is_stopped || !_session) return value;
 
@@ -538,8 +543,9 @@ public:
 					break;
 				if(timeout <= shoryu::time_ms())
 				{
+					auto frame = _session->frame();
 					Stop();
-					Console.Error("NETPLAY: Timeout on frame %d.", _session->frame());
+					ConsoleErrorMT(wxString::Format(wxT("NETPLAY: Timeout on frame %d."), frame), _ready_to_print_error_check);
 					break;
 				}
 #ifdef CONNECTION_TEST
@@ -550,7 +556,7 @@ public:
 		catch(std::exception& e)
 		{
 			Stop();
-			Console.Error("NETPLAY: %s", e.what());
+			ConsoleErrorMT(wxT("NETPLAY: ") + wxString(e.what(), wxConvLocal), 3000);
 		}
 		value = frame.input[index];
 		return value;
@@ -560,7 +566,7 @@ protected:
 	{
 		if(memcmp(s1.biosVersion, s2.biosVersion, sizeof(s1.biosVersion)))
 		{
-			ConsoleErrorMT(wxT("NETPLAY: Bios version mismatch."));
+			ConsoleErrorMT(wxT("NETPLAY: Bios version mismatch."), _ready_to_print_error_check);
 			return false;
 		}
 		if(memcmp(s1.discId, s2.discId, sizeof(s1.discId)))
@@ -588,7 +594,7 @@ protected:
 
 			ConsoleErrorMT(wxT("NETPLAY: You are trying to boot different games: ") + 
 				Utilities::GetDiscNameById(s1discId) + wxT(" and ") + 
-				Utilities::GetDiscNameById(s2discId));
+				Utilities::GetDiscNameById(s2discId), _ready_to_print_error_check);
 			return false;
 		}
 		return true;
@@ -601,9 +607,11 @@ protected:
 		SSReady,
 		SSRunning
 	} _state;
+	std::function<bool()> _ready_to_print_error_check;
 	bool _is_initialized;
 	bool _is_stopped;
-	bool _is_session_ended;
+	boost::condition_variable _ready_to_connect_cond;
+	boost::mutex _connection_mutex;
 	wxString _game_name;
 	Message _my_frame;
 	Utilities::block_type _mcd_backup;

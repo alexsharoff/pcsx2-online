@@ -157,7 +157,7 @@ namespace shoryu
 	};
 
 	template<typename FrameType, typename StateType>
-	class session 
+	class session : boost::noncopyable
 	{
 		typedef message<FrameType, StateType> message_type;
 		typedef std::vector<endpoint> endpoint_container;
@@ -174,7 +174,7 @@ namespace shoryu
 #ifdef SHORYU_ENABLE_LOG
 			log(std::ios_base::in + std::ios_base::out),
 #endif
-			_send_delay_max(0), _send_delay_min(0), _packet_loss(0) {}
+			_send_delay_max(0), _send_delay_min(0), _packet_loss(0) { clear(); }
 
 		bool bind(int port)
 		{

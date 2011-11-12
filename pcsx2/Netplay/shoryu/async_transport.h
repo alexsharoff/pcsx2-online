@@ -66,7 +66,7 @@ namespace shoryu
 		};
 
 	template<class DataType, int BufferQueueSize = 256, int BufferSize = 1024>
-	class async_transport
+	class async_transport : boost::noncopyable
 	{
 	public:
 		typedef typename peer<DataType> peer_type;

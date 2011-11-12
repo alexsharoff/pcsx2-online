@@ -511,7 +511,6 @@ void MainEmuFrame::_DoBootCdvdWithNetplay()
 		g_Conf->Net = dialog->GetSettings();
 		dialog->SetCloseEventHandler([&]() {
 			INetplayPlugin::GetInstance().Interrupt();
-			CoreThread.Reset();
 		});
 		g_Conf->Net.IsEnabled = true;
 		sApp.SysExecute( g_Conf->CdvdSource );

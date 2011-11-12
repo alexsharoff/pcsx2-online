@@ -7,7 +7,7 @@
 namespace shoryu
 {
 	//protocol id should be defined at session-level
-	#define PROTOCOL_ID "PCS2OV1"
+	#define PROTOCOL_ID "PCS2OV2"
 	const size_t PROTOCOL_ID_LEN = sizeof(PROTOCOL_ID)/sizeof(char);
 
 	struct datagram_header
