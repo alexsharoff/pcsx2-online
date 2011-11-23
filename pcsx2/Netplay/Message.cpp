@@ -1,7 +1,7 @@
 #include "PrecompiledHeader.h"
 #include "Message.h"
 
-const char defaultInput[] = {0xff, 0xff, 0x7f, 0x7f, 0x7f, 0x7f};
+const char defaultInput[] = {0xff, 0xff};
 Message::Message()
 {
 	std::copy(defaultInput, defaultInput + sizeof(defaultInput), input);

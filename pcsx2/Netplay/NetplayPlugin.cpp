@@ -28,6 +28,8 @@ public:
 	}
 	void Open()
 	{
+		_console = Console;
+		Console_SetActiveHandler(ConsoleWriter_Null);
 		_dialog = INetplayDialog::GetInstance();
 		_is_stopped = false;
 		_ready_to_print_error_check = [&]() { return !_is_initialized; };
@@ -149,13 +151,14 @@ public:
 		Utilities::ExecuteOnMainThread([&]() {
 			UI_EnableEverything();
 		});
+		Console_SetActiveHandler(_console);
 	}
 	void ConsoleInfoMT(const wxString& message, std::function<bool()> check = std::function<bool()>())
 	{
 		if(!check)
 		{
 			Utilities::ExecuteOnMainThread([&]() {
-				Console.WriteLn(Color_StrongGreen, message);
+				_console.WriteLn(Color_StrongGreen, message);
 			});
 		}
 		else
@@ -169,7 +172,7 @@ public:
 		if(!check)
 		{
 			Utilities::ExecuteOnMainThread([&]() {
-				Console.Error(message);
+				_console.Error(message);
 			});
 		}
 		else
@@ -183,7 +186,7 @@ public:
 		if(!check)
 		{
 			Utilities::ExecuteOnMainThread([&]() {
-				Console.Warning(message);
+				_console.Warning(message);
 			});
 		}
 		else
@@ -618,6 +621,7 @@ protected:
 	boost::shared_ptr<Replay> _replay;
 	INetplayDialog* _dialog;
 	boost::recursive_mutex _mutex;
+	IConsoleWriter _console;
 	typedef boost::unique_lock<boost::recursive_mutex> recursive_lock;
 };
 

@@ -19,6 +19,8 @@ public:
 	{
 		try
 		{
+			_console = Console;
+			Console_SetActiveHandler(ConsoleWriter_Null);
 			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
 			{
 				_replay.Mode(Playback);
@@ -31,7 +33,7 @@ public:
 						ss << "REPLAY: Incompatible BIOS detected. Please use ";
 						ss.write(_replay.SyncState().biosVersion, sizeof(state->biosVersion));
 						Stop();
-						Console.Error(ss.str().c_str());
+						_console.Error(ss.str().c_str());
 						return;
 					}
 					if(memcmp(_replay.SyncState().discId, state->discId, sizeof(state->discId)))
@@ -61,7 +63,7 @@ public:
 						wxString msg = wxString(wxT("REPLAY: Incompatible disc detected: ")) + 
 								Utilities::GetDiscNameById(myDiscId) + wxString(wxT(" instead of ")) + Utilities::GetDiscNameById(replayDiscId);
 						Stop();
-						Console.Error(msg);
+						_console.Error(msg);
 						return;
 					}
 				}
@@ -76,13 +78,13 @@ public:
 			else
 			{
 				Stop();
-				Console.Error("REPLAY: file is corrupted or of the older version.");
+				_console.Error("REPLAY: file is corrupted or of the older version.");
 			}
 		}
 		catch(std::exception& e)
 		{
 			Stop();
-			Console.Error("REPLAY: %s", e.what());
+			_console.Error("REPLAY: %s", e.what());
 		}
 	}
 	void Close()
@@ -98,6 +100,7 @@ public:
 		Utilities::ExecuteOnMainThread([&]() {
 			UI_EnableEverything();
 		});
+		Console_SetActiveHandler(_console);
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{
@@ -109,12 +112,12 @@ public:
 	void NextFrame()
 	{
 		if(!_replay.Pos())
-			Console.WriteLn(Color_StrongGreen, "REPLAY: starting playback. Press F4 to fast-forward.");
+			_console.WriteLn(Color_StrongGreen, "REPLAY: starting playback. Press F4 to fast-forward.");
 
 		if(_replay.Pos() >= _replay.Length())
 		{
 			Stop();
-			Console.WriteLn(Color_StrongGreen, "REPLAY: playback ended.");
+			_console.WriteLn(Color_StrongGreen, "REPLAY: playback ended.");
 		}
 		else
 			_replay.NextFrame();
@@ -132,6 +135,7 @@ public:
 		return _is_init;
 	}
 protected:
+	IConsoleWriter _console;
 	bool _is_init;
 	Replay _replay;
 	Utilities::block_type _mcd_backup;
