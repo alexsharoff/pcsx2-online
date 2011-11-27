@@ -29,7 +29,7 @@ public:
 	void Open()
 	{
 		_console = Console;
-		Console_SetActiveHandler(ConsoleWriter_Null);
+		Utilities::ExecuteOnMainThread([&] { Console_SetActiveHandler(ConsoleWriter_Null); });
 		_dialog = INetplayDialog::GetInstance();
 		_is_stopped = false;
 		_ready_to_print_error_check = [&]() { return !_is_initialized; };
@@ -151,7 +151,7 @@ public:
 		Utilities::ExecuteOnMainThread([&]() {
 			UI_EnableEverything();
 		});
-		Console_SetActiveHandler(_console);
+		Utilities::ExecuteOnMainThread([&] { Console_SetActiveHandler(_console); });
 	}
 	void ConsoleInfoMT(const wxString& message, std::function<bool()> check = std::function<bool()>())
 	{

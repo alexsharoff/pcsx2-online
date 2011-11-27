@@ -20,7 +20,7 @@ public:
 		try
 		{
 			_console = Console;
-			Console_SetActiveHandler(ConsoleWriter_Null);
+			Utilities::ExecuteOnMainThread([&] { Console_SetActiveHandler(ConsoleWriter_Null); });
 			if(_replay.LoadFromFile(g_Conf->Replay.FilePath))
 			{
 				_replay.Mode(Playback);
@@ -99,8 +99,8 @@ public:
 		}
 		Utilities::ExecuteOnMainThread([&]() {
 			UI_EnableEverything();
+			Console_SetActiveHandler(_console);
 		});
-		Console_SetActiveHandler(_console);
 	}
 	u8 HandleIO(int side, int index, u8 value)
 	{
