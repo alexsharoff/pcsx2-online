@@ -766,6 +766,11 @@ void GSRendererSW::VertexKick(bool skip)
 
 	dst.c = GSVector4::rgba32(m_v.RGBAQ.u32[0], 7);
 
+	if(prim == GS_SPRITE)
+	{
+		dst.t.u32[3] = m_v.XYZ.Z;
+	}
+
 	int count = 0;
 
 	if(GSVertexSW* v = DrawingKick<prim>(skip, count))
@@ -873,6 +878,9 @@ if(!m_dump)
 
 				if(tl != 0) m_vertices[0] = m_vertices[tl];
 				if(br != 1) m_vertices[1] = m_vertices[br];
+
+				m_vertices[0].t.u32[3] = m_v.XYZ.Z;
+				m_vertices[1].t.u32[3] = m_v.XYZ.Z;
 
 				m_count = 2;
 

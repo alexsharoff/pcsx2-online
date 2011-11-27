@@ -1,15 +1,19 @@
 ### Select the build type
-# Use Release/Devel/Debug     : -DCMAKE_BUILD_TYPE=Release|Devel|Debug
-# Enable/disable the stipping : -DCMAKE_BUILD_STRIP=TRUE|FALSE
+# Use Release/Devel/Debug      : -DCMAKE_BUILD_TYPE=Release|Devel|Debug
+# Enable/disable the stripping : -DCMAKE_BUILD_STRIP=TRUE|FALSE
+# generation .po based on src  : -DCMAKE_BUILD_PO=TRUE|FALSE
+
 ### Force the choice of 3rd party library in pcsx2 over system libraries
 # Use all         internal lib: -DFORCE_INTERNAL_ALL=TRUE
 # Use soundtouch  internal lib: -DFORCE_INTERNAL_SOUNDTOUCH=TRUE
 # Use zlib        internal lib: -DFORCE_INTERNAL_ZLIB=TRUE
 # Use sdl1.3      internal lib: -DFORCE_INTERNAL_SDL=TRUE # Not supported yet
+
 ### GCC optimization options
 # control C flags             : -DUSER_CMAKE_C_FLAGS="cflags"
 # control C++ flags           : -DUSER_CMAKE_CXX_FLAGS="cxxflags"
 # control link flags          : -DUSER_CMAKE_LD_FLAGS="ldflags"
+
 ### Packaging options
 # Installation path           : -DPACKAGE_MODE=TRUE(follow FHS)|FALSE(local bin/)
 # Plugin installation path    : -DPLUGIN_DIR="/usr/lib/pcsx2"
@@ -26,7 +30,6 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug|Devel|Release")
 	message(STATUS "BuildType set to ${CMAKE_BUILD_TYPE} by default")
 endif(NOT CMAKE_BUILD_TYPE MATCHES "Debug|Devel|Release")
 
-# Set default strip option. Can be set with -DCMAKE_BUILD_STRIP=TRUE/FALSE
 if(NOT DEFINED CMAKE_BUILD_STRIP)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         set(CMAKE_BUILD_STRIP TRUE)
@@ -36,6 +39,16 @@ if(NOT DEFINED CMAKE_BUILD_STRIP)
         message(STATUS "Disable the stripping by default in ${CMAKE_BUILD_TYPE} build !!!")
     endif(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif(NOT DEFINED CMAKE_BUILD_STRIP)
+
+if(NOT DEFINED CMAKE_BUILD_PO)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CMAKE_BUILD_PO TRUE)
+        message(STATUS "Enable the building of po files by default in ${CMAKE_BUILD_TYPE} build !!!")
+    else(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CMAKE_BUILD_PO FALSE)
+        message(STATUS "Disable the building of po files by default in ${CMAKE_BUILD_TYPE} build !!!")
+    endif(CMAKE_BUILD_TYPE STREQUAL "Release")
+endif(NOT DEFINED CMAKE_BUILD_PO)
 
 #-------------------------------------------------------------------------------
 # Select library system vs 3rdparty
@@ -104,6 +117,13 @@ set(CMAKE_SHARED_LIBRARY_C_FLAGS "")
 set(CMAKE_SHARED_LIBRARY_CXX_FLAGS "")
 
 #-------------------------------------------------------------------------------
+# Set some default compiler flags
+#-------------------------------------------------------------------------------
+set(DEFAULT_WARNINGS "-Wno-write-strings -Wno-format -Wno-unused-parameter -Wno-unused-value -Wstrict-aliasing")
+set(DEFAULT_GCC_FLAG "-m32 -msse -msse2 -march=i686 -pthread ${DEFAULT_WARNINGS}")
+set(DEFAULT_CPP_FLAG "${DEFAULT_GCC_FLAG} -Wno-invalid-offsetof")
+
+#-------------------------------------------------------------------------------
 # Allow user to set some default flags
 # Note: string STRIP must be used to remove trailing and leading spaces.
 #       See policy CMP0004
@@ -130,7 +150,7 @@ if(DEFINED USER_CMAKE_C_FLAGS)
     string(STRIP "${USER_CMAKE_C_FLAGS}" CMAKE_C_FLAGS)
 endif(DEFINED USER_CMAKE_C_FLAGS)
 # Use some default machine flags
-string(STRIP "${CMAKE_C_FLAGS} -m32 -msse -msse2 -march=i686 -pthread" CMAKE_C_FLAGS)
+string(STRIP "${CMAKE_C_FLAGS} ${DEFAULT_GCC_FLAG}" CMAKE_C_FLAGS)
 
 
 ### C++ flags
@@ -141,7 +161,7 @@ if(DEFINED USER_CMAKE_CXX_FLAGS)
     string(STRIP "${USER_CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
 endif(DEFINED USER_CMAKE_CXX_FLAGS)
 # Use some default machine flags
-string(STRIP "${CMAKE_CXX_FLAGS} -m32 -msse -msse2 -march=i686 -pthread" CMAKE_CXX_FLAGS)
+string(STRIP "${CMAKE_CXX_FLAGS} ${DEFAULT_CPP_FLAG}" CMAKE_CXX_FLAGS)
 
 #-------------------------------------------------------------------------------
 # Default package option

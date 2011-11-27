@@ -11,7 +11,6 @@ set(Output zerospu2)
 
 set(CommonFlags
     -Wall
-    -msse2
     )
 
 set(OptimizationFlags
