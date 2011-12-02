@@ -1,7 +1,7 @@
 PCSX2 Online
 ============
 
-PCSX2 Online is a fork of open-source PlayStation 2 emulator PCSX2 with netplay. Now you can play PS2 games with your friends on the internet!
+PCSX2 Online is a fork of open-source PlayStation 2 emulator PCSX2 with peer-to-peer netplay mode. Now you can play PS2 games with your friends on the internet as if you were in the same room!
 
 Grab the latest version here http://www.mediafire.com/?762wyrkr9pzf46j
 
@@ -33,7 +33,7 @@ Features
 * Capcom vs SNK 2
 * Guilty Gear XX Accent Core
 * Hokuto no Ken
-* King of Fighters Unlimited Match
+* King of Fighters 2002 Unlimited Match
 * Naruto: Ultimate Ninja 3
 
 Working with frequent desyncs
