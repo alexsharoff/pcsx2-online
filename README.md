@@ -25,19 +25,19 @@ Features
 * Peer-to-peer network connection, no centralized servers needed
 * Automatic input delay detection
 
-(Officially) Working games list
+(Official) Working games list
 -------------------------------
 
-Melty Blood Actress Again
-Tekken 5
-Capcom vs SNK 2
-Guilty Gear XX Accent Core
-Hokuto no Ken
-King of Fighters Unlimited Match
-Naruto: Ultimate Ninja 3
+* Melty Blood Actress Again
+* Tekken 5
+* Capcom vs SNK 2
+* Guilty Gear XX Accent Core
+* Hokuto no Ken
+* King of Fighters Unlimited Match
+* Naruto: Ultimate Ninja 3
 
 Working with frequent desyncs
 -----------------------------
 
-Fate/Unlimited Codes
-King of Fighters XI
+* Fate/Unlimited Codes
+* King of Fighters XI
