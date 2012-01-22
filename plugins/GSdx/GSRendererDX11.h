@@ -25,16 +25,14 @@
 #include "GSVertexHW.h"
 #include "GSTextureCache11.h"
 
-class GSRendererDX11 : public GSRendererDX<GSVertexHW11>
+class GSRendererDX11 : public GSRendererDX
 {
 protected:
-	void Draw(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* tex);
+	void SetupIA();
 
 public:
 	GSRendererDX11();
 	virtual ~GSRendererDX11() {}
 
 	bool CreateDevice(GSDevice* dev);
-
-	template<uint32 prim, uint32 tme, uint32 fst> void VertexKick(bool skip);
 };

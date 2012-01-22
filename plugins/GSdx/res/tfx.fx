@@ -40,11 +40,12 @@
 
 struct VS_INPUT
 {
+	float2 st : TEXCOORD0;
+	float4 c : COLOR0;
+	float q : TEXCOORD1;
 	uint2 p : POSITION0;
 	uint z : POSITION1;
-	float2 t : TEXCOORD0;
-	float q : TEXCOORD1;
-	float4 c : COLOR0;
+	uint2 uv : TEXCOORD2;
 	float4 f : COLOR1;
 };
 
@@ -602,12 +603,12 @@ VS_OUTPUT vs_main(VS_INPUT input)
 	{
 		if(VS_FST)
 		{
-			output.t.xy = input.t * TextureScale;
+			output.t.xy = input.uv * TextureScale;
 			output.t.w = 1.0f;
 		}
 		else
 		{
-			output.t.xy = input.t;
+			output.t.xy = input.st;
 			output.t.w = input.q;
 		}
 	}
@@ -618,7 +619,7 @@ VS_OUTPUT vs_main(VS_INPUT input)
 	}
 
 	output.c = input.c;
-	output.t.z = input.f.a;
+	output.t.z = input.f.r;
 
 	return output;
 }
@@ -765,7 +766,7 @@ VS_OUTPUT vs_main(VS_INPUT input)
 	}
 
 	output.c = input.c;
-	output.t.z = input.f.a;
+	output.t.z = input.f.b;
 	
 	return output;
 }

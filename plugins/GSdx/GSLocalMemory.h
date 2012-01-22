@@ -26,22 +26,44 @@
 #include "GSVector.h"
 #include "GSBlock.h"
 #include "GSClut.h"
+#include "GSThread.h"
 
-struct GSOffset
+class GSOffset : public GSAlignedClass<32>
 {
-	struct
+public:
+	__aligned(struct, 32) Block
 	{
 		short row[256]; // yn (n = 0 8 16 ...)
 		short* col; // blockOffset*
-	} block;
-
-	struct
+	};
+	
+	__aligned(struct, 32) Pixel
 	{
 		int row[4096]; // yn (n = 0 1 2 ...) NOTE: this wraps around above 2048, only transfers should address the upper half (dark cloud 2 inventing)
 		int* col[8]; // rowOffset*
-	} pixel;
+	};
 
 	union {uint32 hash; struct {uint32 bp:14, bw:6, psm:6;};};
+
+	Block block;
+	Pixel pixel;
+
+	GSOffset(uint32 bp, uint32 bw, uint32 psm);
+	virtual ~GSOffset();
+
+	enum {EOP = 0xffffffff};
+
+	uint32* GetPages(const GSVector4i& rect, uint32* pages = NULL, GSVector4i* bbox = NULL);
+};
+
+struct GSPixelOffset
+{
+	// 16 bit offsets (m_vm16[...])
+
+	GSVector2i row[2048]; // f yn | z yn
+	GSVector2i col[2048]; // f xn | z xn
+	uint32 hash;
+	uint32 fbp, zbp, fpsm, zpsm, bw;
 };
 
 struct GSPixelOffset4
@@ -51,6 +73,7 @@ struct GSPixelOffset4
 	GSVector2i row[2048]; // f yn | z yn (n = 0 1 2 ...)
 	GSVector2i col[512]; // f xn | z xn (n = 0 4 8 ...)
 	uint32 hash;
+	uint32 fbp, zbp, fpsm, zpsm, bw;
 };
 
 class GSLocalMemory : public GSBlock
@@ -145,16 +168,18 @@ protected:
 	//
 
 	hash_map<uint32, GSOffset*> m_omap;
+	hash_map<uint32, GSPixelOffset*> m_pomap;
 	hash_map<uint32, GSPixelOffset4*> m_po4map;
-	hash_map<uint32, list<GSVector2i>*> m_p2tmap;
+	hash_map<uint64, vector<GSVector2i>*> m_p2tmap;
 
 public:
 	GSLocalMemory();
 	virtual ~GSLocalMemory();
 
 	GSOffset* GetOffset(uint32 bp, uint32 bw, uint32 psm);
+	GSPixelOffset* GetPixelOffset(const GIFRegFRAME& FRAME, const GIFRegZBUF& ZBUF);
 	GSPixelOffset4* GetPixelOffset4(const GIFRegFRAME& FRAME, const GIFRegZBUF& ZBUF);
-	list<GSVector2i>* GetPage2TileMap(const GIFRegTEX0& TEX0);
+	vector<GSVector2i>* GetPage2TileMap(const GIFRegTEX0& TEX0);
 
 	// address
 

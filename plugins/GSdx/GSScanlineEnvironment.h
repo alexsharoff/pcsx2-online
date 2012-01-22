@@ -61,12 +61,12 @@ union GSScanlineSelector
 		uint32 colclamp:1; // 43
 		uint32 fba:1; // 44
 		uint32 dthe:1; // 45
-		uint32 sprite:1; // 46
-		uint32 edge:1; // 47
+		uint32 prim:2; // 46
 
-		uint32 tw:3; // 48 (encodes values between 3 -> 10, texture cache makes sure it is at least 3)
-		uint32 lcm:1; // 49
-		uint32 mmin:2; // 50
+		uint32 edge:1; // 48
+		uint32 tw:3; // 49 (encodes values between 3 -> 10, texture cache makes sure it is at least 3)
+		uint32 lcm:1; // 50
+		uint32 mmin:2; // 51
 	};
 
 	struct
@@ -92,7 +92,7 @@ union GSScanlineSelector
 
 	bool IsSolidRect() const
 	{
-		return sprite
+		return prim == GS_SPRITE_CLASS
 			&& iip == 0
 			&& tfx == TFX_NONE
 			&& abe == 0
@@ -107,15 +107,14 @@ __aligned(struct, 32) GSScanlineGlobalData // per batch variables, this is like 
 {
 	GSScanlineSelector sel;
 
-	// - the data of vm, tex, clut, dimx may change, multi-threaded drawing must be finished before that happens (an idea: remember which pages are used, sync when something needs to read or write them)
+	// - the data of vm, tex may change, multi-threaded drawing must be finished before that happens, clut and dimx are copies
 	// - tex is a cached texture, it may be recycled to free up memory, its absolute address cannot be compiled into code
 	// - row and column pointers are allocated once and never change or freed, thier address can be used directly
-	// - if in the future drawing does not have to be synchronized per batch, the rest of GSRasterizerData should be copied here, too (scissor, prim type, vertices)
 
 	void* vm;
 	const void* tex[7];
-	const uint32* clut;
-	const GSVector4i* dimx; 
+	uint32* clut;
+	GSVector4i* dimx; 
 
 	const int* fbr;
 	const int* zbr;
@@ -146,7 +145,7 @@ __aligned(struct, 32) GSScanlineLocalData // per prim variables, each thread has
 
 	struct 
 	{
-		GSVector4 z;
+		GSVector4 z, zo;
 		GSVector4i f;
 		GSVector4 s, t, q;
 		GSVector4i rb, ga;

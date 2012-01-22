@@ -29,54 +29,30 @@
 
 class GSState;
 
-__aligned(class, 32) GSVertexTrace
+__aligned(class, 32) GSVertexTrace : public GSAlignedClass<32>
 {
 public:
 	struct Vertex {GSVector4i c; GSVector4 p, t;}; // t.xy * 0x10000
 	struct VertexAlpha {int min, max; bool valid;};
 
-private:
-	typedef void (*VertexTracePtr)(int count, const void* v, Vertex& min, Vertex& max);
-
-	class CGSW : public GSCodeGenerator
-	{
-	public:
-		CGSW(const void* param, uint32 key, void* code, size_t maxsize);
-	};
-
-	class CGHW9 : public GSCodeGenerator
-	{
-	public:
-		CGHW9(const void* param, uint32 key, void* code, size_t maxsize);
-	};
-
-	class CGHW11 : public GSCodeGenerator
-	{
-	public:
-		CGHW11(const void* param, uint32 key, void* code, size_t maxsize);
-	};
-
-	GSCodeGeneratorFunctionMap<CGSW, uint32, VertexTracePtr> m_map_sw;
-	GSCodeGeneratorFunctionMap<CGHW9, uint32, VertexTracePtr> m_map_hw9;
-	GSCodeGeneratorFunctionMap<CGHW11, uint32, VertexTracePtr> m_map_hw11;
-
+protected:
 	const GSState* m_state;
 
-	uint32 Hash(GS_PRIM_CLASS primclass);
-
-	void UpdateLOD();
-
 	static const GSVector4 s_minmax;
+
+	typedef void (GSVertexTrace::*FindMinMaxPtr)(const void* vertex, const uint32* index, int count);
+
+	FindMinMaxPtr m_fmm[2][2][2][2][4];
+
+	template<GS_PRIM_CLASS primclass, uint32 iip, uint32 tme, uint32 fst, uint32 color>
+	void FindMinMax(const void* vertex, const uint32* index, int count);
 
 public:
 	GS_PRIM_CLASS m_primclass;
 
 	Vertex m_min;
 	Vertex m_max;
-
-	// source alpha range after tfx, GSRenderer::GetAlphaMinMax() updates it
-
-	VertexAlpha m_alpha; 
+	VertexAlpha m_alpha; // source alpha range after tfx, GSRenderer::GetAlphaMinMax() updates it
 
 	union
 	{
@@ -92,12 +68,11 @@ public:
 
 	GSVector2 m_lod; // x = min, y = max
 
+public:
 	GSVertexTrace(const GSState* state);
+	virtual ~GSVertexTrace() {}
 
-	void Update(const GSVertexSW* v, int count, GS_PRIM_CLASS primclass);
-	void Update(const GSVertexHW9* v, int count, GS_PRIM_CLASS primclass);
-	void Update(const GSVertexHW11* v, int count, GS_PRIM_CLASS primclass);
-	void Update(const GSVertexNull* v, int count, GS_PRIM_CLASS primclass) {}
+	void Update(const void* vertex, const uint32* index, int count, GS_PRIM_CLASS primclass);
 
 	bool IsLinear() const {return m_filter.linear;}
 };

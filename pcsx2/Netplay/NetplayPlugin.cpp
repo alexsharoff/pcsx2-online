@@ -600,6 +600,11 @@ protected:
 				Utilities::GetDiscNameById(s2discId), _ready_to_print_error_check);
 			return false;
 		}
+		if(s1.skipMpeg != s2.skipMpeg)
+		{
+			ConsoleErrorMT(wxT("NETPLAY: SkipMpegHack settings mismatch."), _ready_to_print_error_check);
+			return false;
+		}
 		return true;
 	}
 	

@@ -28,8 +28,14 @@
 
 #define PLUGIN_VERSION 16
 
-#define MAX_PAGES 512
-#define MAX_BLOCKS 16384
+#define VM_SIZE 4194304
+#define PAGE_SIZE 8192
+#define BLOCK_SIZE 256
+#define COLUMN_SIZE 64
+
+#define MAX_PAGES (VM_SIZE / PAGE_SIZE)
+#define MAX_BLOCKS (VM_SIZE / BLOCK_SIZE)
+#define MAX_COLUMNS (VM_SIZE / COLUMN_SIZE)
 
 //if defined, will send much info in reply to the API title info queri from PCSX2
 //default should be undefined
@@ -82,6 +88,12 @@ enum GIF_REG
 	GIF_REG_XYZ3	= 0x0d,
 	GIF_REG_A_D		= 0x0e,
 	GIF_REG_NOP		= 0x0f,
+};
+
+enum GIF_REG_COMPLEX
+{
+	GIF_REG_STQRGBAXYZF2	= 0x00,
+	GIF_REG_STQRGBAXYZ2		= 0x01,
 };
 
 enum GIF_A_D_REG
@@ -638,8 +650,8 @@ REG64_(GIFReg, FINISH)
 REG_END
 
 REG64_(GIFReg, FOG)
-	uint8 _PAD1[4+3];
-	uint8 F:8;
+	uint8 _PAD1[7];
+	uint8 F;
 REG_END
 
 REG64_(GIFReg, FOGCOL)
@@ -1021,7 +1033,6 @@ REG128_(GIFPacked, XYZF2)
 	uint16 _PAD1;
 	uint16 Y;
 	uint16 _PAD2;
-
 	uint32 _PAD3:4;
 	uint32 Z:24;
 	uint32 _PAD4:4;
@@ -1030,7 +1041,9 @@ REG128_(GIFPacked, XYZF2)
 	uint32 _PAD6:3;
 	uint32 ADC:1;
 	uint32 _PAD7:16;
-REG_END
+REG_END2
+	uint32 Skip() const {return u32[3] & 0x8000;}
+REG_END2
 
 REG128_(GIFPacked, XYZ2)
 	uint16 X;
@@ -1041,7 +1054,9 @@ REG128_(GIFPacked, XYZ2)
 	uint32 _PAD3:15;
 	uint32 ADC:1;
 	uint32 _PAD4:16;
-REG_END
+REG_END2
+	uint32 Skip() const {return u32[3] & 0x8000;}
+REG_END2
 
 REG128_(GIFPacked, FOG)
 	uint32 _PAD1;
@@ -1084,28 +1099,76 @@ __aligned(struct, 32) GIFPath
 	uint32 reg;
 	uint32 nreg;
 	uint32 nloop;
-	uint32 adonly;
+	uint32 type;
 	GSVector4i regs;
 
-	void SetTag(const void* mem)
+	enum {TYPE_UNKNOWN, TYPE_ADONLY, TYPE_STQRGBAXYZF2, TYPE_STQRGBAXYZ2};
+
+	__forceinline void SetTag(const void* mem)
 	{
 		GSVector4i v = GSVector4i::load<false>(mem);
 		GSVector4i::store<true>(&tag, v);
+
 		reg = 0;
-		regs = v.uph8(v >> 4) & 0x0f0f0f0f;
-		nreg = tag.NREG;
+		nreg = tag.NREG ? tag.NREG : 16;
+		regs = v.uph8(v >> 4) & GSVector4i::x0f(nreg);
 		nloop = tag.NLOOP;
-		adonly = nreg == 1 && regs.u8[0] == GIF_REG_A_D;
+		type = TYPE_UNKNOWN;
+
+		if(tag.FLG == GIF_FLG_PACKED)
+		{
+			if(regs.eq8(GSVector4i(0x0e0e0e0e)).mask() == (1 << nreg) - 1)
+			{
+				type = TYPE_ADONLY;
+			}
+			else
+			{
+				switch(nreg)
+				{
+				case 1: break;
+				case 2: break;
+				case 3:
+					if(regs.u32[0] == 0x00040102) type = TYPE_STQRGBAXYZF2; // many games, TODO: formats mixed with NOPs (xeno2: 040f010f02, 04010f020f, mgs3: 04010f0f02, 0401020f0f, 04010f020f)
+					if(regs.u32[0] == 0x00050102) type = TYPE_STQRGBAXYZ2; // GoW (has other crazy formats, like ...030503050103)
+					// TODO: common types with UV instead
+					break;
+				case 4: break;
+				case 5: break;
+				case 6: break;
+				case 7: break;
+				case 8: break;
+				case 9:
+					if(regs.u32[0] == 0x02040102 && regs.u32[1] == 0x01020401 && regs.u32[2] == 0x00000004) {type = TYPE_STQRGBAXYZF2; nreg = 3; nloop *= 3;} // ffx
+					break;
+				case 10: break;
+				case 11: break;
+				case 12:
+					if(regs.u32[0] == 0x02040102 && regs.u32[1] == 0x01020401 && regs.u32[2] == 0x04010204) {type = TYPE_STQRGBAXYZF2; nreg = 3; nloop *= 4;} // dq8 (not many, mostly 040102)
+					break;
+				case 13: break;
+				case 14: break;
+				case 15: break;
+				case 16: break;
+				default:
+					__assume(0);
+				}
+			}
+		}
 	}
 
 	__forceinline uint8 GetReg()
 	{
-		return regs.u8[reg]; // GET_GIF_REG(tag, reg);
+		return regs.u8[reg];
+	}
+
+	__forceinline uint8 GetReg(uint32 index)
+	{
+		return regs.u8[index];
 	}
 
 	__forceinline bool StepReg()
 	{
-		if((++reg & 0xf) == nreg)
+		if(++reg == nreg)
 		{
 			reg = 0;
 

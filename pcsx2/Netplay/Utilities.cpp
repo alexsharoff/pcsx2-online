@@ -22,8 +22,9 @@ void Utilities::ResetSettingsToSafeDefaults()
 	g_Conf->EmuOptions.Speedhacks.DisableAll();
 	g_Conf->EmuOptions.Cpu = Pcsx2Config::CpuOptions();
 	g_Conf->EmuOptions.GS = Pcsx2Config::GSOptions();
+	bool mpegHackBit = g_Conf->EmuOptions.Gamefixes.SkipMPEGHack;
 	g_Conf->EmuOptions.Gamefixes.bitset = 0;
-	g_Conf->EmuOptions.Gamefixes.SkipMPEGHack = 1;
+	g_Conf->EmuOptions.Gamefixes.SkipMPEGHack = mpegHackBit;
 	g_Conf->EmuOptions.EnableCheats = false;
 	g_Conf->EmuOptions.CdvdDumpBlocks = false;
 	g_Conf->EmuOptions.CdvdVerboseReads = false;
@@ -162,6 +163,8 @@ boost::shared_ptr<EmulatorSyncState> Utilities::GetSyncState()
 	memcpy(syncState->biosVersion, biosDesc.ToAscii().data(), 
 		biosDesc.length() > sizeof(syncState->biosVersion) ? 
 		sizeof(syncState->biosVersion) : biosDesc.length());
+
+	syncState->skipMpeg = g_Conf->EmuOptions.Gamefixes.SkipMPEGHack;
 
 	return syncState;
 }

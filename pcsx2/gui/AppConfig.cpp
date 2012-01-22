@@ -133,7 +133,12 @@ namespace PathDefs
 	{
 		switch( mode )
 		{
+#ifdef XDG_STD
+			// Move all user data file into central configuration directory (XDG_CONFIG_DIR)
+			case DocsFolder_User:	return GetUserLocalDataDir();
+#else
 			case DocsFolder_User:	return (wxDirName)Path::Combine( wxStandardPaths::Get().GetDocumentsDir(), pxGetAppName() );
+#endif
 			case DocsFolder_Custom: return CustomDocumentsFolder;
 
 			jNO_DEFAULT
@@ -867,6 +872,7 @@ bool AppConfig::IsOkApplyPreset(int n)
 
 	//Have some original and default values at hand to be used later.
 	Pcsx2Config::GSOptions  original_GS = EmuOptions.GS;
+	AppConfig::FramerateOptions	original_Framerate = Framerate;
 	AppConfig				default_AppConfig;
 	Pcsx2Config				default_Pcsx2Config;
 
@@ -875,7 +881,7 @@ bool AppConfig::IsOkApplyPreset(int n)
 	//			1. The panels/entities should prevent manual modifications (by graying out) of settings which the presets control.
 	//			2. The panels should not apply values which the presets don't control if the value is initiated by a preset.
 	//			Currently controlled by the presets:
-	//			- AppConfig:	Framerate, EnableSpeedHacks, EnableGameFixes.
+	//			- AppConfig:	Framerate (except turbo/slowmo factors), EnableSpeedHacks, EnableGameFixes.
 	//			- EmuOptions:	Cpu, Gamefixes, SpeedHacks, EnablePatches, GS (except for FrameLimitEnable, VsyncEnable and ManagedVsync).
 	//
 	//			This essentially currently covers all the options on all the panels except for framelimiter which isn't
@@ -888,6 +894,9 @@ bool AppConfig::IsOkApplyPreset(int n)
 	//Force some settings as a (current) base for all presets.
 
 	Framerate			= default_AppConfig.Framerate;
+	Framerate.SlomoScalar = original_Framerate.SlomoScalar;
+	Framerate.TurboScalar = original_Framerate.TurboScalar;
+
 	EnableSpeedHacks	= false;
 	EnableGameFixes		= false;
 
@@ -895,7 +904,7 @@ bool AppConfig::IsOkApplyPreset(int n)
 	EmuOptions.GS					= default_Pcsx2Config.GS;
 	EmuOptions.GS.FrameLimitEnable	= original_GS.FrameLimitEnable;	//Frame limiter is not modified by presets
 	//EmuOptions.GS.VsyncEnable		= original_GS.VsyncEnable;
-	//EmuOptions.GS.ManagedVsync		= original_GS.ManagedVsync;
+	//EmuOptions.GS.ManagedVsync	= original_GS.ManagedVsync;
 	
 	EmuOptions.Cpu					= default_Pcsx2Config.Cpu;
 	EmuOptions.Gamefixes			= default_Pcsx2Config.Gamefixes;

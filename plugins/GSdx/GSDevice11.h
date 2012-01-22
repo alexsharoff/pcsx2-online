@@ -45,6 +45,8 @@ class GSDevice11 : public GSDeviceDX
 	CComPtr<IDXGISwapChain> m_swapchain;
 	CComPtr<ID3D11Buffer> m_vb;
 	CComPtr<ID3D11Buffer> m_vb_old;
+	CComPtr<ID3D11Buffer> m_ib;
+	CComPtr<ID3D11Buffer> m_ib_old;
 
 	bool m_srv_changed, m_ss_changed;
 
@@ -52,15 +54,17 @@ class GSDevice11 : public GSDeviceDX
 	{
 		ID3D11Buffer* vb;
 		size_t vb_stride;
+		ID3D11Buffer* ib;
 		ID3D11InputLayout* layout;
 		D3D11_PRIMITIVE_TOPOLOGY topology;
 		ID3D11VertexShader* vs;
 		ID3D11Buffer* vs_cb;
 		ID3D11GeometryShader* gs;
-		ID3D11ShaderResourceView* ps_srv[3];
+		ID3D11ShaderResourceView* ps_srv[16];
 		ID3D11PixelShader* ps;
 		ID3D11Buffer* ps_cb;
 		ID3D11SamplerState* ps_ss[3];
+		ID3D11ComputeShader* cs;
 		GSVector2i viewport;
 		GSVector4i scissor;
 		ID3D11DepthStencilState* dss;
@@ -69,6 +73,7 @@ class GSDevice11 : public GSDeviceDX
 		float bf;
 		ID3D11RenderTargetView* rtv;
 		ID3D11DepthStencilView* dsv;
+		ID3D11UnorderedAccessView* uav[8];
 	} m_state;
 
 public: // TODO
@@ -141,6 +146,8 @@ public:
 	void SetExclusive(bool isExcl);
 
 	void DrawPrimitive();
+	void DrawIndexedPrimitive();
+	void Dispatch(uint32 x, uint32 y, uint32 z);
 
 	void ClearRenderTarget(GSTexture* t, const GSVector4& c);
 	void ClearRenderTarget(GSTexture* t, uint32 c);
@@ -162,21 +169,29 @@ public:
 	void StretchRect(GSTexture* st, const GSVector4& sr, GSTexture* dt, const GSVector4& dr, ID3D11PixelShader* ps, ID3D11Buffer* ps_cb, bool linear = true);
 	void StretchRect(GSTexture* st, const GSVector4& sr, GSTexture* dt, const GSVector4& dr, ID3D11PixelShader* ps, ID3D11Buffer* ps_cb, ID3D11BlendState* bs, bool linear = true);
 
-	void IASetVertexBuffer(const void* vertices, size_t stride, size_t count);
+	void IASetVertexBuffer(const void* vertex, size_t stride, size_t count);
+	bool IAMapVertexBuffer(void** vertex, size_t stride, size_t count);
+	void IAUnmapVertexBuffer();
 	void IASetVertexBuffer(ID3D11Buffer* vb, size_t stride);
+	void IASetIndexBuffer(const void* index, size_t count);
+	void IASetIndexBuffer(ID3D11Buffer* ib);
 	void IASetInputLayout(ID3D11InputLayout* layout);
 	void IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY topology);
 	void VSSetShader(ID3D11VertexShader* vs, ID3D11Buffer* vs_cb);
 	void GSSetShader(ID3D11GeometryShader* gs);
 	void PSSetShaderResources(GSTexture* sr0, GSTexture* sr1);
 	void PSSetShaderResource(int i, GSTexture* sr);
+	void PSSetShaderResourceView(int i, ID3D11ShaderResourceView* srv);
 	void PSSetShader(ID3D11PixelShader* ps, ID3D11Buffer* ps_cb);
 	void PSSetSamplerState(ID3D11SamplerState* ss0, ID3D11SamplerState* ss1, ID3D11SamplerState* ss2 = NULL);
+	void CSSetShaderSRV(int i, ID3D11ShaderResourceView* srv);
+	void CSSetShaderUAV(int i, ID3D11UnorderedAccessView* uav);
+	void CSSetShader(ID3D11ComputeShader* cs);
 	void OMSetDepthStencilState(ID3D11DepthStencilState* dss, uint8 sref);
 	void OMSetBlendState(ID3D11BlendState* bs, float bf);
 	void OMSetRenderTargets(GSTexture* rt, GSTexture* ds, const GSVector4i* scissor = NULL);
+	void OMSetRenderTargets(const GSVector2i& rtsize, ID3D11UnorderedAccessView** uav, int count, const GSVector4i* scissor = NULL);
 
-	void SetupIA(const void* vertices, int count, int prim);
 	void SetupVS(VSSelector sel, const VSConstantBuffer* cb);
 	void SetupGS(GSSelector sel);
 	void SetupPS(PSSelector sel, const PSConstantBuffer* cb, PSSamplerSelector ssel);
@@ -189,8 +204,11 @@ public:
 	operator ID3D11Device*() {return m_dev;}
 	operator ID3D11DeviceContext*() {return m_ctx;}
 
-	HRESULT CompileShader(uint32 id, const string& entry, D3D11_SHADER_MACRO* macro, ID3D11VertexShader** vs, D3D11_INPUT_ELEMENT_DESC* layout, int count, ID3D11InputLayout** il);
-	HRESULT CompileShader(uint32 id, const string& entry, D3D11_SHADER_MACRO* macro, ID3D11GeometryShader** gs);
-	HRESULT CompileShader(uint32 id, const string& entry, D3D11_SHADER_MACRO* macro, ID3D11PixelShader** ps);
+	HRESULT CompileShader(uint32 id, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11VertexShader** vs, D3D11_INPUT_ELEMENT_DESC* layout, int count, ID3D11InputLayout** il);
+	HRESULT CompileShader(uint32 id, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11GeometryShader** gs);
+	HRESULT CompileShader(uint32 id, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11GeometryShader** gs, D3D11_SO_DECLARATION_ENTRY* layout, int count);	
+	HRESULT CompileShader(uint32 id, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11PixelShader** ps);
+	HRESULT CompileShader(uint32 id, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11ComputeShader** cs);
+	HRESULT CompileShader(const char* fn, const char* entry, D3D11_SHADER_MACRO* macro, ID3D11ComputeShader** cs);
 };
 

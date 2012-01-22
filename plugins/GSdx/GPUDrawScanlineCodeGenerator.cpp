@@ -121,7 +121,7 @@ void GPUDrawScanlineCodeGenerator::Init()
 {
 	mov(eax, dword[esp + _top]);
 
-	// uint16* fb = &m_local.vm[(top << (10 + m_sel.scalex)) + left];
+	// uint16* fb = (uint16*)m_global.vm + (top << (10 + sel.scalex)) + left;
 
 	mov(edi, eax);
 	shl(edi, 10 + m_sel.scalex);
@@ -134,7 +134,7 @@ void GPUDrawScanlineCodeGenerator::Init()
 
 	if(m_sel.dtd)
 	{
-		// dither = GSVector4i::load<false>(&s_dither[top & 3][left & 3]);
+		// dither = GSVector4i::load<false>(&m_dither[top & 3][left & 3]);
 
 		and(eax, 3);
 		shl(eax, 5);
@@ -299,6 +299,11 @@ void GPUDrawScanlineCodeGenerator::SampleTexture()
 	if(!m_sel.tme)
 	{
 		return;
+	}
+
+	if(m_sel.tlu)
+	{
+		mov(edx, ptr[&m_local.gd->clut]);
 	}
 
 	// xmm2 = s
@@ -741,7 +746,7 @@ void GPUDrawScanlineCodeGenerator::AlphaBlend()
 	// xmm7 = test
 	// xmm0, xmm2 = free
 
-	// GSVector4i r = (d & 0x001f001f) << 3;
+	// GSVector4i r = (fd & 0x001f001f) << 3;
 
 	pcmpeqd(xmm0, xmm0);
 	psrlw(xmm0, 11); // 0x001f
@@ -953,7 +958,7 @@ void GPUDrawScanlineCodeGenerator::ReadTexel(const Xmm& dst, const Xmm& addr)
 
 		if(m_sel.tlu) movzx(eax, byte[esi + eax]);
 
-		const Address& src = m_sel.tlu ? ptr[eax * 2 + (size_t)m_local.gd->clut] : ptr[esi + eax * 2];
+		const Address& src = m_sel.tlu ? ptr[edx + eax * 2] : ptr[esi + eax * 2];
 
 		if(i == 0) movd(dst, src);
 		else pinsrw(dst, src, (uint8)i);

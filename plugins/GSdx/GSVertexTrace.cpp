@@ -28,132 +28,211 @@ const GSVector4 GSVertexTrace::s_minmax(FLT_MAX, -FLT_MAX);
 
 GSVertexTrace::GSVertexTrace(const GSState* state)
 	: m_state(state)
-	, m_map_sw("VertexTraceSW", NULL)
-	, m_map_hw9("VertexTraceHW9", NULL)
-	, m_map_hw11("VertexTraceHW11", NULL)
 {
+	#define InitUpdate3(P, IIP, TME, FST, COLOR) \
+		m_fmm[COLOR][FST][TME][IIP][P] = &GSVertexTrace::FindMinMax<P, IIP, TME, FST, COLOR>;
+
+	#define InitUpdate2(P, IIP, TME) \
+		InitUpdate3(P, IIP, TME, 0, 0) \
+		InitUpdate3(P, IIP, TME, 0, 1) \
+		InitUpdate3(P, IIP, TME, 1, 0) \
+		InitUpdate3(P, IIP, TME, 1, 1) \
+
+	#define InitUpdate(P) \
+		InitUpdate2(P, 0, 0) \
+		InitUpdate2(P, 0, 1) \
+		InitUpdate2(P, 1, 0) \
+		InitUpdate2(P, 1, 1) \
+
+	InitUpdate(GS_POINT_CLASS);
+	InitUpdate(GS_LINE_CLASS);
+	InitUpdate(GS_TRIANGLE_CLASS);
+	InitUpdate(GS_SPRITE_CLASS);
 }
 
-uint32 GSVertexTrace::Hash(GS_PRIM_CLASS primclass)
+void GSVertexTrace::Update(const void* vertex, const uint32* index, int count, GS_PRIM_CLASS primclass)
 {
 	m_primclass = primclass;
 
-	uint32 hash = m_primclass | (m_state->PRIM->IIP << 2) | (m_state->PRIM->TME << 3) | (m_state->PRIM->FST << 4);
+	uint32 iip = m_state->PRIM->IIP;
+	uint32 tme = m_state->PRIM->TME;
+	uint32 fst = m_state->PRIM->FST;
+	uint32 color = !(m_state->PRIM->TME && m_state->m_context->TEX0.TFX == TFX_DECAL && m_state->m_context->TEX0.TCC);
 
-	if(!(m_state->PRIM->TME && m_state->m_context->TEX0.TFX == TFX_DECAL && m_state->m_context->TEX0.TCC))
-	{
-		hash |= 1 << 5;
-	}
-
-	return hash;
-}
-
-void GSVertexTrace::UpdateLOD()
-{
-	if(!m_state->PRIM->TME) return;
-
-	const GIFRegTEX1& TEX1 = m_state->m_context->TEX1;
-
-	m_filter.mmag = TEX1.IsMagLinear();
-	m_filter.mmin = TEX1.IsMinLinear();
-
-	if(TEX1.MXL == 0) // MXL == 0 => MMIN ignored, tested it on ps2
-	{
-		m_filter.linear = m_filter.mmag;
-
-		return;
-	}
-
-	float K = (float)TEX1.K / 16;
-
-	if(TEX1.LCM == 0 && m_state->PRIM->FST == 0) // FST == 1 => Q is not interpolated
-	{
-		// LOD = log2(1/|Q|) * (1 << L) + K
-
-		GSVector4::storel(&m_lod, m_max.t.uph(m_min.t).log2(3).neg() * (float)(1 << TEX1.L) + K);
-
-		if(m_lod.x > m_lod.y) {float tmp = m_lod.x; m_lod.x = m_lod.y; m_lod.y = tmp;}
-	}
-	else
-	{
-		m_lod.x = K;
-		m_lod.y = K;
-	}
-
-	if(m_lod.y <= 0)
-	{
-		m_filter.linear = m_filter.mmag;
-	}
-	else if(m_lod.x > 0)
-	{
-		m_filter.linear = m_filter.mmin;
-	}
-	else
-	{
-		m_filter.linear = m_filter.mmag | m_filter.mmin;
-	}
-}
-
-void GSVertexTrace::Update(const GSVertexSW* v, int count, GS_PRIM_CLASS primclass)
-{
-	m_map_sw[Hash(primclass)](count, v, m_min, m_max);
+	(this->*m_fmm[color][fst][tme][iip][primclass])(vertex, index, count);
 
 	m_eq.value = (m_min.c == m_max.c).mask() | ((m_min.p == m_max.p).mask() << 16) | ((m_min.t == m_max.t).mask() << 20);
 
 	m_alpha.valid = false;
-
-	UpdateLOD();
-}
-
-void GSVertexTrace::Update(const GSVertexHW9* v, int count, GS_PRIM_CLASS primclass)
-{
-	m_map_hw9[Hash(primclass)](count, v, m_min, m_max);
-
-	const GSDrawingContext* context = m_state->m_context;
-
-	GSVector4 o(context->XYOFFSET);
-	GSVector4 s(1.0f / 16, 1.0f / 16, 1.0f, 1.0f);
-
-	m_min.p = (m_min.p - o) * s;
-	m_max.p = (m_max.p - o) * s;
 
 	if(m_state->PRIM->TME)
 	{
-		if(m_state->PRIM->FST)
+		const GIFRegTEX1& TEX1 = m_state->m_context->TEX1;
+
+		m_filter.mmag = TEX1.IsMagLinear();
+		m_filter.mmin = TEX1.IsMinLinear();
+
+		if(TEX1.MXL == 0) // MXL == 0 => MMIN ignored, tested it on ps2
 		{
-			s = GSVector4(1 << (16 - 4), 1).xxyy();
+			m_filter.linear = m_filter.mmag;
+
+			return;
+		}
+
+		float K = (float)TEX1.K / 16;
+
+		if(TEX1.LCM == 0 && m_state->PRIM->FST == 0) // FST == 1 => Q is not interpolated
+		{
+			// LOD = log2(1/|Q|) * (1 << L) + K
+
+			GSVector4::storel(&m_lod, m_max.t.uph(m_min.t).log2(3).neg() * (float)(1 << TEX1.L) + K);
+
+			if(m_lod.x > m_lod.y) {float tmp = m_lod.x; m_lod.x = m_lod.y; m_lod.y = tmp;}
 		}
 		else
 		{
-			s = GSVector4(0x10000 << context->TEX0.TW, 0x10000 << context->TEX0.TH, 1, 1);
+			m_lod.x = K;
+			m_lod.y = K;
 		}
 
-		m_min.t *= s;
-		m_max.t *= s;
+		if(m_lod.y <= 0)
+		{
+			m_filter.linear = m_filter.mmag;
+		}
+		else if(m_lod.x > 0)
+		{
+			m_filter.linear = m_filter.mmin;
+		}
+		else
+		{
+			m_filter.linear = m_filter.mmag | m_filter.mmin;
+		}
 	}
-
-	m_eq.value = (m_min.c == m_max.c).mask() | ((m_min.p == m_max.p).mask() << 16) | ((m_min.t == m_max.t).mask() << 20);
-
-	m_alpha.valid = false;
-
-	UpdateLOD();
 }
 
-void GSVertexTrace::Update(const GSVertexHW11* v, int count, GS_PRIM_CLASS primclass)
+template<GS_PRIM_CLASS primclass, uint32 iip, uint32 tme, uint32 fst, uint32 color>
+void GSVertexTrace::FindMinMax(const void* vertex, const uint32* index, int count)
 {
-	m_map_hw11[Hash(primclass)](count, v, m_min, m_max);
-
 	const GSDrawingContext* context = m_state->m_context;
+
+	bool sprite = primclass == GS_SPRITE_CLASS;
+
+	int n = 1;
+
+	switch(primclass)
+	{
+	case GS_POINT_CLASS:
+		n = 1;
+		break;
+	case GS_LINE_CLASS:
+	case GS_SPRITE_CLASS:
+		n = 2;
+		break;
+	case GS_TRIANGLE_CLASS:
+		n = 3;
+		break;
+	}
+
+	GSVector4 tmin = s_minmax.xxxx();
+	GSVector4 tmax = s_minmax.yyyy();
+	GSVector4i cmin = GSVector4i::xffffffff();
+	GSVector4i cmax = GSVector4i::zero();
+
+	#if _M_SSE >= 0x401
+
+	GSVector4i pmin = GSVector4i::xffffffff();
+	GSVector4i pmax = GSVector4i::zero();
+
+	#else
+
+	GSVector4 pmin = s_minmax.xxxx();
+	GSVector4 pmax = s_minmax.yyyy();
+	
+	#endif
+
+	const GSVertex* RESTRICT v = (GSVertex*)vertex;
+
+	for(int i = 0; i < count; i += n)
+	{
+		GSVector4 q;
+		GSVector4i f;
+
+		if(sprite)
+		{
+			if(tme && !fst)
+			{
+				q = GSVector4::load<true>(&v[index[i + 1]]).wwww();
+			}
+
+			f = GSVector4i(v[index[i + 1]].m[1]).wwww();
+		}
+
+		for(int j = 0; j < n; j++)
+		{
+			GSVector4i c(v[index[i + j]].m[0]);
+
+			if(color && (iip || j == n - 1)) // TODO: unroll, to avoid j == n - 1
+			{
+				cmin = cmin.min_u8(c);
+				cmax = cmax.max_u8(c);
+			}
+
+			if(tme)
+			{
+				if(!fst)
+				{
+					GSVector4 stq = GSVector4::cast(c);
+
+					GSVector4 q2 = !sprite ? stq.wwww() : q;
+
+					stq = (stq.xyww() * q2.rcpnr()).xyww(q2);
+
+					tmin = tmin.min(stq);
+					tmax = tmax.max(stq);
+				}
+				else
+				{
+					GSVector4i uv(v[index[i + j]].m[1]);
+
+					GSVector4 st = GSVector4(uv.uph16()).xyxy();
+
+					tmin = tmin.min(st);
+					tmax = tmax.max(st);
+				}
+			}
+
+			GSVector4i xyzf(v[index[i + j]].m[1]);
+
+			GSVector4i xy = xyzf.upl16();
+			GSVector4i z = xyzf.yyyy().srl32(1);
+
+			#if _M_SSE >= 0x401
+
+			GSVector4i p = xy.blend16<0xf0>(z.uph32(!sprite ? xyzf : f));
+
+			pmin = pmin.min_u32(p);
+			pmax = pmax.max_u32(p);
+
+			#else
+
+			GSVector4 p = GSVector4(xy.upl64(z.upl32(!sprite ? xyzf.wwww() : f)));
+
+			pmin = pmin.min(p);
+			pmax = pmax.max(p);
+
+			#endif
+		}
+	}
 
 	GSVector4 o(context->XYOFFSET);
 	GSVector4 s(1.0f / 16, 1.0f / 16, 2.0f, 1.0f);
 
-	m_min.p = (m_min.p - o) * s;
-	m_max.p = (m_max.p - o) * s;
+	m_min.p = (GSVector4(pmin) - o) * s;
+	m_max.p = (GSVector4(pmax) - o) * s;
 
-	if(m_state->PRIM->TME)
+	if(tme)
 	{
-		if(m_state->PRIM->FST)
+		if(fst)
 		{
 			s = GSVector4(1 << (16 - 4), 1).xxyy();
 		}
@@ -162,14 +241,23 @@ void GSVertexTrace::Update(const GSVertexHW11* v, int count, GS_PRIM_CLASS primc
 			s = GSVector4(0x10000 << context->TEX0.TW, 0x10000 << context->TEX0.TH, 1, 1);
 		}
 
-		m_min.t *= s;
-		m_max.t *= s;
+		m_min.t = tmin * s;
+		m_max.t = tmax * s;
+	}
+	else
+	{
+		m_min.t = GSVector4::zero();
+		m_max.t = GSVector4::zero();
 	}
 
-	m_eq.value = (m_min.c == m_max.c).mask() | ((m_min.p == m_max.p).mask() << 16) | ((m_min.t == m_max.t).mask() << 20);
-
-	m_alpha.valid = false;
-
-	UpdateLOD();
+	if(color)
+	{
+		m_min.c = cmin.zzzz().u8to32();
+		m_max.c = cmax.zzzz().u8to32();
+	}
+	else
+	{
+		m_min.c = GSVector4i::zero();
+		m_max.c = GSVector4i::zero();
+	}
 }
-

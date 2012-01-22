@@ -36,9 +36,9 @@ GSDrawScanline::~GSDrawScanline()
 {
 }
 
-void GSDrawScanline::BeginDraw(const void* param)
+void GSDrawScanline::BeginDraw(const GSRasterizerData* data)
 {
-	memcpy(&m_global, param, sizeof(m_global));
+	memcpy(&m_global, &((const SharedData*)data)->global, sizeof(m_global));
 
 	if(m_global.sel.mmin && m_global.sel.lcm)
 	{
@@ -87,7 +87,7 @@ void GSDrawScanline::BeginDraw(const void* param)
 	sel.tcc = m_global.sel.tcc;
 	sel.fst = m_global.sel.fst;
 	sel.fge = m_global.sel.fge;
-	sel.sprite = m_global.sel.sprite;
+	sel.prim = m_global.sel.prim;
 	sel.fb = m_global.sel.fb;
 	sel.zb = m_global.sel.zb;
 	sel.zoverflow = m_global.sel.zoverflow;
@@ -95,19 +95,16 @@ void GSDrawScanline::BeginDraw(const void* param)
 	m_sp = m_sp_map[sel];
 }
 
-void GSDrawScanline::EndDraw(const GSRasterizerStats& stats, uint64 frame)
+void GSDrawScanline::EndDraw(uint64 frame, uint64 ticks, int pixels)
 {
-	m_ds_map.UpdateStats(stats, frame);
+	m_ds_map.UpdateStats(frame, ticks, pixels);
 }
 
-void GSDrawScanline::PrintStats() 
-{
-	m_ds_map.PrintStats();
-}
+#ifndef ENABLE_JIT_RASTERIZER
 
-#ifndef JIT_DRAW
+// FIXME: something's not right with the sky in burnout 3
 
-void GSDrawScanline::SetupPrim(const GSVertexSW* vertices, const GSVertexSW& dscan)
+void GSDrawScanline::SetupPrim(const GSVertexSW* vertex, const uint32* index, const GSVertexSW& dscan)
 {
 	GSScanlineSelector sel = m_global.sel;
 
@@ -120,7 +117,7 @@ void GSDrawScanline::SetupPrim(const GSVertexSW* vertices, const GSVertexSW& dsc
 
 	if(has_z || has_f)
 	{
-		if(!sel.sprite)
+		if(sel.prim != GS_SPRITE_CLASS)
 		{
 			if(has_f)
 			{
@@ -150,12 +147,12 @@ void GSDrawScanline::SetupPrim(const GSVertexSW* vertices, const GSVertexSW& dsc
 		{
 			if(has_f)
 			{
-				m_local.p.f = GSVector4i(vertices[0].p).zzzzh().zzzz();
+				m_local.p.f = GSVector4i(vertex[index[1]].p).zzzzh().zzzz();
 			}
 
 			if(has_z)
 			{
-				m_local.p.z = vertices[0].t.u32[3]; // uint32 z is bypassed in t.w
+				m_local.p.z = vertex[index[1]].t.u32[3]; // uint32 z is bypassed in t.w
 			}
 		}
 	}
@@ -239,7 +236,17 @@ void GSDrawScanline::SetupPrim(const GSVertexSW* vertices, const GSVertexSW& dsc
 		}
 		else
 		{
-			GSVector4i c = GSVector4i(vertices[0].c);
+			int last = 0;
+			
+			switch(sel.prim)
+			{
+			case GS_POINT_CLASS: last = 0; break;
+			case GS_LINE_CLASS: last = 1; break;
+			case GS_TRIANGLE_CLASS: last = 2; break;
+			case GS_SPRITE_CLASS: last = 1; break;
+			}
+
+			GSVector4i c = GSVector4i(vertex[index[last]].c);
 
 			c = c.upl16(c.zwxy());
 
@@ -256,7 +263,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 	GSScanlineSelector sel = m_global.sel;
 
 	GSVector4i test;
-	GSVector4 z;
+	GSVector4 zo;
 	GSVector4i f;
 	GSVector4 s, t, q;
 	GSVector4i uf, vf;
@@ -276,7 +283,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 
 	test = GSDrawScanlineCodeGenerator::m_test[skip] | GSDrawScanlineCodeGenerator::m_test[7 + (steps & (steps >> 31))];
 
-	if(!sel.sprite)
+	if(sel.prim != GS_SPRITE_CLASS)
 	{
 		if(sel.fwrite && sel.fge)
 		{
@@ -285,7 +292,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 
 		if(sel.zb)
 		{
-			z = scan.p.zzzz() + m_local.d[skip].z;
+			zo = m_local.d[skip].z;
 		}
 	}
 
@@ -305,7 +312,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 				GSVector4i u = vt.xxxx() + GSVector4i::cast(m_local.d[skip].s);
 				GSVector4i v = vt.yyyy(); 
 				
-				if(!sel.sprite || sel.mmin)
+				if(sel.prim != GS_SPRITE_CLASS || sel.mmin)
 				{
 					v += GSVector4i::cast(m_local.d[skip].t);
 				}
@@ -359,8 +366,10 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 			{
 				za = fza_base->y + fza_offset->y;
 
-				if(!sel.sprite)
+				if(sel.prim != GS_SPRITE_CLASS)
 				{
+					GSVector4 z = scan.p.zzzz() + zo;
+
 					if(sel.zoverflow)
 					{
 						zs = (GSVector4i(z * 0.5f) << 1) | (GSVector4i(z) & GSVector4i::x00000001());
@@ -412,6 +421,8 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 				GSVector4i u, v, uv[2];
 				GSVector4i lodi, lodf;
 				GSVector4i minuv, maxuv;
+				GSVector4i addr00, addr01, addr10, addr11;
+				GSVector4i c00, c01, c10, c11;
 
 				if(sel.mmin)
 				{
@@ -529,12 +540,10 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 						GSVector4i y1 = uv1.uph16() << (sel.tw + 3);
 						GSVector4i x1 = uv1.upl16();
 
-						GSVector4i addr00 = y0 + x0;
-						GSVector4i addr01 = y0 + x1;
-						GSVector4i addr10 = y1 + x0;
-						GSVector4i addr11 = y1 + x1;
-
-						GSVector4i c00, c01, c10, c11;
+						addr00 = y0 + x0;
+						addr01 = y0 + x1;
+						addr10 = y1 + x0;
+						addr11 = y1 + x1;
 
 						if(sel.tlu)
 						{
@@ -582,9 +591,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 					}
 					else
 					{
-						GSVector4i addr00 = y0 + x0;
-					
-						GSVector4i c00;
+						addr00 = y0 + x0;
 
 						if(sel.tlu)
 						{
@@ -654,12 +661,10 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 							GSVector4i y1 = uv1.uph16() << (sel.tw + 3);
 							GSVector4i x1 = uv1.upl16();
 
-							GSVector4i addr00 = y0 + x0;
-							GSVector4i addr01 = y0 + x1;
-							GSVector4i addr10 = y1 + x0;
-							GSVector4i addr11 = y1 + x1;
-
-							GSVector4i c00, c01, c10, c11;
+							addr00 = y0 + x0;
+							addr01 = y0 + x1;
+							addr10 = y1 + x0;
+							addr11 = y1 + x1;
 
 							if(sel.tlu)
 							{
@@ -707,9 +712,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 						}
 						else
 						{
-							GSVector4i addr00 = y0 + x0;
-					
-							GSVector4i c00;
+							addr00 = y0 + x0;
 
 							if(sel.tlu)
 							{
@@ -763,7 +766,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 					{
 						uf = u.xxzzlh().srl16(1);
 					
-						if(!sel.sprite)
+						if(sel.prim != GS_SPRITE_CLASS)
 						{
 							vf = v.xxzzlh().srl16(1);
 						}
@@ -797,12 +800,10 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 						GSVector4i y1 = uv1.uph16() << (sel.tw + 3);
 						GSVector4i x1 = uv1.upl16();
 
-						GSVector4i addr00 = y0 + x0;
-						GSVector4i addr01 = y0 + x1;
-						GSVector4i addr10 = y1 + x0;
-						GSVector4i addr11 = y1 + x1;
-					
-						GSVector4i c00, c01, c10, c11;
+						addr00 = y0 + x0;
+						addr01 = y0 + x1;
+						addr10 = y1 + x0;
+						addr11 = y1 + x1;
 
 						if(sel.tlu)
 						{
@@ -844,9 +845,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 					}
 					else
 					{
-						GSVector4i addr00 = y0 + x0;
-					
-						GSVector4i c00;
+						addr00 = y0 + x0;
 
 						if(sel.tlu)
 						{
@@ -949,7 +948,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 
 			if(sel.fwrite && sel.fge)
 			{
-				GSVector4i fog = !sel.sprite ? f : m_local.p.f;
+				GSVector4i fog = sel.prim != GS_SPRITE_CLASS ? f : m_local.p.f;
 
 				rb = m_global.frb.lerp16<0>(rb, fog);
 				ga = m_global.fga.lerp16<0>(ga, fog).mix16(ga);
@@ -1224,11 +1223,11 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 
 		fza_offset++;
 
-		if(!sel.sprite)
+		if(sel.prim != GS_SPRITE_CLASS)
 		{
 			if(sel.zb)
 			{
-				z += m_local.d4.z;
+				zo += m_local.d4.z;
 			}
 
 			if(sel.fwrite && sel.fge)
@@ -1247,7 +1246,7 @@ void GSDrawScanline::DrawScanline(int pixels, int left, int top, const GSVertexS
 
 					s = GSVector4::cast(GSVector4i::cast(s) + stq.xxxx());
 					
-					if(!sel.sprite || sel.mmin)
+					if(sel.prim != GS_SPRITE_CLASS || sel.mmin)
 					{
 						t = GSVector4::cast(GSVector4i::cast(t) + stq.yyyy());
 					}
@@ -1424,7 +1423,7 @@ void GSDrawScanline::DrawRect(const GSVector4i& r, const GSVertexSW& v)
 		}
 		else
 		{
-			if(m == 0)
+			if((m & 0xffff) == 0)
 			{
 				DrawRectT<uint16, false>(zbr, zbc, r, z, m);
 			}
@@ -1464,7 +1463,7 @@ void GSDrawScanline::DrawRect(const GSVector4i& r, const GSVertexSW& v)
 		{
 			c = ((c & 0xf8) >> 3) | ((c & 0xf800) >> 6) | ((c & 0xf80000) >> 9) | ((c & 0x80000000) >> 16);
 
-			if(m == 0)
+			if((m & 0xffff) == 0)
 			{
 				DrawRectT<uint16, false>(fbr, fbc, r, c, m);
 			}
@@ -1489,6 +1488,8 @@ void GSDrawScanline::DrawRectT(const int* RESTRICT row, const int* RESTRICT col,
 		color = color.xxzzlh();
 		mask = mask.xxzzlh();
 	}
+
+	if(masked) ASSERT(mask.u32[0] != 0);
 
 	color = color.andnot(mask);
 

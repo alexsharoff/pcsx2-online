@@ -25,9 +25,8 @@
 #include "resource.h"
 
 GSRendererDX9::GSRendererDX9()
-	: GSRendererDX<GSVertexHW9>(new GSTextureCache9(this))
+	: GSRendererDX(new GSTextureCache9(this))
 {
-	InitVertexKick(GSRendererDX9);
 }
 
 bool GSRendererDX9::CreateDevice(GSDevice* dev)
@@ -57,211 +56,169 @@ bool GSRendererDX9::CreateDevice(GSDevice* dev)
 	return true;
 }
 
-template<uint32 prim, uint32 tme, uint32 fst> 
-void GSRendererDX9::VertexKick(bool skip)
+void GSRendererDX9::SetupIA()
 {
-	GSVector4 p = GSVector4(((GSVector4i)m_v.XYZ).upl16());
+	D3DPRIMITIVETYPE topology;
 
-	if(tme && !fst)
-	{
-		p = p.xyxy(GSVector4((float)m_v.XYZ.Z, m_v.RGBAQ.Q));
-	}
-	else
-	{
-		p = p.xyxy(GSVector4::load((float)m_v.XYZ.Z));
-	}
-
-	GSVertexHW9& dst = m_vl.AddTail();
-
-	dst.p = p;
-
-	int Uadjust = 0;
-	int Vadjust = 0;
-
-	if(tme)
-	{
-		if(fst)
-		{
-			dst.t = m_v.GetUV();
-
-			#ifdef USE_UPSCALE_HACKS
-
-			int Udiff = 0;
-			int Vdiff = 0;
-
-			int multiplier = GetUpscaleMultiplier();
-
-			if(multiplier > 1)
-			{
-				Udiff = m_v.UV.U & 4095;
-				Vdiff = m_v.UV.V & 4095;
-
-				if(Udiff != 0)
-				{
-					if		(Udiff >= 4080)	{/*printf("U+ %d %d\n", Udiff, m_v.UV.U);*/  Uadjust = -1; }
-					else if (Udiff <= 16)	{/*printf("U- %d %d\n", Udiff, m_v.UV.U);*/  Uadjust = 1; }
-				}
-				
-				if(Vdiff != 0)
-				{
-					if		(Vdiff >= 4080)	{/*printf("V+ %d %d\n", Vdiff, m_v.UV.V);*/  Vadjust = -1; }
-					else if	(Vdiff <= 16)	{/*printf("V- %d %d\n", Vdiff, m_v.UV.V);*/  Vadjust = 1; }
-				}
-
-				Udiff = m_v.UV.U & 255;
-				Vdiff = m_v.UV.V & 255;
-
-				if(Udiff != 0)
-				{
-					if		(Udiff >= 248)	{ Uadjust = -1;	}
-					else if (Udiff <= 8)	{ Uadjust = 1; }
-				}
-
-				if(Vdiff != 0)
-				{
-					if		(Vdiff >= 248)	{ Vadjust = -1;	}
-					else if	(Vdiff <= 8)	{ Vadjust = 1; }
-				}
-
-				Udiff = m_v.UV.U & 15;
-				Vdiff = m_v.UV.V & 15;
-
-				if(Udiff != 0)
-				{
-					if		(Udiff >= 15)	{ Uadjust = -1; }
-					else if (Udiff <= 1)	{ Uadjust = 1; }
-				}
-
-				if(Vdiff != 0)
-				{
-					if		(Vdiff >= 15)	{ Vadjust = -1; }
-					else if	(Vdiff <= 1)	{ Vadjust = 1; }
-				}
-			}
-
-			dst.t.x -= (float) Uadjust;
-			dst.t.y -= (float) Vadjust;
-
-			#endif
-		}
-		else
-		{
-			dst.t = GSVector4::loadl(&m_v.ST);
-		}
-	}
-
-	dst._c0() = m_v.RGBAQ.u32[0];
-	dst._c1() = m_v.FOG.u32[1];
-
-	//
-
-	// BaseDrawingKick can never return NULL here because the DrawingKick function
-	// tables route to DrawingKickNull for GS_INVLALID prim types (and that's the only
-	// condition where this function would return NULL).
-
-	int count = 0;
-	
-	if(GSVertexHW9* v = DrawingKick<prim>(skip, count))
-	{
-		GSVector4 scissor = m_context->scissor.dx9;
-
-		GSVector4 pmin, pmax;
-
-		switch(prim)
-		{
-		case GS_POINTLIST:
-			pmin = v[0].p;
-			pmax = v[0].p;
-			break;
-		case GS_LINELIST:
-		case GS_LINESTRIP:
-		case GS_SPRITE:
-			pmin = v[0].p.min(v[1].p);
-			pmax = v[0].p.max(v[1].p);
-			break;
-		case GS_TRIANGLELIST:
-		case GS_TRIANGLESTRIP:
-		case GS_TRIANGLEFAN:
-			pmin = v[0].p.min(v[1].p).min(v[2].p);
-			pmax = v[0].p.max(v[1].p).max(v[2].p);
-			break;
-		}
-
-		GSVector4 test = (pmax < scissor) | (pmin > scissor.zwxy());
-
-		switch(prim)
-		{
-		case GS_TRIANGLELIST:
-		case GS_TRIANGLESTRIP:
-		case GS_TRIANGLEFAN:
-		case GS_SPRITE:
-			test |= pmin == pmax;
-			break;
-		}
-
-		if(test.mask() & 3)
-		{
-			return;
-		}
-
-		switch(prim)
-		{
-		case GS_POINTLIST:
-			break;
-		case GS_LINELIST:
-		case GS_LINESTRIP:
-			if(PRIM->IIP == 0) {v[0]._c0() = v[1]._c0();}
-			break;
-		case GS_TRIANGLELIST:
-		case GS_TRIANGLESTRIP:
-		case GS_TRIANGLEFAN:
-			if(PRIM->IIP == 0) {v[0]._c0() = v[1]._c0() = v[2]._c0();}
-			break;
-		case GS_SPRITE:
-			if(PRIM->IIP == 0) {v[0]._c0() = v[1]._c0();}
-			v[0].p.z = v[1].p.z;
-			v[0].p.w = v[1].p.w;
-			v[0]._c1() = v[1]._c1();
-			v[2] = v[1];
-			v[3] = v[1];
-			v[1].p.y = v[0].p.y;
-			v[1].t.y = v[0].t.y;
-			v[2].p.x = v[0].p.x;
-			v[2].t.x = v[0].t.x;
-			v[4] = v[1];
-			v[5] = v[2];
-			count += 4;
-			break;
-		}
-
-		m_count += count;
-	}
-}
-
-void GSRendererDX9::Draw(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* tex)
-{
 	switch(m_vt.m_primclass)
 	{
 	case GS_POINT_CLASS:
-		m_topology = D3DPT_POINTLIST;
-		m_perfmon.Put(GSPerfMon::Prim, m_count);
+
+		topology = D3DPT_POINTLIST;
+
 		break;
+
 	case GS_LINE_CLASS:
-		m_topology = D3DPT_LINELIST;
-		m_perfmon.Put(GSPerfMon::Prim, m_count / 2);
+
+		topology = D3DPT_LINELIST;
+
+		if(PRIM->IIP == 0)
+		{
+			for(size_t i = 0, j = m_index.tail; i < j; i += 2) 
+			{
+				uint32 tmp = m_index.buff[i + 0]; 
+				m_index.buff[i + 0] = m_index.buff[i + 1];
+				m_index.buff[i + 1] = tmp;
+			}
+		}
+
 		break;
+
 	case GS_TRIANGLE_CLASS:
-	case GS_SPRITE_CLASS:
-		m_topology = D3DPT_TRIANGLELIST;
-		m_perfmon.Put(GSPerfMon::Prim, m_count / 3);
+
+		topology = D3DPT_TRIANGLELIST;
+
+		if(PRIM->IIP == 0)
+		{
+			for(size_t i = 0, j = m_index.tail; i < j; i += 3) 
+			{
+				uint32 tmp = m_index.buff[i + 0]; 
+				m_index.buff[i + 0] = m_index.buff[i + 2];
+				m_index.buff[i + 2] = tmp;
+			}
+		}
+
 		break;
+
+	case GS_SPRITE_CLASS:
+
+		topology = D3DPT_TRIANGLELIST;
+
+		// each sprite converted to quad needs twice the space
+
+		while(m_vertex.tail * 2 > m_vertex.maxcount)
+		{
+			GrowVertexBuffer();
+		}
+
+		// assume vertices are tightly packed and sequentially indexed (it should be the case)
+
+		if(m_vertex.next >= 2)
+		{
+			size_t count = m_vertex.next;
+
+			int i = (int)count * 2 - 4;
+			GSVertex* s = &m_vertex.buff[count - 2];
+			GSVertex* q = &m_vertex.buff[count * 2 - 4];
+			uint32* RESTRICT index = &m_index.buff[count * 3 - 6];
+		
+			for(; i >= 0; i -= 4, s -= 2, q -= 4, index -= 6) 
+			{
+				GSVertex v0 = s[0];
+				GSVertex v1 = s[1];
+
+				v0.RGBAQ = v1.RGBAQ;
+				v0.XYZ.Z = v1.XYZ.Z;
+				v0.FOG = v1.FOG;
+
+				q[0] = v0;
+				q[3] = v1;
+
+				// swap x, s, u
+
+				uint16 x = v0.XYZ.X;
+				v0.XYZ.X = v1.XYZ.X;
+				v1.XYZ.X = x;
+
+				float s = v0.ST.S;
+				v0.ST.S = v1.ST.S;
+				v1.ST.S = s;
+
+				uint16 u = v0.U;
+				v0.U = v1.U;
+				v1.U = u;
+
+				q[1] = v0;
+				q[2] = v1;
+
+				index[0] = i + 0;
+				index[1] = i + 1;
+				index[2] = i + 2;
+				index[3] = i + 1;
+				index[4] = i + 2;
+				index[5] = i + 3;
+			}
+
+			m_vertex.head = m_vertex.tail = m_vertex.next = count * 2;
+			m_index.tail = count * 3;
+		}
+
+		break;
+
 	default:
 		__assume(0);
 	}
 
-	(*(GSDevice9*)m_dev)->SetRenderState(D3DRS_SHADEMODE, PRIM->IIP ? D3DSHADE_GOURAUD : D3DSHADE_FLAT); // TODO
+	GSDevice9* dev = (GSDevice9*)m_dev;
 
-	__super::Draw(rt, ds, tex);
+	(*dev)->SetRenderState(D3DRS_SHADEMODE, PRIM->IIP ? D3DSHADE_GOURAUD : D3DSHADE_FLAT); // TODO
+
+	void* ptr = NULL;
+
+	if(dev->IAMapVertexBuffer(&ptr, sizeof(GSVertexHW9), m_vertex.next))
+	{
+		GSVertex* RESTRICT s = (GSVertex*)m_vertex.buff;
+		GSVertexHW9* RESTRICT d = (GSVertexHW9*)ptr;
+
+		for(int i = 0; i < m_vertex.next; i++, s++, d++)
+		{
+			GSVector4 p = GSVector4(GSVector4i::load(s->XYZ.u32[0]).upl16());
+
+			if(PRIM->TME && !PRIM->FST)
+			{
+				p = p.xyxy(GSVector4((float)s->XYZ.Z, s->RGBAQ.Q));
+			}
+			else
+			{
+				p = p.xyxy(GSVector4::load((float)s->XYZ.Z));
+			}
+
+			GSVector4 t = GSVector4::zero();
+
+			if(PRIM->TME)
+			{
+				if(PRIM->FST)
+				{
+					t = GSVector4(GSVector4i::load(s->UV).upl16());
+				}
+				else
+				{
+					t = GSVector4::loadl(&s->ST);
+				}
+			}
+
+			t = t.xyxy(GSVector4::cast(GSVector4i(s->RGBAQ.u32[0], s->FOG)));
+
+			d->p = p;
+			d->t = t;
+		}
+
+		dev->IAUnmapVertexBuffer();
+	}
+
+	dev->IASetIndexBuffer(m_index.buff, m_index.tail);
+
+	dev->IASetPrimitiveTopology(topology);
 }
 
 void GSRendererDX9::UpdateFBA(GSTexture* rt)

@@ -79,6 +79,9 @@ class GSVector4;
 
 __aligned(class, 16) GSVector4i
 {
+	static const GSVector4i m_xff[17];
+	static const GSVector4i m_x0f[17];
+
 public:
 	union
 	{
@@ -1900,7 +1903,7 @@ public:
 		d = f.uph64(d);
 	}
 
-	__forceinline static bool compare16(const void* dst, const void* src, int size)
+	__forceinline static bool compare16(const void* dst, const void* src, size_t size)
 	{
 		ASSERT((size & 15) == 0);
 
@@ -1909,7 +1912,7 @@ public:
 		GSVector4i* s = (GSVector4i*)src;
 		GSVector4i* d = (GSVector4i*)dst;
 
-		for(int i = 0; i < size; i++)
+		for(size_t i = 0; i < size; i++)
 		{
 			if(!d[i].eq(s[i]))
 			{
@@ -1920,7 +1923,7 @@ public:
 		return true;
 	}
 
-	__forceinline static bool compare64(const void* dst, const void* src, int size)
+	__forceinline static bool compare64(const void* dst, const void* src, size_t size)
 	{
 		ASSERT((size & 63) == 0);
 
@@ -1929,7 +1932,7 @@ public:
 		GSVector4i* s = (GSVector4i*)src;
 		GSVector4i* d = (GSVector4i*)dst;
 
-		for(int i = 0; i < size; i += 4)
+		for(size_t i = 0; i < size; i += 4)
 		{
 			GSVector4i v0 = (d[i * 4 + 0] == s[i * 4 + 0]);
 			GSVector4i v1 = (d[i * 4 + 1] == s[i * 4 + 1]);
@@ -1948,7 +1951,7 @@ public:
 		return true;
 	}
 
-	__forceinline static bool update(const void* dst, const void* src, int size)
+	__forceinline static bool update(const void* dst, const void* src, size_t size)
 	{
 		ASSERT((size & 15) == 0);
 
@@ -1959,7 +1962,7 @@ public:
 
 		GSVector4i v = GSVector4i::xffffffff();
 
-		for(int i = 0; i < size; i++)
+		for(size_t i = 0; i < size; i++)
 		{
 			v &= d[i] == s[i];
 
@@ -2343,6 +2346,9 @@ public:
 	__forceinline static GSVector4i xfff8(const GSVector4i& v) {return xffffffff(v).sll16( 3);}
 	__forceinline static GSVector4i xfffc(const GSVector4i& v) {return xffffffff(v).sll16( 2);}
 	__forceinline static GSVector4i xfffe(const GSVector4i& v) {return xffffffff(v).sll16( 1);}
+
+	__forceinline static GSVector4i xff(int n) {return m_xff[n];}
+	__forceinline static GSVector4i x0f(int n) {return m_x0f[n];}
 };
 
 __aligned(class, 16) GSVector4
@@ -2907,6 +2913,11 @@ public:
 	template<bool aligned> __forceinline static GSVector4 load(const void* p)
 	{
 		return GSVector4(aligned ? _mm_load_ps((const float*)p) : _mm_loadu_ps((const float*)p));
+	}
+
+	__forceinline static void storent(void* p, const GSVector4& v)
+	{
+		_mm_stream_ps((float*)p, v.m);
 	}
 
 	__forceinline static void storel(void* p, const GSVector4& v)
