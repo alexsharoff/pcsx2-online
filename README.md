@@ -42,7 +42,7 @@ Working with frequent desyncs
 
 Changelog
 ---------
-2012.01.22
+<pre>2012.01.22
 This build doesn't force Skip Mpeg hack to be enabled, as it's incompatible with some games.
 
 2011.12.02
@@ -69,6 +69,7 @@ Desyncs should now occur much less frequently than in previous version.
 1. Client side downloads memory card from hosting side to stay in sync. When the session ends, saved state persist only on hosting side;
 2. Frameskipping after slowdown due to packet loss should be fixed now;
 3. Some stability issues addressed.
+</pre>
 
 Roadmap
 -------
