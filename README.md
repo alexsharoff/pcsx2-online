@@ -1,9 +1,18 @@
 PCSX2 Online
 ============
 
-PCSX2 Online is a fork of open-source PlayStation 2 emulator PCSX2 with peer-to-peer netplay mode. Now you can play PS2 games with your friends on the internet as if you were in the same room!
+PCSX2 Online is a fork of open-source PlayStation 2 emulator PCSX2 with peer-to-peer netplay mode.
 
-Grab the latest version here http://www.mediafire.com/?r3c1ejv5m85ekrv
+You can find the latest version here http://www.mediafire.com/?r3c1ejv5m85ekrv
+
+Disclaimer
+--------------------
+
+At the time, this project was conceived as a proof-of-concept and a fun challenge. I don't have as much free time now, nor do I have any incentive to go on with this project.
+
+I wanted to play Melty Blood online, so I hacked PCSX2 just for that. Since then we've got an official PC port with much better netplay (even though I haven't been playing Melty much lately), so I can't find any reason to force myself to go on with this project.
+
+If anyone wants to continue with this project I'm more than happy to share my knowledge.
 
 How to start netplay
 --------------------
