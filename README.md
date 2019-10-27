@@ -5,16 +5,11 @@ PCSX2 Online is a fork of open-source PlayStation 2 emulator PCSX2 with peer-to-
 
 You can find the latest version here http://www.mediafire.com/?r3c1ejv5m85ekrv
 
-For upstream-compatible changes, check https://github.com/alexsharoff/pcsx2, branch 'netplay'.
+This repository is a read-only archive.
 
-Disclaimer
---------------------
+Fusion of current pcsx2 and pcsx2-online with some modifications / improvements: https://github.com/SmileTheory/pcsx2
 
-At the time, this project was conceived as a proof-of-concept and a fun challenge. I don't have as much free time now, nor do I have any incentive to go on with this project.
-
-I wanted to play Melty Blood online, so I hacked PCSX2 just for that. Since then we've got an official PC port with much better netplay (even though I haven't been playing Melty much lately), so I can't find any reason to force myself to go on with this project.
-
-If anyone wants to continue with this project I'm more than happy to share my knowledge.
+Changes from this repository are available as a proper fork here: https://github.com/alexsharoff/pcsx2 (branch 'netplay'). It should be buildable with VS 2010 right after git clone. I've also created a list of all issues I remember there.
 
 How to start netplay
 --------------------
